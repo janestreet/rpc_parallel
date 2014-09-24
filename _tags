@@ -1,0 +1,6 @@
+# OASIS_START
+# OASIS_STOP
+<**/*.ml{,i}>: syntax_camlp4o, warn(-40)
+<lib/*.ml{,i}>: pa_ounit_lib(rpc_parallel)
+<lib_core/*.ml{,i}>: pa_ounit_lib(rpc_parallel_core)
+<lib/*>: ugly_hack_to_workaround_ocamlbuild_nightmare
