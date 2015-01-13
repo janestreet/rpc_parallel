@@ -1,6 +1,6 @@
 open Core.Std
 
-module Id = Unique_id.Int(Unit)
+module Id = Unique_id.Int()
 
 include Hashable.Make_binable (struct
   type t = Id.t with bin_io, sexp

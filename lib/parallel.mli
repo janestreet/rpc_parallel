@@ -45,16 +45,9 @@ open Async.Std
     be top-level. *)
 
 (** A [('worker, 'query, 'response) Function.t] is a type-safe function ['query ->
-    'response Deferred.t] that can only be run on a ['worker]. Under the hood it is a
-    [Rpc.Rpc.t] type *)
+    'response Deferred.t] that can only be run on a ['worker]. Under the hood it
+    represents some sort of Async Rpc protocol. *)
 module Function : sig
-  type ('worker, 'query, 'response) t
-end
-
-(** A [('worker, 'query, 'response) Function_piped.t] is a type-safe function ['query ->
-    'response Pipe.Reader.t Deferred.t] that can only be run on a ['worker]. Under the
-    hood it is a [Rpc.Pipe_rpc.t] type. *)
-module Function_piped : sig
   type ('worker, 'query, 'response) t
 end
 
@@ -66,7 +59,7 @@ module type Creator = sig
       [Function.t], a type-safe [Rpc.Rpc.t]. *)
   val create_rpc
     :  ?name: string
-    -> f: ('query -> 'response Deferred.t)
+    -> f:('query -> 'response Deferred.t)
     -> bin_input: 'query Bin_prot.Type_class.t
     -> bin_output: 'response Bin_prot.Type_class.t
     -> unit
@@ -77,13 +70,13 @@ module type Creator = sig
       a [Pipe.Reader.t] and a [Pipe.Writer.t], then calls [f arg ~writer] and returns the
       reader. [create_pipe] returns a [Function_piped.t] which is a type-safe
       [Rpc.Pipe_rpc.t]. *)
-  val create_pipe
-    :  ?name: string
-    -> f: ('query -> writer:'response Pipe.Writer.t -> unit Deferred.t)
+  val create_pipe :
+    ?name: string
+    -> f:('query -> 'response Pipe.Reader.t Deferred.t)
     -> bin_input: 'query Bin_prot.Type_class.t
     -> bin_output: 'response Bin_prot.Type_class.t
     -> unit
-    -> (worker, 'query, 'response) Function_piped.t
+    -> (worker, 'query, 'response Pipe.Reader.t) Function.t
 
   (** [of_async_rpc ~f rpc] is the analog to [create_rpc] but instead of creating an Rpc
       protocol, it uses the supplied one *)
@@ -95,13 +88,13 @@ module type Creator = sig
   (** [of_async_pipe_rpc ~f rpc] is the analog to [create_pipe] but instead of creating a
       Pipe_rpc protocol, it uses the supplied one *)
   val of_async_pipe_rpc
-    :  f:('query -> writer:'response Pipe.Writer.t -> unit Deferred.t)
+    :  f:('query -> 'response Pipe.Reader.t Deferred.t)
     -> ('query, 'response, Error.t) Rpc.Pipe_rpc.t
-    -> (worker, 'query, 'response) Function_piped.t
+    -> (worker, 'query, 'response Pipe.Reader.t) Function.t
 
-  (** [run] and [run_streamed] are exposed in this interface so the implementations of
-      functions can include running other functions defined on this worker. A function can
-      take a [worker] as an argument and call [run] on this worker *)
+  (** [run] is exposed in this interface so the implementations of functions can include
+      running other functions defined on this worker. A function can take a [worker] as an
+      argument and call [run] on this worker *)
   val run
     :  worker
     -> f: (worker, 'query, 'response) Function.t
@@ -113,18 +106,6 @@ module type Creator = sig
     -> f: (worker, 'query, 'response) Function.t
     -> arg: 'query
     -> 'response Deferred.t
-
-  val run_streamed
-    :  worker
-    -> f: (worker, 'query, 'response) Function_piped.t
-    -> arg: 'query
-    -> 'response Pipe.Reader.t Or_error.t Deferred.t
-
-  val run_streamed_exn
-    :  worker
-    -> f: (worker, 'query, 'response) Function_piped.t
-    -> arg: 'query
-    -> 'response Pipe.Reader.t Deferred.t
 end
 
 module type Functions = sig
@@ -193,20 +174,6 @@ module type Worker = sig
     -> f: (t, 'query, 'response) Function.t
     -> arg: 'query
     -> 'response Deferred.t
-
-  (** [run_streamed t ~f ~arg] will run [f] on [t] with the argument [arg]. It returns
-      with a [Pipe.Reader.t] that will read values written to by the worker *)
-  val run_streamed
-    :  t
-    -> f: (t, 'query, 'response) Function_piped.t
-    -> arg: 'query
-    -> 'response Pipe.Reader.t Or_error.t Deferred.t
-
-  val run_streamed_exn
-    :  t
-    -> f: (t, 'query, 'response) Function_piped.t
-    -> arg: 'query
-    -> 'response Pipe.Reader.t Deferred.t
 
 
   (** [disconnect t] will close the established connection with the spawned worker. The

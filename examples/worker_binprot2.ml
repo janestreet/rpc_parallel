@@ -27,8 +27,8 @@ module Worker = struct
        worker can only process some subset of elements. When a worker sees an element it
        cannot process, it will send it to the other worker to process *)
     type 'worker functions =
-      { process_elts : ('worker, unit,    int) Parallel.Function_piped.t
-      ; start_work   : ('worker, 'worker, int) Parallel.Function_piped.t
+      { process_elts : ('worker, unit,    int Pipe.Reader.t) Parallel.Function.t
+      ; start_work   : ('worker, 'worker, int Pipe.Reader.t) Parallel.Function.t
       }
 
     (* Each [Worker.t] has some internal state. Most of this is updated upon
@@ -72,26 +72,31 @@ module Worker = struct
       state.sum <- state.sum + elt
 
     module Functions(C:Parallel.Creator) = struct
-      let process_elts_impl () ~writer =
+      let process_elts_impl () =
+        let reader, writer = Pipe.create () in
         (* Generate random elements. If [state.can_process elt] then process the element,
            otherwise send the element to the other worker to be processed *)
-        Deferred.repeat_until_finished state.num_elts (fun count ->
-          Clock.after (sec state.process_delay) >>= fun () ->
-          if count = 0 then
-            begin
-              Ivar.fill state.done_ivar ();
-              return (`Finished ())
-            end
-          else
-            let elt = Random.int state.max_elt in
-            if state.can_process elt then
-              begin
-                process elt;
-                return (`Repeat (count - 1))
-              end
-            else
-              Pipe.write writer elt
-              >>| fun () -> `Repeat (count - 1))
+        don't_wait_for
+          (Deferred.repeat_until_finished state.num_elts (fun count ->
+             Clock.after (sec state.process_delay) >>= fun () ->
+             if count = 0 then
+               begin
+                 Ivar.fill state.done_ivar ();
+                 return (`Finished ())
+               end
+             else
+               let elt = Random.int state.max_elt in
+               if state.can_process elt then
+                 begin
+                   process elt;
+                   return (`Repeat (count - 1))
+                 end
+               else
+                 Pipe.write writer elt
+                 >>| fun () -> `Repeat (count - 1))
+           >>| fun () ->
+           Pipe.close writer);
+        return reader
 
       let process_elts =
         C.create_pipe ~f:process_elts_impl
@@ -99,14 +104,17 @@ module Worker = struct
 
       (* Send periodic checkpoints to the caller. Also, set up the communication with
          the passed in [Worker.t] *)
-      let start_work_impl worker ~writer =
+      let start_work_impl worker =
+        let reader, writer = Pipe.create () in
         don't_wait_for
-          (C.run_streamed_exn worker ~f:process_elts ~arg:()
+          (C.run_exn worker ~f:process_elts ~arg:()
            >>= fun reader ->
            Pipe.iter reader ~f:(fun i -> return (process i)));
-        Clock.every' (sec state.checkpoint_time) (fun () ->
+        let stop = Ivar.read state.done_ivar in
+        Clock.every' ~stop (sec state.checkpoint_time) (fun () ->
           Pipe.write writer state.sum);
-        Ivar.read state.done_ivar
+        (stop >>> fun () -> Pipe.close writer);
+        return reader
 
       let start_work =
         C.create_pipe ~f:start_work_impl ~bin_input:C.bin_worker ~bin_output:Int.bin_t ()
@@ -142,9 +150,9 @@ let command =
        Worker.spawn_exn (`Odd, args) ~on_failure:(handle_error "odd worker")
        >>= fun odd_worker ->
        (* Tell workers to start doing work *)
-       Worker.run_streamed_exn even_worker ~f:Worker.functions.start_work ~arg:odd_worker
+       Worker.run_exn even_worker ~f:Worker.functions.start_work ~arg:odd_worker
        >>= fun reader_even ->
-       Worker.run_streamed_exn odd_worker  ~f:Worker.functions.start_work ~arg:even_worker
+       Worker.run_exn odd_worker  ~f:Worker.functions.start_work ~arg:even_worker
        >>= fun reader_odd ->
        Deferred.all_unit [
          Pipe.iter reader_even
