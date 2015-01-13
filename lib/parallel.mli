@@ -64,8 +64,8 @@ module type Creator = sig
   (** [create_rpc ?name ~f ~bin_input ~bin_output ()] will create an [Rpc.Rpc.t] with
       [name] if specified and use [f] as an implementation for this Rpc. It returns back a
       [Function.t], a type-safe [Rpc.Rpc.t]. *)
-  val create_rpc :
-    ?name: string
+  val create_rpc
+    :  ?name: string
     -> f: ('query -> 'response Deferred.t)
     -> bin_input: 'query Bin_prot.Type_class.t
     -> bin_output: 'response Bin_prot.Type_class.t
@@ -77,8 +77,8 @@ module type Creator = sig
       a [Pipe.Reader.t] and a [Pipe.Writer.t], then calls [f arg ~writer] and returns the
       reader. [create_pipe] returns a [Function_piped.t] which is a type-safe
       [Rpc.Pipe_rpc.t]. *)
-  val create_pipe :
-    ?name: string
+  val create_pipe
+    :  ?name: string
     -> f: ('query -> writer:'response Pipe.Writer.t -> unit Deferred.t)
     -> bin_input: 'query Bin_prot.Type_class.t
     -> bin_output: 'response Bin_prot.Type_class.t
@@ -87,41 +87,41 @@ module type Creator = sig
 
   (** [of_async_rpc ~f rpc] is the analog to [create_rpc] but instead of creating an Rpc
       protocol, it uses the supplied one *)
-  val of_async_rpc :
-    f: ('query -> 'response Deferred.t)
+  val of_async_rpc
+    :  f:('query -> 'response Deferred.t)
     -> ('query, 'response) Rpc.Rpc.t
     -> (worker, 'query, 'response) Function.t
 
   (** [of_async_pipe_rpc ~f rpc] is the analog to [create_pipe] but instead of creating a
       Pipe_rpc protocol, it uses the supplied one *)
-  val of_async_pipe_rpc :
-    f: ('query -> writer:'response Pipe.Writer.t -> unit Deferred.t)
+  val of_async_pipe_rpc
+    :  f:('query -> writer:'response Pipe.Writer.t -> unit Deferred.t)
     -> ('query, 'response, Error.t) Rpc.Pipe_rpc.t
     -> (worker, 'query, 'response) Function_piped.t
 
   (** [run] and [run_streamed] are exposed in this interface so the implementations of
       functions can include running other functions defined on this worker. A function can
       take a [worker] as an argument and call [run] on this worker *)
-  val run :
-    worker
+  val run
+    :  worker
     -> f: (worker, 'query, 'response) Function.t
     -> arg: 'query
     -> 'response Or_error.t Deferred.t
 
-  val run_exn :
-    worker
+  val run_exn
+    :  worker
     -> f: (worker, 'query, 'response) Function.t
     -> arg: 'query
     -> 'response Deferred.t
 
-  val run_streamed :
-    worker
+  val run_streamed
+    :  worker
     -> f: (worker, 'query, 'response) Function_piped.t
     -> arg: 'query
     -> 'response Pipe.Reader.t Or_error.t Deferred.t
 
-  val run_streamed_exn :
-    worker
+  val run_streamed_exn
+    :  worker
     -> f: (worker, 'query, 'response) Function_piped.t
     -> arg: 'query
     -> 'response Pipe.Reader.t Deferred.t
@@ -182,28 +182,28 @@ module type Worker = sig
     -> t Deferred.t
 
   (** [run t ~f ~arg] will run [f] on [t] with the argument [arg]. *)
-  val run :
-    t
+  val run
+    :  t
     -> f: (t, 'query, 'response) Function.t
     -> arg: 'query
     -> 'response Or_error.t Deferred.t
 
-  val run_exn :
-    t
+  val run_exn
+    :  t
     -> f: (t, 'query, 'response) Function.t
     -> arg: 'query
     -> 'response Deferred.t
 
   (** [run_streamed t ~f ~arg] will run [f] on [t] with the argument [arg]. It returns
       with a [Pipe.Reader.t] that will read values written to by the worker *)
-  val run_streamed :
-    t
+  val run_streamed
+    :  t
     -> f: (t, 'query, 'response) Function_piped.t
     -> arg: 'query
     -> 'response Pipe.Reader.t Or_error.t Deferred.t
 
-  val run_streamed_exn :
-    t
+  val run_streamed_exn
+    :  t
     -> f: (t, 'query, 'response) Function_piped.t
     -> arg: 'query
     -> 'response Pipe.Reader.t Deferred.t

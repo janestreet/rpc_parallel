@@ -332,7 +332,7 @@ module Make(
         ~implementations:[worker_run_implementation; shutdown_implementation]
         ~on_unknown_rpc:`Close_connection
     in
-    Rpc.Connection.serve ~implementations ~initial_connection_state:ignore
+    Rpc.Connection.serve ~implementations ~initial_connection_state:(fun _ _ -> ())
       ~where_to_listen:Tcp.on_port_chosen_by_os ()
     >>> fun serv ->
     let host_and_port =
@@ -402,7 +402,7 @@ module Make(
                           handle_worker_exn_implementation]
         ~on_unknown_rpc:`Close_connection
     in
-    (Rpc.Connection.serve ~implementations ~initial_connection_state:ignore
+    (Rpc.Connection.serve ~implementations ~initial_connection_state:(fun _ _ -> ())
        ~where_to_listen:Tcp.on_port_chosen_by_os ()
      >>> fun serv ->
      let master_host_and_port =

@@ -62,7 +62,8 @@ module Remote_executable : sig
      that will be run in the master process. There will be a check for this in
      [spawn_worker]. Use [strict_host_key_checking] to change the StrictHostKeyChecking
      option used when sshing into this host *)
-  val existing_on_host : executable_path:string
+  val existing_on_host
+    :  executable_path:string
     -> ?strict_host_key_checking:[`No | `Ask | `Yes]
     -> string
     -> [`Undeletable] t
@@ -71,7 +72,8 @@ module Remote_executable : sig
      running executable to the desired host and path. It will keep the same name but add a
      suffix .XXXXXXXX. Use [strict_host_key_checking] to change the StrictHostKeyChecking
      option used when sshing into this host *)
-  val copy_to_host : executable_dir:string
+  val copy_to_host
+    :  executable_dir:string
     -> ?strict_host_key_checking:[`No | `Ask | `Yes]
     -> string
     -> [`Deletable] t Or_error.t Deferred.t

@@ -138,7 +138,7 @@ let worker_main id =
       ~on_unknown_rpc:`Raise
   in
   Rpc.Connection.serve ~implementations
-    ~initial_connection_state:ignore
+    ~initial_connection_state:(fun _ _ -> ())
     ~where_to_listen:Tcp.on_port_chosen_by_os ()
   >>| fun serv ->
   Host_and_port.create ~host:(Unix.gethostname()) ~port:(Tcp.Server.listening_on serv)
