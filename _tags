@@ -1,4 +1,151 @@
 # OASIS_START
+# DO NOT EDIT (digest: eae6233f8b46411bb02367e75da71c1f)
+# Ignore VCS directories, you can use the same kind of rule outside
+# OASIS_START/STOP if you want to exclude directories that contains
+# useless stuff for the build process
+true: annot, bin_annot
+<**/.svn>: -traverse
+<**/.svn>: not_hygienic
+".bzr": -traverse
+".bzr": not_hygienic
+".hg": -traverse
+".hg": not_hygienic
+".git": -traverse
+".git": not_hygienic
+"_darcs": -traverse
+"_darcs": not_hygienic
+# Library rpc_parallel_core
+"lib_core/rpc_parallel_core.cmxs": use_rpc_parallel_core
+"lib_core/parallel.cmx": for-pack(Rpc_parallel_core)
+"lib_core/worker.cmx": for-pack(Rpc_parallel_core)
+"lib_core/std.cmx": for-pack(Rpc_parallel_core)
+<lib_core/*.ml{,i,y}>: package(async)
+<lib_core/*.ml{,i,y}>: package(bin_prot)
+<lib_core/*.ml{,i,y}>: package(bin_prot.syntax)
+<lib_core/*.ml{,i,y}>: package(core)
+<lib_core/*.ml{,i,y}>: package(pa_ounit)
+<lib_core/*.ml{,i,y}>: package(pa_ounit.syntax)
+<lib_core/*.ml{,i,y}>: package(sexplib)
+<lib_core/*.ml{,i,y}>: package(sexplib.syntax)
+<lib_core/*.ml{,i,y}>: package(threads)
+# Library rpc_parallel
+"lib/rpc_parallel.cmxs": use_rpc_parallel
+"lib/parallel.cmx": for-pack(Rpc_parallel)
+"lib/std.cmx": for-pack(Rpc_parallel)
+<lib/*.ml{,i,y}>: package(async)
+<lib/*.ml{,i,y}>: package(bin_prot)
+<lib/*.ml{,i,y}>: package(bin_prot.syntax)
+<lib/*.ml{,i,y}>: package(core)
+<lib/*.ml{,i,y}>: package(pa_ounit)
+<lib/*.ml{,i,y}>: package(pa_ounit.syntax)
+<lib/*.ml{,i,y}>: package(sexplib)
+<lib/*.ml{,i,y}>: package(sexplib.syntax)
+<lib/*.ml{,i,y}>: package(threads)
+<lib/*.ml{,i,y}>: use_rpc_parallel_core
+# Executable core_simple
+"examples_core/simple.byte": package(async)
+"examples_core/simple.byte": package(bin_prot)
+"examples_core/simple.byte": package(bin_prot.syntax)
+"examples_core/simple.byte": package(core)
+"examples_core/simple.byte": package(pa_ounit)
+"examples_core/simple.byte": package(pa_ounit.syntax)
+"examples_core/simple.byte": package(sexplib)
+"examples_core/simple.byte": package(sexplib.syntax)
+"examples_core/simple.byte": package(threads)
+"examples_core/simple.byte": use_rpc_parallel_core
+<examples_core/*.ml{,i,y}>: package(async)
+<examples_core/*.ml{,i,y}>: package(bin_prot)
+<examples_core/*.ml{,i,y}>: package(bin_prot.syntax)
+<examples_core/*.ml{,i,y}>: package(core)
+<examples_core/*.ml{,i,y}>: package(pa_ounit)
+<examples_core/*.ml{,i,y}>: package(pa_ounit.syntax)
+<examples_core/*.ml{,i,y}>: package(sexplib)
+<examples_core/*.ml{,i,y}>: package(sexplib.syntax)
+<examples_core/*.ml{,i,y}>: package(threads)
+<examples_core/*.ml{,i,y}>: use_rpc_parallel_core
+# Executable copy_executable
+"examples/copy_executable.byte": package(async)
+"examples/copy_executable.byte": package(bin_prot)
+"examples/copy_executable.byte": package(bin_prot.syntax)
+"examples/copy_executable.byte": package(core)
+"examples/copy_executable.byte": package(pa_ounit)
+"examples/copy_executable.byte": package(pa_ounit.syntax)
+"examples/copy_executable.byte": package(sexplib)
+"examples/copy_executable.byte": package(sexplib.syntax)
+"examples/copy_executable.byte": package(threads)
+"examples/copy_executable.byte": use_rpc_parallel
+"examples/copy_executable.byte": use_rpc_parallel_core
+# Executable env_test
+"examples/env_test.byte": package(async)
+"examples/env_test.byte": package(bin_prot)
+"examples/env_test.byte": package(bin_prot.syntax)
+"examples/env_test.byte": package(core)
+"examples/env_test.byte": package(pa_ounit)
+"examples/env_test.byte": package(pa_ounit.syntax)
+"examples/env_test.byte": package(sexplib)
+"examples/env_test.byte": package(sexplib.syntax)
+"examples/env_test.byte": package(threads)
+"examples/env_test.byte": use_rpc_parallel
+"examples/env_test.byte": use_rpc_parallel_core
+# Executable simple
+"examples/simple.byte": package(async)
+"examples/simple.byte": package(bin_prot)
+"examples/simple.byte": package(bin_prot.syntax)
+"examples/simple.byte": package(core)
+"examples/simple.byte": package(pa_ounit)
+"examples/simple.byte": package(pa_ounit.syntax)
+"examples/simple.byte": package(sexplib)
+"examples/simple.byte": package(sexplib.syntax)
+"examples/simple.byte": package(threads)
+"examples/simple.byte": use_rpc_parallel
+"examples/simple.byte": use_rpc_parallel_core
+# Executable stress_test
+"examples/stress_test.byte": package(async)
+"examples/stress_test.byte": package(bin_prot)
+"examples/stress_test.byte": package(bin_prot.syntax)
+"examples/stress_test.byte": package(core)
+"examples/stress_test.byte": package(pa_ounit)
+"examples/stress_test.byte": package(pa_ounit.syntax)
+"examples/stress_test.byte": package(sexplib)
+"examples/stress_test.byte": package(sexplib.syntax)
+"examples/stress_test.byte": package(threads)
+"examples/stress_test.byte": use_rpc_parallel
+"examples/stress_test.byte": use_rpc_parallel_core
+# Executable worker_binprot2
+"examples/worker_binprot2.byte": package(async)
+"examples/worker_binprot2.byte": package(bin_prot)
+"examples/worker_binprot2.byte": package(bin_prot.syntax)
+"examples/worker_binprot2.byte": package(core)
+"examples/worker_binprot2.byte": package(pa_ounit)
+"examples/worker_binprot2.byte": package(pa_ounit.syntax)
+"examples/worker_binprot2.byte": package(sexplib)
+"examples/worker_binprot2.byte": package(sexplib.syntax)
+"examples/worker_binprot2.byte": package(threads)
+"examples/worker_binprot2.byte": use_rpc_parallel
+"examples/worker_binprot2.byte": use_rpc_parallel_core
+# Executable worker_binprot
+"examples/worker_binprot.byte": package(async)
+"examples/worker_binprot.byte": package(bin_prot)
+"examples/worker_binprot.byte": package(bin_prot.syntax)
+"examples/worker_binprot.byte": package(core)
+"examples/worker_binprot.byte": package(pa_ounit)
+"examples/worker_binprot.byte": package(pa_ounit.syntax)
+"examples/worker_binprot.byte": package(sexplib)
+"examples/worker_binprot.byte": package(sexplib.syntax)
+"examples/worker_binprot.byte": package(threads)
+"examples/worker_binprot.byte": use_rpc_parallel
+"examples/worker_binprot.byte": use_rpc_parallel_core
+<examples/*.ml{,i,y}>: package(async)
+<examples/*.ml{,i,y}>: package(bin_prot)
+<examples/*.ml{,i,y}>: package(bin_prot.syntax)
+<examples/*.ml{,i,y}>: package(core)
+<examples/*.ml{,i,y}>: package(pa_ounit)
+<examples/*.ml{,i,y}>: package(pa_ounit.syntax)
+<examples/*.ml{,i,y}>: package(sexplib)
+<examples/*.ml{,i,y}>: package(sexplib.syntax)
+<examples/*.ml{,i,y}>: package(threads)
+<examples/*.ml{,i,y}>: use_rpc_parallel
+<examples/*.ml{,i,y}>: use_rpc_parallel_core
 # OASIS_STOP
 <**/*.ml{,i}>: syntax_camlp4o, warn(-40)
 <lib/*.ml{,i}>: pa_ounit_lib(rpc_parallel)
