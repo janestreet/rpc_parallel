@@ -2,7 +2,7 @@ OASISFormat:      0.3
 OCamlVersion:     >= 4.00.0
 FindlibVersion:   >= 1.3.2
 Name:             rpc_parallel
-Version:          112.17.00
+Version:          112.24.00
 Synopsis:         Type-safe parallel library built on top of Async_rpc
 Authors:          Jane Street Capital LLC <opensource@janestreet.com>
 Copyrights:       (C) 2014 Jane Street Capital LLC <opensource@janestreet.com>
@@ -22,7 +22,8 @@ Description:
 Library rpc_parallel
   Path:               lib
   Pack:               true
-  Modules:            Parallel,
+  Modules:            Map_reduce,
+                      Parallel,
                       Std
   BuildDepends:       core,
                       async,
@@ -69,6 +70,22 @@ Executable core_simple
                       sexplib.syntax,
                       bin_prot.syntax
 
+Executable test_zombies
+  Path:               examples_core
+  MainIs:             test_zombies.ml
+  Install:            false
+  BuildDepends:       rpc_parallel.core,
+                      sexplib.syntax,
+                      bin_prot.syntax
+
+Executable add_numbers
+  Path:               examples
+  MainIs:             add_numbers.ml
+  Install:            false
+  BuildDepends:       rpc_parallel,
+                      sexplib.syntax,
+                      bin_prot.syntax
+
 Executable copy_executable
   Path:               examples
   MainIs:             copy_executable.ml
@@ -85,6 +102,22 @@ Executable env_test
                       sexplib.syntax,
                       bin_prot.syntax
 
+Executable run_exn
+  Path:               examples
+  MainIs:             run_exn.ml
+  Install:            false
+  BuildDepends:       rpc_parallel,
+                      sexplib.syntax,
+                      bin_prot.syntax
+
+Executable side_arg
+  Path:               examples
+  MainIs:             side_arg.ml
+  Install:            false
+  BuildDepends:       rpc_parallel,
+                      sexplib.syntax,
+                      bin_prot.syntax
+
 Executable simple
   Path:               examples
   MainIs:             simple.ml
@@ -96,6 +129,14 @@ Executable simple
 Executable stress_test
   Path:               examples
   MainIs:             stress_test.ml
+  Install:            false
+  BuildDepends:       rpc_parallel,
+                      sexplib.syntax,
+                      bin_prot.syntax
+
+Executable workers_as_masters
+  Path:               examples
+  MainIs:             workers_as_masters.ml
   Install:            false
   BuildDepends:       rpc_parallel,
                       sexplib.syntax,

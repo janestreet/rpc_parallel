@@ -17,6 +17,7 @@ let sum_rpc =
 let sum_rpc_impl =
   Rpc.Rpc.implement sum_rpc (fun () to_ ->
     let sum = List.fold ~init:0 ~f:(+) (List.init to_ ~f:Fn.id) in
+    printf "sum: %i\n" sum;
     return sum)
 
 let sum_implementations =
@@ -34,6 +35,7 @@ let prod_rpc =
 let prod_rpc_impl =
   Rpc.Rpc.implement prod_rpc (fun () to_ ->
     let prod = List.fold ~init:1 ~f:( * ) (List.init (to_-1) ~f:(fun i -> i+1)) in
+    printf "prod: %i\n" prod;
     return prod)
 
 let prod_implementations =
@@ -65,11 +67,27 @@ let command =
     Command.Spec.(
       empty
       +> flag "max" (required int) ~doc:""
+      +> flag "log-dir" (optional string)
+           ~doc:" Folder to write worker logs to"
     )
-    (fun max () ->
+    (fun max log_dir () ->
+       let redirect_stdout_sum, redirect_stderr_sum,
+           redirect_stdout_prod, redirect_stderr_prod =
+         match log_dir with
+         | None -> (`Dev_null, `Dev_null, `Dev_null, `Dev_null)
+         | Some _ ->
+           (`File_append "sum.out", `File_append "sum.err",
+            `File_append "prod.out", `File_append "prod.err")
+       in
        Parallel_app.spawn_worker_exn ~where:`Local `Sum
+         ?cd:log_dir
+         ~redirect_stdout:redirect_stdout_sum
+         ~redirect_stderr:redirect_stderr_sum
          ~on_failure:(handle_error "sum worker") >>= fun (sum_worker, _id1) ->
        Parallel_app.spawn_worker_exn ~where:`Local `Product
+         ?cd:log_dir
+         ~redirect_stdout:redirect_stdout_prod
+         ~redirect_stderr:redirect_stderr_prod
          ~on_failure:(handle_error "prod worker") >>= fun (prod_worker, _id2) ->
        let get_result ~rpc ~worker =
          Rpc.Connection.with_client

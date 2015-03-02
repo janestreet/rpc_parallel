@@ -5,6 +5,20 @@ open Rpc_parallel_core.Std
 (* Hack for ocamlbuild *)
 module Parallel = Rpc_parallel_core.Std.Parallel
 
+module Fd_redirection = Parallel.Fd_redirection
+
+(* Like [Monitor.try_with], but raise any additional exceptions to the specified
+   monitor. *)
+let try_within ~monitor f =
+  let ivar = Ivar.create () in
+  Scheduler.within ~monitor (fun () ->
+    Monitor.try_with ~extract_exn:true ~rest:`Raise f
+    >>> fun r ->
+    Ivar.fill ivar (Result.map_error r ~f:Error.of_exn)
+  );
+  Ivar.read ivar
+;;
+
 module Function = struct
   module Function_piped = struct
     type ('worker, 'query, 'response) t = ('query, 'response, Error.t) Rpc.Pipe_rpc.t
@@ -13,14 +27,12 @@ module Function = struct
 
     let make_impl ~monitor ~f protocol =
       Rpc.Pipe_rpc.implement protocol
-        (fun () arg ~aborted ->
-           let _ = aborted in
-           let result = Ivar.create () in
-           Scheduler.within ~monitor
-             (fun () -> f arg >>> Ivar.fill result);
-           Ivar.read result
-           >>| fun r ->
-           Ok r)
+        (fun () arg ~aborted:_ ->
+           (* If [f] fails before returning, we want to pass the exception on so that the
+              caller sees it, but if we raise after [f] has already returned or failed, we
+              want [monitor] to handle it. *)
+           try_within ~monitor (fun () -> f arg))
+    ;;
 
     let make_proto ?name ~bin_input ~bin_output () =
       let name = match name with
@@ -43,9 +55,14 @@ module Function = struct
 
     let make_impl ~monitor ~f protocol =
       Rpc.Rpc.implement protocol (fun () arg ->
-        let ivar = Ivar.create () in
-        Scheduler.within ~monitor (fun () -> f arg >>> Ivar.fill ivar);
-        Ivar.read ivar)
+        (* If [f] raises an exception before returning, we want this whole implementation
+           to fail so that the caller sees it. If [f] raises after returning, we want
+           [monitor] to handle it. *)
+        try_within ~monitor (fun () -> f arg)
+        >>| function
+        | Ok x -> x
+        | Error error -> Error.raise error)
+    ;;
 
     let make_proto ?name ~bin_input ~bin_output () =
       let name = match name with
@@ -66,26 +83,22 @@ module Function = struct
       *  ('r, 'response Pipe.Reader.t) Type_equal.t
       -> ('worker, 'query, 'r) t
 
-  let create_rpc ~implementations ~id ~monitor ?name ~f ~bin_input ~bin_output () =
+  let create_rpc ~implementations ~monitor ?name ~f ~bin_input ~bin_output () =
     let proto = Function_plain.make_proto ?name ~bin_input ~bin_output () in
-    Hashtbl.add_multi implementations ~key:id
-      ~data:(Function_plain.make_impl ~monitor ~f proto);
+    implementations := (Function_plain.make_impl ~monitor ~f proto) :: !implementations;
     Plain proto
 
-  let create_pipe ~implementations ~id ~monitor ?name ~f ~bin_input ~bin_output () =
+  let create_pipe ~implementations ~monitor ?name ~f ~bin_input ~bin_output () =
     let proto = Function_piped.make_proto ?name ~bin_input ~bin_output () in
-    Hashtbl.add_multi implementations ~key:id
-      ~data:(Function_piped.make_impl ~monitor ~f proto);
+    implementations := (Function_piped.make_impl ~monitor ~f proto) :: !implementations;
     Piped (proto, Type_equal.T)
 
-  let of_async_rpc ~implementations ~id ~monitor ~f proto =
-    Hashtbl.add_multi implementations ~key:id
-      ~data:(Function_plain.make_impl ~monitor ~f proto);
+  let of_async_rpc ~implementations ~monitor ~f proto =
+    implementations := (Function_plain.make_impl ~monitor ~f proto) :: !implementations;
     Plain proto
 
-  let of_async_pipe_rpc ~implementations ~id ~monitor ~f proto =
-    Hashtbl.add_multi implementations ~key:id
-      ~data:(Function_piped.make_impl ~monitor ~f proto);
+  let of_async_pipe_rpc ~implementations ~monitor ~f proto =
+    implementations := (Function_piped.make_impl ~monitor ~f proto) :: !implementations;
     Piped (proto, Type_equal.T)
 
   let run (type response) (t : (_, _, response) t) connection ~arg
@@ -101,10 +114,11 @@ end
 
 module type Creator = sig
   type worker with bin_io
+  type state
 
   val create_rpc :
     ?name: string
-    -> f: ('query -> 'response Deferred.t)
+    -> f: (state -> 'query -> 'response Deferred.t)
     -> bin_input: 'query Bin_prot.Type_class.t
     -> bin_output: 'response Bin_prot.Type_class.t
     -> unit
@@ -112,19 +126,19 @@ module type Creator = sig
 
   val create_pipe :
     ?name: string
-    -> f: ('query -> 'response Pipe.Reader.t Deferred.t)
+    -> f: (state -> 'query -> 'response Pipe.Reader.t Deferred.t)
     -> bin_input: 'query Bin_prot.Type_class.t
     -> bin_output: 'response Bin_prot.Type_class.t
     -> unit
     -> (worker, 'query, 'response Pipe.Reader.t) Function.t
 
   val of_async_rpc :
-    f: ('query -> 'response Deferred.t)
+    f: (state -> 'query -> 'response Deferred.t)
     -> ('query, 'response) Rpc.Rpc.t
     -> (worker, 'query, 'response) Function.t
 
   val of_async_pipe_rpc :
-    f: ('query -> 'response Pipe.Reader.t Deferred.t)
+    f: (state -> 'query -> 'response Pipe.Reader.t Deferred.t)
     -> ('query, 'response, Error.t) Rpc.Pipe_rpc.t
     -> (worker, 'query, 'response Pipe.Reader.t) Function.t
 
@@ -150,8 +164,8 @@ end
 (* Generate unique identifiers for each application of the [Make_worker] functor *)
 module Id = Unique_id.Int()
 
-(* Table from [Id.t] to [unit Rpc.Implementation.t list] *)
-let implementations = Hashtbl.Poly.create ()
+(* Table from [Id.t] to [unit -> (Socket.Address.Inet.t, int) Tcp.Server.t] *)
+let serve_functions = Hashtbl.Poly.create ()
 
 (* Table from worker [Host_and_port.t]'s to [conn] *)
 type conn = Connected of Rpc.Connection.t | Pending of Rpc.Connection.t Or_error.t Ivar.t
@@ -161,14 +175,8 @@ let connections = Hashtbl.Poly.create ()
    it at the top level of the [Make_worker] functor application), host an Rpc server with
    these implementations and return back a [Host_and_port.t] describing the server *)
 let worker_main id =
-  let implementations =
-    Rpc.Implementations.create_exn
-      ~implementations:(Hashtbl.find_exn implementations id)
-      ~on_unknown_rpc:`Raise
-  in
-  Rpc.Connection.serve ~implementations
-    ~initial_connection_state:(fun _ _ -> ())
-    ~where_to_listen:Tcp.on_port_chosen_by_os ()
+  let serve = Hashtbl.find_exn serve_functions id in
+  serve ()
   >>| fun serv ->
   Host_and_port.create ~host:(Unix.gethostname()) ~port:(Tcp.Server.listening_on serv)
 
@@ -194,6 +202,10 @@ module type Worker = sig
     :  ?where : [`Local | `Remote of _ Remote_executable.t]
     -> ?disown : bool
     -> ?env : (string * string) list
+    -> ?redirect_stdout : Fd_redirection.t
+    -> ?redirect_stderr : Fd_redirection.t
+    -> ?cd : string
+    -> ?umask : int
     -> init_arg
     -> on_failure : (Error.t -> unit)
     -> t Or_error.t Deferred.t
@@ -202,6 +214,10 @@ module type Worker = sig
     :  ?where : [`Local | `Remote of _ Remote_executable.t]
     -> ?disown : bool
     -> ?env : (string * string) list
+    -> ?redirect_stdout : Fd_redirection.t
+    -> ?redirect_stderr : Fd_redirection.t
+    -> ?cd : string
+    -> ?umask : int
     -> init_arg
     -> on_failure : (Error.t -> unit)
     -> t Deferred.t
@@ -229,9 +245,10 @@ module type Worker_spec = sig
   type 'worker functions
 
   type init_arg with bin_io
-  val init : init_arg -> unit Deferred.t
+  type state
+  val init : init_arg -> state Deferred.t
 
-  module Functions(C:Creator) : Functions
+  module Functions(C:Creator with type state := state) : Functions
     with type 'a functions := 'a functions
     with type worker := C.worker
 end
@@ -261,6 +278,8 @@ module Make_worker(S:Worker_spec) = struct
 
 
   let monitor = Monitor.create ()
+  let implementations = ref []
+  let worker_state = Set_once.create ()
 
   (* Add extra implementations for worker_init_rpc and worker_exn_rpc *)
   let () =
@@ -268,13 +287,16 @@ module Make_worker(S:Worker_spec) = struct
       Rpc.Rpc.implement worker_init_rpc (fun () arg ->
         let ivar = Ivar.create () in
         Scheduler.within ~monitor (fun () ->
-          Monitor.try_with ~rest:`Raise (fun () -> S.init arg)
+          Monitor.try_with ~rest:`Raise (fun () ->
+            S.init arg
+            >>| fun state ->
+            Set_once.set_exn worker_state state)
           >>> fun result ->
           Ivar.fill ivar (Or_error.of_exn_result result));
         Ivar.read ivar)
     in
     let worker_exn_impl =
-      Rpc.Pipe_rpc.implement worker_exn_rpc (fun () () ~aborted ->
+      Rpc.Pipe_rpc.implement worker_exn_rpc (fun _state () ~aborted ->
         let _ = aborted in
         let r, w = Pipe.create () in
         Monitor.detach_and_iter_errors monitor ~f:(fun exn ->
@@ -283,8 +305,17 @@ module Make_worker(S:Worker_spec) = struct
           raise exn);
         return (Ok r))
     in
-    Hashtbl.add_multi implementations ~key:id ~data:worker_init_impl;
-    Hashtbl.add_multi implementations ~key:id ~data:worker_exn_impl
+    implementations := worker_init_impl :: worker_exn_impl :: !implementations;
+    Hashtbl.add_exn serve_functions ~key:id ~data:(fun () ->
+      let rpc_implementations =
+        Rpc.Implementations.create_exn
+          ~implementations:!implementations
+          ~on_unknown_rpc:`Raise
+      in
+      Rpc.Connection.serve ~implementations:rpc_implementations
+        ~initial_connection_state:(fun _ _ -> ())
+        ~where_to_listen:Tcp.on_port_chosen_by_os ()
+    )
 
   let store_connection worker connection =
     Hashtbl.replace connections ~key:worker ~data:(Connected connection);
@@ -343,16 +374,25 @@ module Make_worker(S:Worker_spec) = struct
           store_connection worker conn;
           return (Ok worker)
 
-  let spawn ?where ?disown ?env arg ~on_failure =
-    Parallel_core.spawn_worker ?where ?disown ?env id ~on_failure
+  let spawn ?where ?disown ?env
+        ?redirect_stdout ?redirect_stderr ?cd ?umask
+        arg ~on_failure =
+    Parallel_core.spawn_worker ?where ?disown ?env
+      ?redirect_stdout ?redirect_stderr ?cd ?umask
+      id ~on_failure
     >>= function
     | Error e -> return (Error e)
     | Ok (t, id) ->
       Hashtbl.add_exn internal_workers ~key:t ~data:id;
       setup_initial_state ~worker:t arg ~on_failure
 
-  let spawn_exn ?where ?disown ?env arg ~on_failure =
-    spawn ?where ?disown ?env arg ~on_failure >>| Or_error.ok_exn
+  let spawn_exn ?where ?disown ?env
+        ?redirect_stdout ?redirect_stderr ?cd ?umask
+        arg ~on_failure =
+    spawn ?where ?disown ?env
+      ?redirect_stdout ?redirect_stderr ?cd ?umask
+      arg ~on_failure
+    >>| Or_error.ok_exn
 
   let run t ~f ~arg =
     get_connection t
@@ -386,18 +426,21 @@ module Make_worker(S:Worker_spec) = struct
   module Function_creator = struct
     type worker = t with bin_io
 
+    let wrap f x = f (Set_once.get_exn worker_state) x
+
     let create_rpc ?name ~f ~bin_input ~bin_output () =
-      Function.create_rpc ~implementations ~id ~monitor ?name ~f ~bin_input ~bin_output ()
+      Function.create_rpc ~implementations ~monitor ?name ~f:(wrap f)
+        ~bin_input ~bin_output ()
 
     let create_pipe ?name ~f ~bin_input ~bin_output () =
-      Function.create_pipe ~implementations ~id ~monitor ?name ~f ~bin_input ~bin_output
-        ()
+      Function.create_pipe ~implementations ~monitor ?name ~f:(wrap f)
+        ~bin_input ~bin_output ()
 
     let of_async_rpc ~f proto =
-      Function.of_async_rpc ~implementations ~id ~monitor ~f proto
+      Function.of_async_rpc ~implementations ~monitor ~f:(wrap f) proto
 
     let of_async_pipe_rpc ~f proto =
-      Function.of_async_pipe_rpc ~implementations ~id ~monitor ~f proto
+      Function.of_async_pipe_rpc ~implementations ~monitor ~f:(wrap f) proto
 
     let run = run
     let run_exn = run_exn
@@ -409,4 +452,21 @@ module Make_worker(S:Worker_spec) = struct
 
 end
 
-let start_app = Parallel_core.run
+module State = struct
+  type t = [ `started ]
+
+  let t_opt = ref None
+  ;;
+
+  let get () = !t_opt
+  ;;
+
+  let set_is_started () = t_opt := Some `started
+  ;;
+
+end
+
+let start_app command =
+  State.set_is_started ();
+  Parallel_core.run command
+;;

@@ -1,3 +1,4 @@
-open Core.Std let _ = _squelch_unused_module_warning_
+open! Core.Std
 
-module Parallel = Parallel
+module Parallel   = Parallel
+module Map_reduce = Map_reduce

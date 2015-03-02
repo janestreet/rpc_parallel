@@ -1,6 +1,14 @@
 open Core.Std
 open Async.Std
 
+module Fd_redirection : sig
+  type t = [
+    | `Dev_null
+    | `File_append of string
+    | `File_truncate of string
+  ] with sexp
+end
+
 (*
    Implementation overview:
 
@@ -102,6 +110,10 @@ module Make(
 
      [where] defaults to [`Local] but can be specified to be some remote host.
 
+     Specifying [?log_dir] as a folder on the worker machine leads to the worker
+     redirecting its stdout and stderr to files in this folder, named with the worker id.
+     When [?name] is also specified, the log file will use this name instead.
+
      [on_failure] will be called when the spawned worker either loses connection
      or raises an exception. [on_failure] is run inside of [Monitor.main] so that any
      exceptions raised inside of the function will be seen top-level. Otherwise, these
@@ -125,6 +137,11 @@ module Make(
     :  ?where : [`Local | `Remote of _ Remote_executable.t]
     -> ?disown : bool
     -> ?env : (string * string) list
+    -> ?connection_timeout : Time.Span.t
+    -> ?redirect_stdout : Fd_redirection.t  (** default redirect to /dev/null *)
+    -> ?redirect_stderr : Fd_redirection.t  (** default redirect to /dev/null *)
+    -> ?cd              : string            (** default / *)
+    -> ?umask           : int               (** defaults to use existing umask *)
     -> M.worker_arg
     -> on_failure : (Error.t -> unit)
     -> (M.worker_ret * worker_id) Or_error.t Deferred.t
@@ -133,6 +150,11 @@ module Make(
     :  ?where : [`Local | `Remote of _ Remote_executable.t]
     -> ?disown : bool
     -> ?env : (string * string) list
+    -> ?connection_timeout : Time.Span.t
+    -> ?redirect_stdout : Fd_redirection.t  (** default redirect to /dev/null *)
+    -> ?redirect_stderr : Fd_redirection.t  (** default redirect to /dev/null *)
+    -> ?cd              : string            (** default / *)
+    -> ?umask           : int               (** defaults to use existing umask *)
     -> M.worker_arg
     -> on_failure : (Error.t -> unit)
     -> (M.worker_ret * worker_id) Deferred.t

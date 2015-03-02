@@ -43,36 +43,36 @@ module Worker = struct
       ; mutable num_elts        : int
       }
 
-    let state =
-      { sum             = 0
-      ; can_process     = (fun _ -> false)
-      ; done_ivar       = Ivar.create ()
-      ; checkpoint_time = 0.
-      ; max_elt         = 0
-      ; process_delay   = 0.
-      ; num_elts        = 0
-      }
-
     type init_arg = [`Even | `Odd] * Args.t with bin_io
 
     let init (worker_type, (args : Args.t)) =
+      let state =
+        { sum             = 0
+        ; can_process     = (fun _ -> false)
+        ; done_ivar       = Ivar.create ()
+        ; checkpoint_time = 0.
+        ; max_elt         = 0
+        ; process_delay   = 0.
+        ; num_elts        = 0
+        }
+      in
       state.checkpoint_time <- args.checkpoint_time;
       state.max_elt         <- args.max_elt;
       state.process_delay   <- args.process_delay;
       state.num_elts        <- args.num_elts;
       Random.self_init ();
-      return
-        (match worker_type with
-         | `Even -> state.can_process <- (fun i -> i % 2 = 0)
-         | `Odd  -> state.can_process <- (fun i -> i % 2 = 1))
+      (match worker_type with
+       | `Even -> state.can_process <- (fun i -> i % 2 = 0)
+       | `Odd  -> state.can_process <- (fun i -> i % 2 = 1));
+      return state
 
     (* Process the element by just adding it to a running sum *)
-    let process elt =
+    let process state elt =
       assert (state.can_process elt);
       state.sum <- state.sum + elt
 
-    module Functions(C:Parallel.Creator) = struct
-      let process_elts_impl () =
+    module Functions(C:Parallel.Creator with type state := state) = struct
+      let process_elts_impl state () =
         let reader, writer = Pipe.create () in
         (* Generate random elements. If [state.can_process elt] then process the element,
            otherwise send the element to the other worker to be processed *)
@@ -88,7 +88,7 @@ module Worker = struct
                let elt = Random.int state.max_elt in
                if state.can_process elt then
                  begin
-                   process elt;
+                   process state elt;
                    return (`Repeat (count - 1))
                  end
                else
@@ -104,12 +104,12 @@ module Worker = struct
 
       (* Send periodic checkpoints to the caller. Also, set up the communication with
          the passed in [Worker.t] *)
-      let start_work_impl worker =
+      let start_work_impl state worker =
         let reader, writer = Pipe.create () in
         don't_wait_for
           (C.run_exn worker ~f:process_elts ~arg:()
            >>= fun reader ->
-           Pipe.iter reader ~f:(fun i -> return (process i)));
+           Pipe.iter reader ~f:(fun i -> return (process state i)));
         let stop = Ivar.read state.done_ivar in
         Clock.every' ~stop (sec state.checkpoint_time) (fun () ->
           Pipe.write writer state.sum);

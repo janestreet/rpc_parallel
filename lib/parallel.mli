@@ -51,15 +51,18 @@ module Function : sig
   type ('worker, 'query, 'response) t
 end
 
+module Fd_redirection = Rpc_parallel_core.Std.Parallel.Fd_redirection
+
 module type Creator = sig
   type worker with bin_io
+  type state
 
   (** [create_rpc ?name ~f ~bin_input ~bin_output ()] will create an [Rpc.Rpc.t] with
       [name] if specified and use [f] as an implementation for this Rpc. It returns back a
       [Function.t], a type-safe [Rpc.Rpc.t]. *)
   val create_rpc
     :  ?name: string
-    -> f:('query -> 'response Deferred.t)
+    -> f:(state -> 'query -> 'response Deferred.t)
     -> bin_input: 'query Bin_prot.Type_class.t
     -> bin_output: 'response Bin_prot.Type_class.t
     -> unit
@@ -72,7 +75,7 @@ module type Creator = sig
       [Rpc.Pipe_rpc.t]. *)
   val create_pipe :
     ?name: string
-    -> f:('query -> 'response Pipe.Reader.t Deferred.t)
+    -> f:(state -> 'query -> 'response Pipe.Reader.t Deferred.t)
     -> bin_input: 'query Bin_prot.Type_class.t
     -> bin_output: 'response Bin_prot.Type_class.t
     -> unit
@@ -81,14 +84,14 @@ module type Creator = sig
   (** [of_async_rpc ~f rpc] is the analog to [create_rpc] but instead of creating an Rpc
       protocol, it uses the supplied one *)
   val of_async_rpc
-    :  f:('query -> 'response Deferred.t)
+    :  f:(state -> 'query -> 'response Deferred.t)
     -> ('query, 'response) Rpc.Rpc.t
     -> (worker, 'query, 'response) Function.t
 
   (** [of_async_pipe_rpc ~f rpc] is the analog to [create_pipe] but instead of creating a
       Pipe_rpc protocol, it uses the supplied one *)
   val of_async_pipe_rpc
-    :  f:('query -> 'response Pipe.Reader.t Deferred.t)
+    :  f:(state -> 'query -> 'response Pipe.Reader.t Deferred.t)
     -> ('query, 'response, Error.t) Rpc.Pipe_rpc.t
     -> (worker, 'query, 'response Pipe.Reader.t) Function.t
 
@@ -134,6 +137,10 @@ module type Worker = sig
 
       [where] defaults to [`Local] but can be specified to be some remote host.
 
+      Specifying [?log_dir] as a folder on the worker machine leads to the worker
+      redirecting its stdout and stderr to files in this folder, named with the worker id.
+      When [?name] is also specified, the log file will use this name instead.
+
       [on_failure] will be called when the spawned worker either loses connection
       or raises an exception. [on_failure] is run inside of [Monitor.main] so that any
       exceptions raised inside of the function will be seen top-level. Otherwise, these
@@ -150,6 +157,10 @@ module type Worker = sig
     :  ?where : [`Local | `Remote of _ Remote_executable.t]
     -> ?disown : bool
     -> ?env : (string * string) list
+    -> ?redirect_stdout : Fd_redirection.t  (** default redirect to /dev/null *)
+    -> ?redirect_stderr : Fd_redirection.t  (** default redirect to /dev/null *)
+    -> ?cd : string  (** default / *)
+    -> ?umask : int  (** defaults to use existing umask *)
     -> init_arg
     -> on_failure : (Error.t -> unit)
     -> t Or_error.t Deferred.t
@@ -158,6 +169,10 @@ module type Worker = sig
     :  ?where : [`Local | `Remote of _ Remote_executable.t]
     -> ?disown : bool
     -> ?env : (string * string) list
+    -> ?redirect_stdout : Fd_redirection.t  (** default redirect to /dev/null *)
+    -> ?redirect_stderr : Fd_redirection.t  (** default redirect to /dev/null *)
+    -> ?cd : string  (** default / *)
+    -> ?umask : int  (** defaults to use existing umask *)
     -> init_arg
     -> on_failure : (Error.t -> unit)
     -> t Deferred.t
@@ -199,10 +214,11 @@ module type Worker_spec = sig
 
   (** [init init_arg] will be called in a worker when it is spawned *)
   type init_arg with bin_io
-  val init : init_arg -> unit Deferred.t
+  type state
+  val init : init_arg -> state Deferred.t
 
   (** The functions that can be run on this worker type *)
-  module Functions(C:Creator) : Functions
+  module Functions(C:Creator with type state := state) : Functions
     with type 'a functions := 'a functions
     with type worker := C.worker
 end
@@ -219,3 +235,14 @@ module Make_worker(S: Worker_spec) : Worker
     application. [command] must be constructed with a call to [Command.async] so that the
     async scheduler is started *)
 val start_app : Command.t -> unit
+
+(** Use [State.get] to query whether [start_app] was used. We return a [State.t] rather
+    than a [bool] so that you can require evidence at the type level. If you want to
+    certify, as a precondition, for some function that [start_app] was used, require a
+    [State.t] as an argument. If you don't need the [State.t] anymore, just pattern match
+    on it. *)
+module State : sig
+  type t = private [< `started ]
+
+  val get : unit -> t option
+end

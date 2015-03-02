@@ -18,21 +18,22 @@ module Worker = struct
 
     (* Don't do any initialization *)
     type init_arg = unit with bin_io
+    type state = unit
     let init = return
 
     (* Internal state for each [Worker.t]. Every [Worker.t] has a counter that gets
        incremented anytime it gets pinged *)
     let counter = ref 0
 
-    module Functions(C:Parallel.Creator) = struct
+    module Functions(C:Parallel.Creator with type state := state) = struct
       (* When a worker gets a [ping ()] call, increment its counter and return the current
          value *)
-      let ping_impl () = incr counter; return (!counter)
+      let ping_impl () () = incr counter; return (!counter)
       let ping = C.create_rpc ~f:ping_impl ~bin_input:Unit.bin_t ~bin_output:Int.bin_t ()
 
       (* When a worker gets a [dispatch worker] call, call [ping] on the supplied worker
          and return the same result. *)
-      let dispatch_impl worker = C.run_exn worker ~f:ping ~arg:()
+      let dispatch_impl () worker = C.run_exn worker ~f:ping ~arg:()
       let dispatch =
         C.create_rpc ~f:dispatch_impl ~bin_input:C.bin_worker ~bin_output:Int.bin_t ()
 

@@ -15,12 +15,17 @@ module Sum_worker = struct
 
     (* A [Sum_worker.t] doesn't have any initialization upon [spawn] *)
     type init_arg = unit with bin_io
-    let init = return
+    type state = unit
 
-    module Functions(C:Parallel.Creator) = struct
+    let init () =
+      printf "Sum_worker.init\n";
+      return ()
+
+    module Functions(C:Parallel.Creator with type state := state) = struct
       (* Define the implementation for the [sum] function *)
-      let sum_impl arg =
+      let sum_impl () arg =
         let sum = List.fold ~init:0 ~f:(+) (List.init arg ~f:Fn.id) in
+        printf "Sum_worker.sum: %i\n" sum;
         return sum
 
       (* Create a [Parallel.Function.t] from the above implementation *)
@@ -39,11 +44,20 @@ let command =
     Command.Spec.(
       empty
       +> flag "max" (required int) ~doc:""
+      +> flag "log-dir" (optional string)
+           ~doc:" Folder to write worker logs to"
     )
-    (fun max () ->
+    (fun max log_dir () ->
+       let redirect_stdout, redirect_stderr =
+         match log_dir with
+         | None -> (`Dev_null, `Dev_null)
+         | Some _ -> (`File_append "sum.out", `File_append "sum.err")
+       in
        (* This is the main function called in the master. Spawn a local worker and run
           the [sum] function on this worker *)
-       Sum_worker.spawn_exn () ~on_failure:Error.raise >>= fun sum_worker ->
+       Sum_worker.spawn_exn ~on_failure:Error.raise
+         ?cd:log_dir ~redirect_stdout ~redirect_stderr ()
+       >>= fun sum_worker ->
        Sum_worker.run_exn sum_worker ~f:Sum_worker.functions.sum ~arg:max >>= fun res ->
        return (Printf.printf "sum_worker: %d\n%!" res))
 

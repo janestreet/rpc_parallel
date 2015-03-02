@@ -8,13 +8,14 @@ module Pre_worker = struct
   }
 
   type init_arg = unit with bin_io
+  type state = unit
 
   let init = return
 
-  module Functions(C : Parallel.Creator) = struct
+  module Functions(C : Parallel.Creator with type state := state) = struct
     let getenv =
       C.create_rpc ~bin_input:String.bin_t ~bin_output:(Option.bin_t String.bin_t)
-        ~f:(fun key -> return (Unix.getenv key)) ()
+        ~f:(fun () key -> return (Unix.getenv key)) ()
 
     let functions = { getenv }
   end

@@ -7,11 +7,12 @@ module Worker = struct
     type 'worker functions = {ping:('worker, unit, unit) Parallel.Function.t}
 
     type init_arg = unit with bin_io
+    type state = unit
     let init  = return
 
-    module Functions(C:Parallel.Creator) = struct
+    module Functions(C:Parallel.Creator with type state := state) = struct
       let ping =
-        C.create_rpc ~f:return ~bin_input:Unit.bin_t ~bin_output:Unit.bin_t ()
+        C.create_rpc ~f:(fun () -> return) ~bin_input:Unit.bin_t ~bin_output:Unit.bin_t ()
 
       let functions = {ping}
     end
