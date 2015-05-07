@@ -22,7 +22,7 @@ let dispatch = function
 
     let add_exts l exts =
       List.concat (List.map (fun fn ->
-        let fn = "lib_core/" ^ fn in
+        let fn = "core/src/" ^ fn in
         List.map (fun ext -> fn ^ ext)  exts)
         l)
     in
