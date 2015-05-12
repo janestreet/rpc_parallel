@@ -5,7 +5,7 @@ Name:             rpc_parallel
 Version:          112.24.00
 Synopsis:         Type-safe parallel library built on top of Async_rpc
 Authors:          Jane Street Group, LLC <opensource@janestreet.com>
-Copyrights:       (C) 2014 Jane Street Group, LLC <opensource@janestreet.com>
+Copyrights:       (C) 2014 Jane Street Group LLC <opensource@janestreet.com>
 Maintainers:      Jane Street Group, LLC <opensource@janestreet.com>
 License:          Apache-2.0
 LicenseFile:      LICENSE.txt
