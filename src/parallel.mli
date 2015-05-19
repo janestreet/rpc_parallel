@@ -157,6 +157,9 @@ module type Worker = sig
     :  ?where : [`Local | `Remote of _ Remote_executable.t]
     -> ?disown : bool
     -> ?env : (string * string) list
+    -> ?rpc_max_message_size  : int
+    -> ?rpc_handshake_timeout : Time.Span.t
+    -> ?rpc_heartbeat_config : Rpc.Connection.Heartbeat_config.t
     -> ?redirect_stdout : Fd_redirection.t  (** default redirect to /dev/null *)
     -> ?redirect_stderr : Fd_redirection.t  (** default redirect to /dev/null *)
     -> ?cd : string  (** default / *)
@@ -169,6 +172,9 @@ module type Worker = sig
     :  ?where : [`Local | `Remote of _ Remote_executable.t]
     -> ?disown : bool
     -> ?env : (string * string) list
+    -> ?rpc_max_message_size  : int
+    -> ?rpc_handshake_timeout : Time.Span.t
+    -> ?rpc_heartbeat_config : Rpc.Connection.Heartbeat_config.t
     -> ?redirect_stdout : Fd_redirection.t  (** default redirect to /dev/null *)
     -> ?redirect_stderr : Fd_redirection.t  (** default redirect to /dev/null *)
     -> ?cd : string  (** default / *)
@@ -197,9 +203,11 @@ module type Worker = sig
   val disconnect : t -> unit Deferred.t
 
   (** [kill t] will close the established connection with the spawned worker and kill the
-      worker process. Subsequent calls to [run] on this worker type will result in an
-      error *)
-  val kill : t -> unit Deferred.t
+      worker process. Subsequent calls to [run] or [kill] on this worker will result in an
+      error. [kill] only works from the master that initially spawned the worker, and will
+      fail with an error if you run it from any other process. *)
+  val kill     : t -> unit Or_error.t Deferred.t
+  val kill_exn : t -> unit            Deferred.t
 
   (** Get the underlying host/port information of the given worker *)
   val host_and_port : t -> Host_and_port.t
@@ -234,7 +242,13 @@ module Make_worker(S: Worker_spec) : Worker
 (** [run command] should be called from the top-level in order to start the parallel
     application. [command] must be constructed with a call to [Command.async] so that the
     async scheduler is started *)
-val start_app : Command.t -> unit
+
+val start_app
+  :  ?rpc_max_message_size:int
+  -> ?rpc_handshake_timeout:Time.Span.t
+  -> ?rpc_heartbeat_config : Rpc.Connection.Heartbeat_config.t
+  -> Command.t
+  -> unit
 
 (** Use [State.get] to query whether [start_app] was used. We return a [State.t] rather
     than a [bool] so that you can require evidence at the type level. If you want to

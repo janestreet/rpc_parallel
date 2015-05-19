@@ -16,7 +16,7 @@ let dispatch = function
     let lib_core_mods =
           [ "std"
           ; "parallel"
-          ; "worker"
+          ; "worker_id"
           ]
     in
 

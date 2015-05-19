@@ -5,7 +5,8 @@ open Rpc_parallel_core.Std
 (* A simple use of the [Rpc_parallel_core] library. Spawn long-running workers and
    perform process management *)
 
-let worker_main = function
+let worker_main ?rpc_max_message_size:_ ?rpc_handshake_timeout:_ ?rpc_heartbeat_config:_ =
+  function
   | false -> return ()
   | true ->
     (Clock.after (sec 0.5)
@@ -41,7 +42,8 @@ let run_worker ~where () =
   >>= fun () ->
   Core.Std.Printf.printf "Initiating worker shutdown\n%!";
   Parallel_app.kill_worker worker_id
-  >>= fun () ->
+  >>= fun result ->
+  Or_error.ok_exn result;
   Core.Std.Printf.printf "Worker shutdown complete, exiting.\n%!";
   return ()
 

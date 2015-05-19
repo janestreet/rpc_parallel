@@ -53,7 +53,7 @@ let command =
                Worker.spawn_exn ~where:executable () ~on_failure:Error.raise
                >>= fun worker ->
                Worker.run_exn worker ~f:Worker.functions.ping ~arg:() >>= fun () ->
-               Worker.kill worker))
+               Worker.kill_exn worker))
              >>= fun () ->
              let end_ = Time.to_float (Time.now ()) in
              Printf.printf "%f\n%!" (end_ -. start); loop (remaining - 1)

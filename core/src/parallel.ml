@@ -24,12 +24,26 @@ end = struct
     | `File_truncate s -> `File_truncate s
 end
 
+module Worker_config = struct
+  type t =
+    { disown                : bool
+    ; master                : Host_and_port.t
+    ; rpc_max_message_size  : int option
+    ; rpc_handshake_timeout : Time.Span.t option
+    ; rpc_heartbeat_config  : Rpc.Connection.Heartbeat_config.Stable.V1.t option
+    ; cd                    : string option
+    ; umask                 : int option
+    ; redirect_stdout       : Fd_redirection.t option
+    ; redirect_stderr       : Fd_redirection.t option
+    } with sexp
+end
+
 let hostkey_checking_options opt  =
   match opt with
-  | None -> [] (* Use ssh default *)
-  | Some `Ask -> ["-o"; "StrictHostKeyChecking=ask"]
-  | Some `No -> ["-o"; "StrictHostKeyChecking=no"]
-  | Some `Yes -> ["-o"; "StrictHostKeyChecking=yes"]
+  | None      -> [       (* Use ssh default *)       ]
+  | Some `Ask -> [ "-o"; "StrictHostKeyChecking=ask" ]
+  | Some `No  -> [ "-o"; "StrictHostKeyChecking=no"  ]
+  | Some `Yes -> [ "-o"; "StrictHostKeyChecking=yes" ]
 
 
 (* Get the location of the currently running binary. This is the best choice we have
@@ -106,23 +120,28 @@ module Make(
   M : sig
     type worker_arg with bin_io
     type worker_ret with bin_io
-    val worker_main : worker_arg -> worker_ret Deferred.t
+    val worker_main
+      :  ?rpc_max_message_size:int
+      -> ?rpc_handshake_timeout:Time.Span.t
+      -> ?rpc_heartbeat_config:Rpc.Connection.Heartbeat_config.t
+      -> worker_arg
+      -> worker_ret Deferred.t
   end) = struct
 
-  type worker_id = Worker.t
+  type worker_id = Worker_id.t
 
   type state =
     {
       (* Master host and port information *)
       master: Host_and_port.t;
       (* Used to facilitate timeout of connecting to a new worker *)
-      pending: Rpc.Connection.t Or_error.t Ivar.t Worker.Table.t;
+      pending: Rpc.Connection.t Or_error.t Ivar.t Worker_id.Table.t;
       (* Keep track of processes for connected local workers *)
-      processes: Process.t Worker.Table.t;
+      processes: Process.t Worker_id.Table.t;
       (* Connected workers *)
-      workers: Rpc.Connection.t Worker.Table.t;
+      workers: Rpc.Connection.t Worker_id.Table.t;
       (* Callbacks for worker exceptions and disconnects *)
-      on_failures: (Error.t -> unit) Worker.Table.t
+      on_failures: (Error.t -> unit) Worker_id.Table.t
     }
 
   (* Must be an Ivar.t because there are no guarantees with the Async scheduler and
@@ -131,27 +150,12 @@ module Make(
   let glob : state Ivar.t = Ivar.create ()
 
   (* Environment variables *)
-  let is_child_env_var                 = "ASYNC_PARALLEL_IS_CHILD_MACHINE"
-  let child_should_be_disowned_env_var = "ASYNC_PARALLEL_DISOWN_CHILD"
-  let master_port_env_var              = "ASYNC_PARALLEL_MASTER_RPC_PORT"
-  let master_name_env_var              = "ASYNC_PARALLEL_MASTER_RPC_NAME"
-  let child_cd_env_var                 = "ASYNC_PARALLEL_CHILD_CD"
-  let child_umask_env_var              = "ASYNC_PARALLEL_CHILD_UMASK"
-  let child_redirect_stdout_env_var    = "ASYNC_PARALLEL_CHILD_REDIRECT_STDOUT"
-  let child_redirect_stderr_env_var    = "ASYNC_PARALLEL_CHILD_REDIRECT_STDERR"
-  let env_vars =
-    [ is_child_env_var
-    ; child_should_be_disowned_env_var
-    ; master_port_env_var
-    ; master_name_env_var
-    ; child_cd_env_var
-    ; child_umask_env_var
-    ; child_redirect_stdout_env_var
-    ; child_redirect_stderr_env_var
-    ]
 
-  type worker_register = Worker.t * Host_and_port.t with bin_io
-  type worker_error = Worker.t * Error.t with bin_io
+  let is_child_env_var                 = "ASYNC_PARALLEL_IS_CHILD_MACHINE"
+  let env_vars = [is_child_env_var]
+
+  type worker_register = Worker_id.t * Host_and_port.t with bin_io
+  type worker_error = Worker_id.t * Error.t with bin_io
 
   (* [Rpc.t]'s implemented by master process *)
   let register_worker_rpc =
@@ -176,12 +180,23 @@ module Make(
       ~bin_query:M.bin_worker_arg
       ~bin_response:M.bin_worker_ret
 
-  let shutdown_rpc =
-    Rpc.Rpc.create
-      ~name:"shutdown_rpc"
-      ~version:0
-      ~bin_query:Unit.bin_t
-      ~bin_response:Unit.bin_t
+  module Shutdown_rpc = struct
+    let rpc =
+      Rpc.One_way.create
+        ~name:"shutdown_rpc"
+        ~version:0
+        ~bin_msg:Unit.bin_t
+    ;;
+
+    let implementation = Rpc.One_way.implement rpc (fun () () -> Shutdown.shutdown 0)
+    ;;
+
+    let dispatch connection =
+      match Rpc.One_way.dispatch rpc connection () with
+      | Error _ as result -> return result
+      | Ok () -> Rpc.Connection.close_finished connection >>| fun () -> Ok ()
+    ;;
+  end
 
   let validate_extra_env env =
     match List.find env ~f:(fun (key, _) -> List.mem env_vars key) with
@@ -194,83 +209,55 @@ module Make(
   (* Run the previously copied over executable. Before doing so, set the appropriate
      environment variables. Demonize the process so that the ssh connection doesn't remain
      open unnecessarily *)
-  let remote_cmd ?redirect_stdout ?redirect_stderr ?cd ?umask
-        env bin_name mach_id port ip disown =
+  let remote_cmd env bin_name mach_id =
     let open Or_error.Monad_infix in
     validate_extra_env env
     >>| fun () ->
+    let cheesy_escape str = Sexp.to_string (String.sexp_of_t str) in
     let env =
-      let cheesy_escape str = Sexp.to_string (String.sexp_of_t str) in
       String.concat
         (List.map env ~f:(fun (key, data) -> key ^ "=" ^ cheesy_escape data ^ ""))
         ~sep:" "
     in
-    sprintf "chmod 700 %s; %s %s=\"%s\" %s=\"%d\" %s=\"%d\" %s=\"%s\" %s %s %s %s %s"
+    sprintf "chmod 700 %s; %s %s=\"%s\" %s"
       bin_name
       env
-      is_child_env_var                 (Worker.Id.to_string mach_id)
-      child_should_be_disowned_env_var (if disown then 1 else 0)
-      master_port_env_var              port
-      master_name_env_var              ip
-      (Option.value_map ~default:"" redirect_stdout
-         ~f:(fun value -> sprintf "%s=\"%s\"" child_redirect_stdout_env_var
-                            (Sexp.to_string (Fd_redirection.sexp_of_t value)))
-      )
-      (Option.value_map ~default:"" redirect_stderr
-         ~f:(fun value -> sprintf "%s=\"%s\"" child_redirect_stderr_env_var
-                            (Sexp.to_string (Fd_redirection.sexp_of_t value)))
-      )
-      (Option.value_map ~default:"" cd
-         ~f:(fun value -> sprintf "%s=\"%s\"" child_cd_env_var value)
-      )
-      (Option.value_map ~default:"" umask
-         ~f:(fun value -> sprintf "%s=\"%i\"" child_umask_env_var value)
-      )
+      is_child_env_var                 (Worker_id.to_string mach_id)
       bin_name
 
   (* Environment for a local worker *)
-  let local_worker_env ?redirect_stdout ?redirect_stderr ?cd ?umask
-        ~extra ~id ~master ~disown =
+  let local_worker_env ~extra ~id =
     let open Or_error.Monad_infix in
     validate_extra_env extra
     >>| fun () ->
-    `Extend (extra
-             @ [is_child_env_var, Worker.Id.to_string id;
-                child_should_be_disowned_env_var, if disown then "1" else "0";
-                master_port_env_var, Int.to_string ((Host_and_port.port master));
-                master_name_env_var, (Host_and_port.host master)
-               ]
-             @ (Option.value_map ~default:[] redirect_stdout
-                  ~f:(fun value -> [child_redirect_stdout_env_var,
-                                    (Sexp.to_string (Fd_redirection.sexp_of_t value))])
-               )
-             @ (Option.value_map ~default:[] redirect_stderr
-                  ~f:(fun value -> [child_redirect_stderr_env_var,
-                                    (Sexp.to_string (Fd_redirection.sexp_of_t value))])
-               )
-             @ (Option.value_map ~default:[] cd
-                  ~f:(fun value -> [child_cd_env_var, value])
-               )
-             @ (Option.value_map ~default:[] umask
-                  ~f:(fun value -> [child_umask_env_var, Int.to_string value])
-               )
-            )
+    `Extend (extra @ [is_child_env_var, Worker_id.to_string id])
 
   (* Run the current executable either locally or remotely. For remote executables, make
      sure that the md5s match. *)
-  let init_worker ?redirect_stdout ?redirect_stderr ?cd ?umask
+  let init_worker ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
+        ?redirect_stdout ?redirect_stderr ?cd ?umask
         ~env ~id ~where ~master ~disown =
     Ivar.read glob
     >>= fun st ->
     our_binary ()
     >>= fun binary ->
+    let worker_config =
+      { Worker_config.
+        disown
+      ; master
+      ; rpc_max_message_size
+      ; rpc_handshake_timeout
+      ; rpc_heartbeat_config
+      ; cd
+      ; umask
+      ; redirect_stdout
+      ; redirect_stderr
+      }
+    in
     match where with
     | `Local ->
       begin
-        match
-          local_worker_env ?redirect_stdout ?redirect_stderr ?cd ?umask
-            ~extra:env ~id ~master ~disown
-        with
+        match local_worker_env ~extra:env ~id with
         | Error _ as e -> return e
         | Ok env ->
           Process.create ~prog:binary ~args:[] ~env ()
@@ -284,6 +271,7 @@ module Make(
                around until then. *)
             (Process.wait p >>> ignore);
             Hashtbl.add_exn st.processes ~key:id ~data:p;
+            Writer.write_sexp (Process.stdin p) (Worker_config.sexp_of_t worker_config);
             Ok ()
       end
     | `Remote (exec:_ Remote_executable.t) ->
@@ -302,25 +290,26 @@ module Make(
                                               "The remote executable %s does not match the local executable"
                                               exec.path)))
           else
-            match
-              remote_cmd ?redirect_stdout ?redirect_stderr ?cd ?umask env exec.path id
-                (Host_and_port.port master) (Host_and_port.host master) disown
-            with
+            match remote_cmd env exec.path id with
             | Error _ as e -> return e
             | Ok remote_cmd ->
-              Process.run ~prog:"ssh"
+             Process.create ~prog:"ssh"
                 ~args:(exec.host_key_checking @ [exec.host; remote_cmd]) ()
               >>| function
               | Error _ as err -> err
-              | Ok (_ : string) -> Ok ()
+              | Ok p ->
+                (Process.wait p >>> ignore);
+                Writer.write_sexp (Process.stdin p) (Worker_config.sexp_of_t worker_config);
+                Ok ()
 
   let spawn_worker
-        ?(where=`Local) ?(disown=false) ?(env=[]) ?(connection_timeout=(sec 10.))
-        ?redirect_stdout ?redirect_stderr ?cd ?umask
+        ?(where=`Local) ?(disown=false) ?(env=[])
+        ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
+        ?(connection_timeout=(sec 10.)) ?redirect_stdout ?redirect_stderr ?cd ?umask
         worker_arg ~on_failure =
     Ivar.read glob
     >>= fun st ->
-    let id = Worker.Id.create () in
+    let id = Worker_id.create () in
     let host =
       match where with
       | `Local -> "local"
@@ -329,7 +318,9 @@ module Make(
     let pending_ivar = Ivar.create () in
     Hashtbl.add_exn st.pending ~key:id ~data:pending_ivar;
     Hashtbl.add_exn st.on_failures ~key:id ~data:on_failure;
-    init_worker ?redirect_stdout ?redirect_stderr ?cd ?umask
+    init_worker
+      ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
+      ?redirect_stdout ?redirect_stderr ?cd ?umask
       ~id ~where ~master:st.master ~disown ~env
     >>= function
     | Error _ as err ->
@@ -384,34 +375,41 @@ module Make(
           Hashtbl.remove st.processes id;
           return (Error e)
 
-  let spawn_worker_exn ?where ?disown ?env ?connection_timeout
+  let spawn_worker_exn ?where ?disown ?env
+        ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
+        ?connection_timeout
         ?redirect_stdout ?redirect_stderr ?cd ?umask
         worker_arg ~on_failure =
-    spawn_worker ?where ?disown ?env ?connection_timeout
+    spawn_worker ?where ?disown ?env
+      ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
+      ?connection_timeout
       ?redirect_stdout ?redirect_stderr ?cd ?umask
       worker_arg ~on_failure
     >>| Or_error.ok_exn
 
   (* worker main function *)
-  let worker_main ~id ~master ~disown ~release_daemon =
+  let worker_main ~id ~(config : Worker_config.t) ~release_daemon =
     let worker_monitor = Monitor.create () in
     let worker_run_implementation =
       Rpc.Rpc.implement worker_run_rpc (fun () worker_arg ->
         let ivar = Ivar.create () in
         Scheduler.within ~monitor:worker_monitor (fun () ->
-          M.worker_main worker_arg >>> Ivar.fill ivar);
+          M.worker_main worker_arg
+            ?rpc_max_message_size:config.rpc_max_message_size
+            ?rpc_handshake_timeout:config.rpc_handshake_timeout
+            ?rpc_heartbeat_config:config.rpc_heartbeat_config
+          >>> Ivar.fill ivar);
         Ivar.read ivar)
-    in
-    let shutdown_implementation =
-      Rpc.Rpc.implement shutdown_rpc (fun () () ->
-        Shutdown.shutdown 0; return ())
     in
     let implementations =
       Rpc.Implementations.create_exn
-        ~implementations:[worker_run_implementation; shutdown_implementation]
+        ~implementations:[worker_run_implementation; Shutdown_rpc.implementation]
         ~on_unknown_rpc:`Close_connection
     in
     Rpc.Connection.serve ~implementations ~initial_connection_state:(fun _ _ -> ())
+      ?max_message_size:config.rpc_max_message_size
+      ?handshake_timeout:config.rpc_handshake_timeout
+      ?heartbeat_config:config.rpc_heartbeat_config
       ~where_to_listen:Tcp.on_port_chosen_by_os ()
     >>> fun serv ->
     let host_and_port =
@@ -419,8 +417,11 @@ module Make(
         ~port: (Tcp.Server.listening_on serv)
     in
     Rpc.Connection.client
-      ~host:(Host_and_port.host master)
-      ~port:(Host_and_port.port master) ()
+      ?max_message_size:config.rpc_max_message_size
+      ?handshake_timeout:config.rpc_handshake_timeout
+      ?heartbeat_config:config.rpc_heartbeat_config
+      ~host:(Host_and_port.host config.master)
+      ~port:(Host_and_port.port config.master) ()
     >>> function
     | Error e -> raise e
     | Ok conn ->
@@ -430,7 +431,7 @@ module Make(
          >>> fun () ->
          raise exn));
       (* Set up cleanup *)
-      (if not disown then
+      (if not config.disown then
          Rpc.Connection.close_finished conn
          >>> fun () -> Shutdown.shutdown 255);
       (* Register itself as a worker *)
@@ -439,14 +440,18 @@ module Make(
              >>> release_daemon)
 
   (* setup everything needed to act as an rpc_parallel master. *)
-  let setup_master () =
-    let pending = Worker.Table.create () in
-    let processes = Worker.Table.create () in
-    let workers = Worker.Table.create () in
-    let on_failures = Worker.Table.create () in
+  let setup_master ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config () =
+    let pending = Worker_id.Table.create () in
+    let processes = Worker_id.Table.create () in
+    let workers = Worker_id.Table.create () in
+    let on_failures = Worker_id.Table.create () in
     let register_worker_implementation =
       Rpc.Rpc.implement register_worker_rpc (fun () (id, worker_hp) ->
-        Rpc.Connection.client ~host:(Host_and_port.host worker_hp)
+        Rpc.Connection.client
+          ?max_message_size:rpc_max_message_size
+          ?handshake_timeout:rpc_handshake_timeout
+          ?heartbeat_config:rpc_heartbeat_config
+          ~host:(Host_and_port.host worker_hp)
           ~port:(Host_and_port.port worker_hp) ()
         >>= function
         | Error e ->
@@ -464,7 +469,7 @@ module Make(
           | None ->
             (* We already returned a failure to the [spawn_worker] caller,
                tell the worker to shutdown *)
-            Rpc.Rpc.dispatch shutdown_rpc connection () >>| ignore
+            Shutdown_rpc.dispatch connection >>| ignore
           | Some ivar ->
             (* We are connected and haven't timed out *)
             return (Ivar.fill ivar (Ok connection)))
@@ -483,6 +488,9 @@ module Make(
         ~on_unknown_rpc:`Close_connection
     in
     (Rpc.Connection.serve ~implementations ~initial_connection_state:(fun _ _ -> ())
+       ?max_message_size:rpc_max_message_size
+       ?handshake_timeout:rpc_handshake_timeout
+       ?heartbeat_config:rpc_heartbeat_config
        ~where_to_listen:Tcp.on_port_chosen_by_os ()
      >>> fun serv ->
      let master_host_and_port =
@@ -496,66 +504,53 @@ module Make(
     Ivar.read glob
     >>= fun st ->
     match Hashtbl.find st.workers worker with
-    | None -> return ()
+    | None ->
+      return
+        (Or_error.error_string
+           "Worker already dead or was spawned from some other process")
     | Some connection ->
       Hashtbl.remove st.workers worker;
       Hashtbl.remove st.processes worker;
-      Rpc.Rpc.dispatch shutdown_rpc connection ()
-      |> Deferred.ignore
+      Shutdown_rpc.dispatch connection
 
-  let parse_env_vars () =
+  let parse_worker_config () =
     match Sys.getenv is_child_env_var with
     | Some id_str ->
-      let id = Worker.Id.of_string id_str in
-      let master_name = Sys.getenv_exn master_name_env_var in
-      let master =
-        Host_and_port.create
-          ~host:master_name
-          ~port:(Int.of_string (Sys.getenv_exn master_port_env_var))
-      in
-      let disown = (Sys.getenv_exn child_should_be_disowned_env_var = "1") in
-      let redirect_stdout =
-        Sys.getenv child_redirect_stdout_env_var
-        |> Option.map ~f:(fun s -> Fd_redirection.t_of_sexp (Sexp.of_string s))
-        |> Option.map ~f:Fd_redirection.to_daemon_fd_redirection
-      in
-      let redirect_stderr =
-        Sys.getenv child_redirect_stderr_env_var
-        |> Option.map ~f:(fun s -> Fd_redirection.t_of_sexp (Sexp.of_string s))
-        |> Option.map ~f:Fd_redirection.to_daemon_fd_redirection
-      in
-      let cd = Sys.getenv child_cd_env_var in
-      let umask =
-        Sys.getenv child_umask_env_var
-        |> Option.map ~f:Int.of_string
-      in
-      `Worker_of (id, master, disown, redirect_stdout, redirect_stderr, cd, umask)
+      let config_sexp = Sexp.input_sexp In_channel.stdin in
+      let id = Worker_id.of_string id_str in
+      `Worker (id, Worker_config.t_of_sexp config_sexp)
     | None -> `Master
 
   let clear_env_vars () =
-    List.iter [ is_child_env_var
-              ; child_should_be_disowned_env_var
-              ; master_port_env_var
-              ; master_name_env_var
-              ]
-      ~f:Unix.unsetenv
+    List.iter [is_child_env_var] ~f:Unix.unsetenv
 
-  let run command =
-    setup_master ();
-    let parsed_env_vars = parse_env_vars () in
+  let run ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config command =
+    setup_master ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config ();
+    let worker_config = parse_worker_config () in
     clear_env_vars ();
-    match parsed_env_vars with
-    | `Worker_of (id, master, disown, redirect_stdout, redirect_stderr, cd, umask) ->
+    match worker_config with
+    | `Worker (id, config) ->
       (* The worker is started via SSH. We want to go to the background so we can close
          the SSH connection, but not until we've connected back to the master via
          Rpc. This allows us to report any initialization errors to the master via the SSH
          connection. *)
+      let redirect_stdout =
+        Option.map config.redirect_stdout
+          ~f:Fd_redirection.to_daemon_fd_redirection
+      in
+      let redirect_stderr =
+        Option.map config.redirect_stderr
+          ~f:Fd_redirection.to_daemon_fd_redirection
+      in
       let release_daemon =
         Staged.unstage (
-          Daemon.daemonize_wait ?redirect_stdout ?redirect_stderr ?cd ?umask ()
+          Daemon.daemonize_wait ?redirect_stdout ?redirect_stderr
+            ?cd:config.cd
+            ?umask:config.umask
+            ()
         )
       in
-      worker_main ~id ~master ~disown ~release_daemon;
+      worker_main ~id ~config ~release_daemon;
       never_returns (Scheduler.go ())
     | `Master ->
       Command.run command

@@ -28,7 +28,7 @@ module type Worker = sig
     -> t Deferred.t
   val spawn_config_exn : Config.t -> param_type -> t list Deferred.t
   val run_exn : t -> run_input_type -> run_output_type Deferred.t
-  val kill : t -> unit Deferred.t
+  val kill_exn : t -> unit Deferred.t
 end
 
 (** {4 Map functions} *)

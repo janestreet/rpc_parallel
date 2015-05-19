@@ -42,12 +42,16 @@ let prod_implementations =
   Rpc.Implementations.create_exn ~implementations:[prod_rpc_impl]
     ~on_unknown_rpc:`Close_connection
 
-let worker_main op =
+let worker_main ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
+      op =
   let implementations = (match op with
   | `Sum -> sum_implementations
   | `Product -> prod_implementations)
   in
   Rpc.Connection.serve ~implementations
+    ?max_message_size:rpc_max_message_size
+    ?handshake_timeout:rpc_handshake_timeout
+    ?heartbeat_config:rpc_heartbeat_config
     ~initial_connection_state:(fun _ _ -> ())
     ~where_to_listen:Tcp.on_port_chosen_by_os ()
   >>| fun serv ->

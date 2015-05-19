@@ -65,7 +65,7 @@ module type Worker = sig
     -> t Deferred.t
   val spawn_config_exn : Config.t -> param_type -> t list Deferred.t
   val run_exn : t -> run_input_type -> run_output_type Deferred.t
-  val kill : t -> unit Deferred.t
+  val kill_exn : t -> unit Deferred.t
 end
 
 module type Rpc_parallel_worker_spec = sig
@@ -134,8 +134,8 @@ module Make_rpc_parallel_worker(S : Rpc_parallel_worker_spec) = struct
   let run_exn t input =
     Parallel_worker.run_exn t ~f:Parallel_worker.functions.execute ~arg:input
 
-  let kill t =
-    Parallel_worker.kill t
+  let kill_exn t =
+    Parallel_worker.kill_exn t
 end
 
 (* Map *)
@@ -289,7 +289,7 @@ let map_unordered (type param) (type a) (type b)
   let rec map_loop worker =
     Pipe.read input_with_index_reader
     >>= function
-    | `Eof -> Map_function.Worker.kill worker
+    | `Eof -> Map_function.Worker.kill_exn worker
     | `Ok (input, index) ->
       Map_function.Worker.run_exn worker input
       >>= fun output ->
@@ -353,17 +353,17 @@ let find_map (type param) (type a) (type b)
   let rec find_loop worker =
     Pipe.read input_reader
     >>= function
-    | `Eof -> Map_function.Worker.kill worker
+    | `Eof -> Map_function.Worker.kill_exn worker
     | `Ok input ->
       (* Check result and exit early if we've found something. *)
       match !found_value with
-      | Some _ -> Map_function.Worker.kill worker
+      | Some _ -> Map_function.Worker.kill_exn worker
       | None ->
         Map_function.Worker.run_exn worker input
         >>= function
         | Some value ->
           found_value := Some value;
-          Map_function.Worker.kill worker
+          Map_function.Worker.kill_exn worker
         | None ->
           find_loop worker
   in
@@ -402,13 +402,13 @@ let map_reduce_commutative (type param) (type a) (type accum)
       >>= combine_loop worker
     | None ->
       combined_acc := Some acc;
-      Map_reduce_function.Worker.kill worker
+      Map_reduce_function.Worker.kill_exn worker
   in
   Deferred.all_unit (List.map workers ~f:(fun worker ->
     map_and_combine_loop worker None
     >>= function
     | Some acc -> combine_loop worker acc
-    | None -> Map_reduce_function.Worker.kill worker))
+    | None -> Map_reduce_function.Worker.kill_exn worker))
   >>| fun () ->
   !combined_acc
 
@@ -464,7 +464,7 @@ let map_reduce (type param) (type a) (type accum)
   let rec map_and_combine_loop worker =
     Pipe.read input_with_index_reader
     >>= function
-    | `Eof -> Map_reduce_function.Worker.kill worker
+    | `Eof -> Map_reduce_function.Worker.kill_exn worker
     | `Ok (input, index) ->
       let key = H.create_exn index (index + 1) in
       (match H.Map.prev_key !acc_map key with

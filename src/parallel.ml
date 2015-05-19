@@ -142,14 +142,14 @@ module type Creator = sig
     -> ('query, 'response, Error.t) Rpc.Pipe_rpc.t
     -> (worker, 'query, 'response Pipe.Reader.t) Function.t
 
-  val run :
-    worker
+  val run
+    :  worker
     -> f: (worker, 'query, 'response) Function.t
     -> arg: 'query
     -> 'response Or_error.t Deferred.t
 
-  val run_exn :
-    worker
+  val run_exn
+    :  worker
     -> f: (worker, 'query, 'response) Function.t
     -> arg: 'query
     -> 'response Deferred.t
@@ -162,21 +162,31 @@ module type Functions = sig
 end
 
 (* Generate unique identifiers for each application of the [Make_worker] functor *)
-module Id = Unique_id.Int()
+module Id = Unique_id.Int ()
 
-(* Table from [Id.t] to [unit -> (Socket.Address.Inet.t, int) Tcp.Server.t] *)
-let serve_functions = Hashtbl.Poly.create ()
+let serve_functions
+  : (   ?max_message_size : int
+     -> ?handshake_timeout : Time.Span.t
+     -> ?heartbeat_config : Rpc.Connection.Heartbeat_config.t
+     -> unit
+     -> (Socket.Address.Inet.t, int) Tcp.Server.t Deferred.t
+    ) Id.Table.t
+  = Id.Table.create ()
 
-(* Table from worker [Host_and_port.t]'s to [conn] *)
 type conn = Connected of Rpc.Connection.t | Pending of Rpc.Connection.t Or_error.t Ivar.t
-let connections = Hashtbl.Poly.create ()
+let connections : conn Host_and_port.Table.t = Host_and_port.Table.create ()
 
 (* Find the implementations for the given worker type (determined by the [Id.t] given to
    it at the top level of the [Make_worker] functor application), host an Rpc server with
    these implementations and return back a [Host_and_port.t] describing the server *)
-let worker_main id =
+let worker_main ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
+      id =
   let serve = Hashtbl.find_exn serve_functions id in
-  serve ()
+  serve
+    ?max_message_size:rpc_max_message_size
+    ?handshake_timeout:rpc_handshake_timeout
+    ?heartbeat_config:rpc_heartbeat_config
+    ()
   >>| fun serv ->
   Host_and_port.create ~host:(Unix.gethostname()) ~port:(Tcp.Server.listening_on serv)
 
@@ -186,8 +196,8 @@ module Parallel_core = Parallel.Make(struct
   let worker_main = worker_main
 end)
 
-(* Table from worker [Host_and_port.t]'s to [Parallel_core.worker_id] *)
-let internal_workers = Hashtbl.Poly.create ()
+let internal_workers : Parallel_core.worker_id Host_and_port.Table.t =
+  Host_and_port.Table.create ()
 
 module Remote_executable = Parallel.Remote_executable
 
@@ -202,6 +212,9 @@ module type Worker = sig
     :  ?where : [`Local | `Remote of _ Remote_executable.t]
     -> ?disown : bool
     -> ?env : (string * string) list
+    -> ?rpc_max_message_size  : int
+    -> ?rpc_handshake_timeout : Time.Span.t
+    -> ?rpc_heartbeat_config : Rpc.Connection.Heartbeat_config.t
     -> ?redirect_stdout : Fd_redirection.t
     -> ?redirect_stderr : Fd_redirection.t
     -> ?cd : string
@@ -214,6 +227,9 @@ module type Worker = sig
     :  ?where : [`Local | `Remote of _ Remote_executable.t]
     -> ?disown : bool
     -> ?env : (string * string) list
+    -> ?rpc_max_message_size  : int
+    -> ?rpc_handshake_timeout : Time.Span.t
+    -> ?rpc_heartbeat_config : Rpc.Connection.Heartbeat_config.t
     -> ?redirect_stdout : Fd_redirection.t
     -> ?redirect_stderr : Fd_redirection.t
     -> ?cd : string
@@ -222,21 +238,22 @@ module type Worker = sig
     -> on_failure : (Error.t -> unit)
     -> t Deferred.t
 
-  val run :
-    t
+  val run
+    :  t
     -> f: (t, 'query, 'response) Function.t
     -> arg: 'query
     -> 'response Or_error.t Deferred.t
 
-  val run_exn :
-    t
+  val run_exn
+    :  t
     -> f: (t, 'query, 'response) Function.t
     -> arg: 'query
     -> 'response Deferred.t
 
   val disconnect : t -> unit Deferred.t
 
-  val kill : t -> unit Deferred.t
+  val kill     : t -> unit Or_error.t Deferred.t
+  val kill_exn : t -> unit            Deferred.t
 
   val host_and_port : t -> Host_and_port.t
 end
@@ -254,7 +271,12 @@ module type Worker_spec = sig
 end
 
 module Make_worker(S:Worker_spec) = struct
-  type t = Host_and_port.t with bin_io
+  type t =
+    { host_and_port         : Host_and_port.t
+    ; rpc_max_message_size  : int option
+    ; rpc_handshake_timeout : Time.Span.t option
+    ; rpc_heartbeat_config  : Rpc.Connection.Heartbeat_config.Stable.V1.t option
+    } with bin_io
 
   (* A unique identifier for each application of the [Make_worker] functor. Because we are
      running the same executable, the master and the workers will agree on these ids *)
@@ -306,16 +328,20 @@ module Make_worker(S:Worker_spec) = struct
         return (Ok r))
     in
     implementations := worker_init_impl :: worker_exn_impl :: !implementations;
-    Hashtbl.add_exn serve_functions ~key:id ~data:(fun () ->
-      let rpc_implementations =
-        Rpc.Implementations.create_exn
-          ~implementations:!implementations
-          ~on_unknown_rpc:`Raise
-      in
-      Rpc.Connection.serve ~implementations:rpc_implementations
-        ~initial_connection_state:(fun _ _ -> ())
-        ~where_to_listen:Tcp.on_port_chosen_by_os ()
-    )
+    Hashtbl.add_exn serve_functions ~key:id
+      ~data:(fun ?max_message_size ?handshake_timeout ?heartbeat_config () ->
+        let rpc_implementations =
+          Rpc.Implementations.create_exn
+            ~implementations:!implementations
+            ~on_unknown_rpc:`Raise
+        in
+        Rpc.Connection.serve
+          ?max_message_size
+          ?handshake_timeout
+          ?heartbeat_config
+          ~implementations:rpc_implementations
+          ~initial_connection_state:(fun _ _ -> ())
+          ~where_to_listen:Tcp.on_port_chosen_by_os ())
 
   let store_connection worker connection =
     Hashtbl.replace connections ~key:worker ~data:(Connected connection);
@@ -324,30 +350,36 @@ module Make_worker(S:Worker_spec) = struct
     Hashtbl.remove connections worker
 
   let get_connection worker =
-    match Hashtbl.find connections worker with
+    match Hashtbl.find connections worker.host_and_port with
     | None ->
       (* Make a new connection and store it *)
       let ivar = Ivar.create () in
-      Hashtbl.add_exn connections ~key:worker ~data:(Pending ivar);
+      Hashtbl.add_exn connections ~key:worker.host_and_port ~data:(Pending ivar);
       (Rpc.Connection.client
-         ~host:(Host_and_port.host worker)
-         ~port:(Host_and_port.port worker)
+         ?max_message_size:worker.rpc_max_message_size
+         ?handshake_timeout:worker.rpc_handshake_timeout
+         ?heartbeat_config:worker.rpc_heartbeat_config
+         ~host:(Host_and_port.host worker.host_and_port)
+         ~port:(Host_and_port.port worker.host_and_port)
          ()
        >>| function
        | Error e ->
-         Hashtbl.remove connections worker;
+         Hashtbl.remove connections worker.host_and_port;
          let err = Error (Error.of_exn e) in
          Ivar.fill ivar err; err
        | Ok conn ->
          Ivar.fill ivar (Ok conn);
-         store_connection worker conn; Ok conn)
+         store_connection worker.host_and_port conn; Ok conn)
     | Some (Connected conn) -> return (Ok conn)
     | Some (Pending ivar) -> Ivar.read ivar
 
   let setup_initial_state ~worker arg ~on_failure =
     Rpc.Connection.client
-      ~host:(Host_and_port.host worker)
-      ~port:(Host_and_port.port worker)
+      ?max_message_size:worker.rpc_max_message_size
+      ?handshake_timeout:worker.rpc_handshake_timeout
+      ?heartbeat_config:worker.rpc_heartbeat_config
+      ~host:(Host_and_port.host worker.host_and_port)
+      ~port:(Host_and_port.port worker.host_and_port)
       ()
     >>= function
     | Error e -> return (Error (Error.of_exn e))
@@ -371,25 +403,36 @@ module Make_worker(S:Worker_spec) = struct
           >>| fun () ->
           e
         | Ok () ->
-          store_connection worker conn;
+          store_connection worker.host_and_port conn;
           return (Ok worker)
 
   let spawn ?where ?disown ?env
+        ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
         ?redirect_stdout ?redirect_stderr ?cd ?umask
         arg ~on_failure =
     Parallel_core.spawn_worker ?where ?disown ?env
+      ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
       ?redirect_stdout ?redirect_stderr ?cd ?umask
       id ~on_failure
     >>= function
     | Error e -> return (Error e)
-    | Ok (t, id) ->
-      Hashtbl.add_exn internal_workers ~key:t ~data:id;
-      setup_initial_state ~worker:t arg ~on_failure
+    | Ok (host_and_port, id) ->
+      Hashtbl.add_exn internal_workers ~key:host_and_port ~data:id;
+      let worker =
+        { host_and_port
+        ; rpc_max_message_size
+        ; rpc_handshake_timeout
+        ; rpc_heartbeat_config
+        }
+      in
+      setup_initial_state ~worker arg ~on_failure
 
   let spawn_exn ?where ?disown ?env
+        ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
         ?redirect_stdout ?redirect_stderr ?cd ?umask
         arg ~on_failure =
     spawn ?where ?disown ?env
+      ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
       ?redirect_stdout ?redirect_stderr ?cd ?umask
       arg ~on_failure
     >>| Or_error.ok_exn
@@ -400,12 +443,14 @@ module Make_worker(S:Worker_spec) = struct
     | Error e -> return (Error e)
     | Ok conn -> Function.run f conn ~arg
 
-  let run_exn t ~f ~arg  = run t ~f ~arg >>| Or_error.ok_exn
+  let run_exn t ~f ~arg =
+    run t ~f ~arg
+    >>| Or_error.ok_exn
 
-  let host_and_port t = t
+  let host_and_port t = t.host_and_port
 
   let disconnect t =
-    match Hashtbl.find connections t with
+    match Hashtbl.find connections t.host_and_port with
     | None -> return ()
     | Some (Connected conn) ->
       Rpc.Connection.close conn
@@ -416,12 +461,15 @@ module Make_worker(S:Worker_spec) = struct
       | Ok conn -> Rpc.Connection.close conn
 
   let kill t =
-    match Hashtbl.find internal_workers t with
-    | None -> return ()
+    match Hashtbl.find internal_workers t.host_and_port with
+    | None -> return (Ok ())
     | Some id ->
-      Hashtbl.remove internal_workers t;
+      Hashtbl.remove internal_workers t.host_and_port;
       Parallel_core.kill_worker id
+  ;;
 
+  let kill_exn t = kill t >>| Or_error.ok_exn
+  ;;
 
   module Function_creator = struct
     type worker = t with bin_io
@@ -466,7 +514,8 @@ module State = struct
 
 end
 
-let start_app command =
+let start_app ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config command =
   State.set_is_started ();
-  Parallel_core.run command
+  Parallel_core.run ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
+    command
 ;;

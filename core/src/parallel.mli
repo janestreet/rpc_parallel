@@ -100,7 +100,12 @@ module Make(
   M : sig
     type worker_arg with bin_io
     type worker_ret with bin_io
-    val worker_main : worker_arg -> worker_ret Deferred.t
+    val worker_main
+      :  ?rpc_max_message_size:int
+      -> ?rpc_handshake_timeout:Time.Span.t
+      -> ?rpc_heartbeat_config:Rpc.Connection.Heartbeat_config.t
+      -> worker_arg ->
+      worker_ret Deferred.t
   end) : sig
 
   type worker_id
@@ -137,6 +142,9 @@ module Make(
     :  ?where : [`Local | `Remote of _ Remote_executable.t]
     -> ?disown : bool
     -> ?env : (string * string) list
+    -> ?rpc_max_message_size  : int
+    -> ?rpc_handshake_timeout : Time.Span.t
+    -> ?rpc_heartbeat_config:Rpc.Connection.Heartbeat_config.t
     -> ?connection_timeout : Time.Span.t
     -> ?redirect_stdout : Fd_redirection.t  (** default redirect to /dev/null *)
     -> ?redirect_stderr : Fd_redirection.t  (** default redirect to /dev/null *)
@@ -150,6 +158,9 @@ module Make(
     :  ?where : [`Local | `Remote of _ Remote_executable.t]
     -> ?disown : bool
     -> ?env : (string * string) list
+    -> ?rpc_max_message_size  : int
+    -> ?rpc_handshake_timeout : Time.Span.t
+    -> ?rpc_heartbeat_config:Rpc.Connection.Heartbeat_config.t
     -> ?connection_timeout : Time.Span.t
     -> ?redirect_stdout : Fd_redirection.t  (** default redirect to /dev/null *)
     -> ?redirect_stderr : Fd_redirection.t  (** default redirect to /dev/null *)
@@ -161,12 +172,17 @@ module Make(
 
   (* [kill_worker id] will close the established connection with the spawned worker and
      kill the worker process *)
-  val kill_worker : worker_id -> unit Deferred.t
+  val kill_worker : worker_id -> unit Or_error.t Deferred.t
 
   (* [run command] should be called from the top-level in order to start the parallel
      application. [command] must be constructed with a call to [Command.async] so that
      the async scheduler is started *)
-  val run : Command.t -> unit
+  val run
+    :  ?rpc_max_message_size  : int
+    -> ?rpc_handshake_timeout : Time.Span.t
+    -> ?rpc_heartbeat_config:Rpc.Connection.Heartbeat_config.t
+    -> Command.t
+    -> unit
 
 end
 
