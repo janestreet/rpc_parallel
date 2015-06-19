@@ -1,0 +1,22 @@
+# OASIS_START
+# DO NOT EDIT (digest: 353bc4ec6b6c5fe9cd76d8ce2f054b43)
+version = "112.35.00"
+description = "Type-safe parallel library built on top of Async_rpc"
+requires = "core async rpc_parallel_core pa_ounit sexplib bin_prot"
+archive(byte) = "rpc_parallel.cma"
+archive(byte, plugin) = "rpc_parallel.cma"
+archive(native) = "rpc_parallel.cmxa"
+archive(native, plugin) = "rpc_parallel.cmxs"
+exists_if = "rpc_parallel.cma"
+package "core" (
+ version = "112.35.00"
+ description = "Type-safe parallel library built on top of Async_rpc"
+ requires = "core async"
+ archive(byte) = "rpc_parallel_core.cma"
+ archive(byte, plugin) = "rpc_parallel_core.cma"
+ archive(native) = "rpc_parallel_core.cmxa"
+ archive(native, plugin) = "rpc_parallel_core.cmxs"
+ exists_if = "rpc_parallel_core.cma"
+)
+# OASIS_STOP
+
