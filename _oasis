@@ -38,7 +38,7 @@ Library rpc_parallel
                       threads
   XMETARequires:      core,
                       async,
-                      rpc_parallel_core,
+                      rpc_parallel.core,
                       pa_ounit,
                       sexplib,
                       bin_prot
