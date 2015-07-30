@@ -1,3 +1,11 @@
+## 113.00.00
+
+- Fixed a file-descriptor leak
+
+    There was a file descriptor leak when killing workers.  Their stdin,
+    stdout, and stderr remain open. We now close them after the worker process
+    exits.
+
 ## 112.24.00
 
 - Added `Parallel.State.get` function, to check whether `Rpc_parallel` has been

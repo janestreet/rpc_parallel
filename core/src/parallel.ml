@@ -232,6 +232,16 @@ module Make(
     >>| fun () ->
     `Extend (extra @ [is_child_env_var, Worker_id.to_string id])
 
+  (* The workers fork. This causes the standard file descriptors to remain open once the
+     process has exited. We close them here to avoid a file descriptor leak. *)
+  let cleanup_standard_fds process =
+    Process.wait process
+    >>> fun (_ : Unix.Exit_or_signal.t) ->
+    don't_wait_for (Writer.close (Process.stdin  process));
+    don't_wait_for (Reader.close (Process.stdout process));
+    don't_wait_for (Reader.close (Process.stderr process))
+  ;;
+
   (* Run the current executable either locally or remotely. For remote executables, make
      sure that the md5s match. *)
   let init_worker ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
@@ -269,7 +279,7 @@ module Make(
                the worker process quits or closes his RPC connection. If we only [wait]
                once the RPC connection is closed, we will have zombie processes hanging
                around until then. *)
-            (Process.wait p >>> ignore);
+            cleanup_standard_fds p;
             Hashtbl.add_exn st.processes ~key:id ~data:p;
             Writer.write_sexp (Process.stdin p) (Worker_config.sexp_of_t worker_config);
             Ok ()
@@ -298,7 +308,7 @@ module Make(
               >>| function
               | Error _ as err -> err
               | Ok p ->
-                (Process.wait p >>> ignore);
+                cleanup_standard_fds p;
                 Writer.write_sexp (Process.stdin p) (Worker_config.sexp_of_t worker_config);
                 Ok ()
 

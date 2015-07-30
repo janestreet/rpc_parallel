@@ -56,7 +56,7 @@ let command =
                Worker.kill_exn worker))
              >>= fun () ->
              let end_ = Time.to_float (Time.now ()) in
-             Printf.printf "%f\n%!" (end_ -. start); loop (remaining - 1)
+             Core.Std.Printf.printf "%f\n%!" (end_ -. start); loop (remaining - 1)
            end
        in
        loop num_loops

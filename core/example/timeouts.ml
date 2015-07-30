@@ -73,7 +73,7 @@ let command =
         | Ok (Ok i) -> i
        )
        >>= fun () ->
-       Printf.printf "worker returned\n";
+       Core.Std.Printf.printf "worker returned\n";
        return ())
 
 let () = Parallel_app.run command

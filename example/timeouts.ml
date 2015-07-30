@@ -58,7 +58,7 @@ let command =
        Unresponsive_worker.run_exn
          worker ~f:Unresponsive_worker.functions.wait ~arg:sleep_for
        >>= fun () ->
-       Printf.printf "unresponsive worker returned\n%!";
+       Core.Std.Printf.printf "unresponsive worker returned\n%!";
        return ()
     )
 

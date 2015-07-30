@@ -108,7 +108,7 @@ let command =
          get_result ~rpc:sum_rpc ~worker:sum_worker
        ]
        >>= fun results ->
-       Printf.printf "prod: %d\nsum: %d\n"
+       Core.Std.Printf.printf "prod: %d\nsum: %d\n"
          (List.nth_exn results 0) (List.nth_exn results 1);
        return ())
 

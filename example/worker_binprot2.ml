@@ -156,9 +156,9 @@ let command =
        >>= fun reader_odd ->
        Deferred.all_unit [
          Pipe.iter reader_even
-           ~f:(fun  i -> return (Printf.printf "even checkpoint: %d\n%!" i));
+           ~f:(fun  i -> return (Core.Std.Printf.printf "even checkpoint: %d\n%!" i));
          Pipe.iter reader_odd
-            ~f:(fun i -> return (Printf.printf "odd checkpoint: %d\n%!"  i))
+            ~f:(fun i -> return (Core.Std.Printf.printf "odd checkpoint: %d\n%!"  i))
        ])
 
 let () = Parallel.start_app command

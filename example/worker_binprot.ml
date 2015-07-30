@@ -59,13 +59,13 @@ let command =
          repeat (fun () ->
            Worker.run_exn worker1 ~f:Worker.functions.ping ~arg:()
            >>= fun count ->
-           Printf.printf "worker1 pinged from master: %d\n%!" count;
+           Core.Std.Printf.printf "worker1 pinged from master: %d\n%!" count;
            return ()) 10;
          repeat (fun () ->
            Worker.run_exn worker1 ~f:Worker.functions.dispatch
              ~arg:worker2
            >>= fun count ->
-           Printf.printf "worker2 pinged from worker1: %d\n%!" count;
+           Core.Std.Printf.printf "worker2 pinged from worker1: %d\n%!" count;
            return ()) 10
        ])
 

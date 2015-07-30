@@ -239,10 +239,9 @@ module Make_worker(S: Worker_spec) : Worker
   with type 'a functions := 'a S.functions
   with type init_arg := S.init_arg
 
-(** [run command] should be called from the top-level in order to start the parallel
+(** [start_app command] should be called from the top-level in order to start the parallel
     application. [command] must be constructed with a call to [Command.async] so that the
-    async scheduler is started *)
-
+    Async scheduler is started. *)
 val start_app
   :  ?rpc_max_message_size:int
   -> ?rpc_handshake_timeout:Time.Span.t

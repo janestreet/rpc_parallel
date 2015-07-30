@@ -461,6 +461,8 @@ module Make_worker(S:Worker_spec) = struct
       | Ok conn -> Rpc.Connection.close conn
 
   let kill t =
+    disconnect t
+    >>= fun () ->
     match Hashtbl.find internal_workers t.host_and_port with
     | None -> return (Ok ())
     | Some id ->

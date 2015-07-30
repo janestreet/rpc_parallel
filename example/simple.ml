@@ -59,7 +59,7 @@ let command =
          ?cd:log_dir ~redirect_stdout ~redirect_stderr ()
        >>= fun sum_worker ->
        Sum_worker.run_exn sum_worker ~f:Sum_worker.functions.sum ~arg:max >>= fun res ->
-       return (Printf.printf "sum_worker: %d\n%!" res))
+       return (Core.Std.Printf.printf "sum_worker: %d\n%!" res))
 
 (* This call to [Parallel.start_app] must be top level *)
 let () = Parallel.start_app command

@@ -428,7 +428,7 @@ let map_reduce (type param) (type a) (type accum)
             (dir : [ `Left | `Left_nothing_right | `Right | `Right_nothing_left ]) =
     match dir with
     | `Left | `Left_nothing_right as dir' ->
-      (match H.Map.prev_key !acc_map key with
+      (match H.Map.closest_key !acc_map `Less_than key with
        | Some (left_key, left_acc) when H.ubound left_key = H.lbound key ->
          (* combine acc_{left_lbound, left_ubound} acc_{this_lbound, this_ubound}
             -> acc_{left_lbound, this_ubound} *)
@@ -446,7 +446,7 @@ let map_reduce (type param) (type a) (type accum)
          | `Left -> combine_loop worker key acc `Right_nothing_left
          | `Left_nothing_right -> Deferred.unit)
     | `Right | `Right_nothing_left as dir' ->
-      (match H.Map.next_key !acc_map key with
+      (match H.Map.closest_key !acc_map `Greater_than key with
        | Some (right_key, right_acc) when H.lbound right_key = H.ubound key ->
          (* combine acc_{this_lbound, this_ubound} acc_{right_lbound, right_ubound}
             -> acc_{this_lbound, right_ubound} *)
@@ -467,7 +467,7 @@ let map_reduce (type param) (type a) (type accum)
     | `Eof -> Map_reduce_function.Worker.kill_exn worker
     | `Ok (input, index) ->
       let key = H.create_exn index (index + 1) in
-      (match H.Map.prev_key !acc_map key with
+      (match H.Map.closest_key !acc_map `Less_than key with
        | Some (left_key, left_acc) when H.ubound left_key = H.lbound key ->
          (* combine acc_{left_lbound, left_ubound} (map a_index)
             -> acc_{left_lbound, index + 1} *)
