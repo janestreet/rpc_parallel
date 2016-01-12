@@ -1,0 +1,10 @@
+
+package "core" (
+  version = "$(pkg_version)"
+  description = ""
+  requires = "async bin_prot core fieldslib ppx_assert.runtime-lib ppx_bench.runtime-lib ppx_expect.collector ppx_inline_test.runtime-lib sexplib typerep variantslib"
+  archive(byte          ) = "rpc_parallel_core_deprecated.cma"
+  archive(native        ) = "rpc_parallel_core_deprecated.cmxa"
+  archive(native, plugin) = "rpc_parallel_core_deprecated.cmxs"
+  exists_if = "rpc_parallel_core_deprecated.cma"
+)

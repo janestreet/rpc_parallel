@@ -4,10 +4,10 @@ open Rpc_parallel.Std
 
 module Add_numbers_map_function = Map_reduce.Make_map_function(struct
   module Input = struct
-    type t = int * int with bin_io
+    type t = int * int [@@deriving bin_io]
   end
   module Output = struct
-    type t = int * int with bin_io
+    type t = int * int [@@deriving bin_io]
   end
 
   let rec spin ntimes =

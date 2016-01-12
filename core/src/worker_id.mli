@@ -1,6 +1,6 @@
 open Core.Std
 
-type t with bin_io
+type t [@@deriving bin_io]
 
 val create : unit -> t
 

@@ -1,14 +1,6 @@
 open Core.Std
 open Async.Std
 
-module Fd_redirection : sig
-  type t = [
-    | `Dev_null
-    | `File_append of string
-    | `File_truncate of string
-  ] with sexp
-end
-
 (*
    Implementation overview:
 
@@ -61,6 +53,14 @@ end
    let () = Parallel_app.run command
 *)
 
+module Fd_redirection : sig
+  type t = [
+    | `Dev_null
+    | `File_append of string
+    | `File_truncate of string
+  ] [@@deriving sexp]
+end
+
 (* This module is used to transfer the currently running executable to a remote machine *)
 module Remote_executable : sig
   type 'a t
@@ -98,14 +98,10 @@ end
 
 module Make(
   M : sig
-    type worker_arg with bin_io
-    type worker_ret with bin_io
-    val worker_main
-      :  ?rpc_max_message_size:int
-      -> ?rpc_handshake_timeout:Time.Span.t
-      -> ?rpc_heartbeat_config:Rpc.Connection.Heartbeat_config.t
-      -> worker_arg ->
-      worker_ret Deferred.t
+    type worker_arg [@@deriving bin_io]
+    type worker_ret [@@deriving bin_io]
+
+    val worker_main : worker_arg -> worker_ret Deferred.t
   end) : sig
 
   type worker_id
@@ -146,10 +142,10 @@ module Make(
     -> ?rpc_handshake_timeout : Time.Span.t
     -> ?rpc_heartbeat_config:Rpc.Connection.Heartbeat_config.t
     -> ?connection_timeout : Time.Span.t
-    -> ?redirect_stdout : Fd_redirection.t  (** default redirect to /dev/null *)
-    -> ?redirect_stderr : Fd_redirection.t  (** default redirect to /dev/null *)
     -> ?cd              : string            (** default / *)
     -> ?umask           : int               (** defaults to use existing umask *)
+    -> redirect_stdout : Fd_redirection.t
+    -> redirect_stderr : Fd_redirection.t
     -> M.worker_arg
     -> on_failure : (Error.t -> unit)
     -> (M.worker_ret * worker_id) Or_error.t Deferred.t
@@ -162,10 +158,10 @@ module Make(
     -> ?rpc_handshake_timeout : Time.Span.t
     -> ?rpc_heartbeat_config:Rpc.Connection.Heartbeat_config.t
     -> ?connection_timeout : Time.Span.t
-    -> ?redirect_stdout : Fd_redirection.t  (** default redirect to /dev/null *)
-    -> ?redirect_stderr : Fd_redirection.t  (** default redirect to /dev/null *)
     -> ?cd              : string            (** default / *)
     -> ?umask           : int               (** defaults to use existing umask *)
+    -> redirect_stdout : Fd_redirection.t
+    -> redirect_stderr : Fd_redirection.t
     -> M.worker_arg
     -> on_failure : (Error.t -> unit)
     -> (M.worker_ret * worker_id) Deferred.t
@@ -180,9 +176,8 @@ module Make(
   val run
     :  ?rpc_max_message_size  : int
     -> ?rpc_handshake_timeout : Time.Span.t
-    -> ?rpc_heartbeat_config:Rpc.Connection.Heartbeat_config.t
+    -> ?rpc_heartbeat_config : Rpc.Connection.Heartbeat_config.t
+    -> ?where_to_listen : Tcp.Where_to_listen.inet
     -> Command.t
     -> unit
-
 end
-

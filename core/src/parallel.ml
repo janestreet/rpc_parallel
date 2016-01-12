@@ -6,7 +6,7 @@ module Fd_redirection : sig
     | `Dev_null
     | `File_append of string
     | `File_truncate of string
-  ] with sexp
+  ] [@@deriving sexp]
 
   val to_daemon_fd_redirection
     :  t
@@ -16,7 +16,7 @@ end = struct
     | `Dev_null
     | `File_append of string
     | `File_truncate of string
-  ] with sexp
+  ] [@@deriving sexp]
 
   let to_daemon_fd_redirection = function
     | `Dev_null -> `Dev_null
@@ -30,13 +30,34 @@ module Worker_config = struct
     ; master                : Host_and_port.t
     ; rpc_max_message_size  : int option
     ; rpc_handshake_timeout : Time.Span.t option
-    ; rpc_heartbeat_config  : Rpc.Connection.Heartbeat_config.Stable.V1.t option
+    ; rpc_heartbeat_config  : Rpc.Connection.Heartbeat_config.t option
     ; cd                    : string option
     ; umask                 : int option
-    ; redirect_stdout       : Fd_redirection.t option
-    ; redirect_stderr       : Fd_redirection.t option
-    } with sexp
+    ; redirect_stdout       : Fd_redirection.t
+    ; redirect_stderr       : Fd_redirection.t
+    } [@@deriving sexp]
 end
+
+(* Like [Monitor.try_with], but raise any additional exceptions (raised after [f ()] has
+   been determined) to the specified monitor. *)
+let try_within ~monitor f =
+  let ivar = Ivar.create () in
+  Scheduler.within ~monitor (fun () ->
+    Monitor.try_with ~extract_exn:true ~run:`Now ~rest:`Raise f
+    >>> fun r ->
+    Ivar.fill ivar (Result.map_error r ~f:Error.of_exn)
+  );
+  Ivar.read ivar
+;;
+
+(* Any exceptions that are raised before [f ()] is determined will be raised to the
+   current monitor. Exceptions raised after [f ()] is determined will be raised to the
+   passed in monitor *)
+let try_within_exn ~monitor f =
+  try_within ~monitor f
+  >>| function
+  | Ok x -> x
+  | Error e -> Error.raise e
 
 let hostkey_checking_options opt  =
   match opt with
@@ -118,14 +139,10 @@ end
 
 module Make(
   M : sig
-    type worker_arg with bin_io
-    type worker_ret with bin_io
-    val worker_main
-      :  ?rpc_max_message_size:int
-      -> ?rpc_handshake_timeout:Time.Span.t
-      -> ?rpc_heartbeat_config:Rpc.Connection.Heartbeat_config.t
-      -> worker_arg
-      -> worker_ret Deferred.t
+    type worker_arg [@@deriving bin_io]
+    type worker_ret [@@deriving bin_io]
+
+    val worker_main : worker_arg -> worker_ret Deferred.t
   end) = struct
 
   type worker_id = Worker_id.t
@@ -154,8 +171,8 @@ module Make(
   let is_child_env_var                 = "ASYNC_PARALLEL_IS_CHILD_MACHINE"
   let env_vars = [is_child_env_var]
 
-  type worker_register = Worker_id.t * Host_and_port.t with bin_io
-  type worker_error = Worker_id.t * Error.t with bin_io
+  type worker_register = Worker_id.t * Host_and_port.t [@@deriving bin_io]
+  type worker_error = Worker_id.t * Error.t [@@deriving bin_io]
 
   (* [Rpc.t]'s implemented by master process *)
   let register_worker_rpc =
@@ -203,7 +220,7 @@ module Make(
     | Some e ->
       Or_error.error
         "Environment variable conflicts with Rpc_parallel machinery"
-        e <:sexp_of<string*string>>
+        e [%sexp_of: string*string]
     | None -> Ok ()
 
   (* Run the previously copied over executable. Before doing so, set the appropriate
@@ -219,8 +236,7 @@ module Make(
         (List.map env ~f:(fun (key, data) -> key ^ "=" ^ cheesy_escape data ^ ""))
         ~sep:" "
     in
-    sprintf "chmod 700 %s; %s %s=\"%s\" %s"
-      bin_name
+    sprintf "%s %s=\"%s\" %s"
       env
       is_child_env_var                 (Worker_id.to_string mach_id)
       bin_name
@@ -236,16 +252,22 @@ module Make(
      process has exited. We close them here to avoid a file descriptor leak. *)
   let cleanup_standard_fds process =
     Process.wait process
-    >>> fun (_ : Unix.Exit_or_signal.t) ->
+    >>> fun (exit_or_signal : Unix.Exit_or_signal.t) ->
+    (Reader.contents (Process.stderr process) >>> fun s ->
+     Writer.write (Lazy.force Writer.stderr) s;
+     don't_wait_for (Reader.close (Process.stderr process)));
     don't_wait_for (Writer.close (Process.stdin  process));
     don't_wait_for (Reader.close (Process.stdout process));
-    don't_wait_for (Reader.close (Process.stderr process))
+    match exit_or_signal with
+    | Ok () -> ()
+    | Error _ -> eprintf "Worker process %s\n"
+                   (Unix.Exit_or_signal.to_string_hum exit_or_signal)
   ;;
 
   (* Run the current executable either locally or remotely. For remote executables, make
      sure that the md5s match. *)
   let init_worker ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
-        ?redirect_stdout ?redirect_stderr ?cd ?umask
+         ?cd ?umask ~redirect_stdout ~redirect_stderr
         ~env ~id ~where ~master ~disown =
     Ivar.read glob
     >>= fun st ->
@@ -315,7 +337,7 @@ module Make(
   let spawn_worker
         ?(where=`Local) ?(disown=false) ?(env=[])
         ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
-        ?(connection_timeout=(sec 10.)) ?redirect_stdout ?redirect_stderr ?cd ?umask
+        ?(connection_timeout=(sec 10.)) ?cd ?umask ~redirect_stdout ~redirect_stderr
         worker_arg ~on_failure =
     Ivar.read glob
     >>= fun st ->
@@ -330,7 +352,7 @@ module Make(
     Hashtbl.add_exn st.on_failures ~key:id ~data:on_failure;
     init_worker
       ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
-      ?redirect_stdout ?redirect_stderr ?cd ?umask
+       ?cd ?umask ~redirect_stdout ~redirect_stderr
       ~id ~where ~master:st.master ~disown ~env
     >>= function
     | Error _ as err ->
@@ -347,8 +369,8 @@ module Make(
         Hashtbl.remove st.pending id;
         Hashtbl.remove st.on_failures id;
         Hashtbl.remove st.processes id;
-        return (Error (Error.of_string
-                   (sprintf "Timed out getting connection from %s process" host)))
+        let error = Error.createf "Timed out getting connection from %s process" host in
+        return (Error error)
       | `Result connection_or_error ->
         Hashtbl.remove st.pending id;
         match connection_or_error with
@@ -356,60 +378,57 @@ module Make(
           begin
             Rpc.Rpc.dispatch worker_run_rpc connection worker_arg
             >>| function
-            | Error e ->
+            | Error _ as err ->
               Hashtbl.remove st.on_failures id;
               Hashtbl.remove st.processes id;
-              Error e
+              err
             | Ok res ->
               Hashtbl.add_exn st.workers ~key:id ~data:connection;
               (* Setup cleanup *)
               (Rpc.Connection.close_finished connection
                >>> fun () ->
+               Rpc.Connection.close_reason connection
+               >>> fun info ->
                match Hashtbl.find st.workers id with
                | None ->
                  (* [kill_worker] was called, don't report closed connection *)
                  ()
                | Some _ ->
                  Hashtbl.remove st.workers id;
-                 (match Hashtbl.mem st.processes id with
-                  | false -> return (Error.of_string "Lost connection with worker")
-                  | true -> return (Error.of_string "Local process exited")
-                 )
-                 >>> fun error ->
+                 let error =
+                   match Hashtbl.mem st.processes id with
+                  | false ->
+                    Error.createf !"Lost connection with worker: %{sexp:Info.t}" info
+                  | true ->
+                    Error.createf !"Local process exited: %{sexp:Info.t}" info
+                 in
                  Hashtbl.remove st.processes id;
                  on_failure error);
               Ok (res, id)
           end
-        | Error e ->
+        | Error _ as err ->
           Hashtbl.remove st.on_failures id;
           Hashtbl.remove st.processes id;
-          return (Error e)
+          return err
 
   let spawn_worker_exn ?where ?disown ?env
         ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
         ?connection_timeout
-        ?redirect_stdout ?redirect_stderr ?cd ?umask
+        ?cd ?umask ~redirect_stdout ~redirect_stderr
         worker_arg ~on_failure =
     spawn_worker ?where ?disown ?env
       ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
       ?connection_timeout
-      ?redirect_stdout ?redirect_stderr ?cd ?umask
+      ?cd ?umask ~redirect_stdout ~redirect_stderr
       worker_arg ~on_failure
     >>| Or_error.ok_exn
 
   (* worker main function *)
   let worker_main ~id ~(config : Worker_config.t) ~release_daemon =
-    let worker_monitor = Monitor.create () in
     let worker_run_implementation =
       Rpc.Rpc.implement worker_run_rpc (fun () worker_arg ->
-        let ivar = Ivar.create () in
-        Scheduler.within ~monitor:worker_monitor (fun () ->
-          M.worker_main worker_arg
-            ?rpc_max_message_size:config.rpc_max_message_size
-            ?rpc_handshake_timeout:config.rpc_handshake_timeout
-            ?rpc_heartbeat_config:config.rpc_heartbeat_config
-          >>> Ivar.fill ivar);
-        Ivar.read ivar)
+        try_within_exn ~monitor:Monitor.main (fun () ->
+          M.worker_main worker_arg))
     in
     let implementations =
       Rpc.Implementations.create_exn
@@ -435,22 +454,38 @@ module Make(
     >>> function
     | Error e -> raise e
     | Ok conn ->
-      (* Set up exception handling *)
-      (Monitor.detach_and_iter_errors worker_monitor ~f:(fun exn ->
-         Rpc.Rpc.dispatch_exn handle_worker_exn_rpc conn (id, Error.of_exn exn)
-         >>> fun () ->
-         raise exn));
-      (* Set up cleanup *)
+      (* Set up exception handling. We want the following two things to occur:
+
+         1) Catch exceptions in [M.worker_main] and report them back to the master
+         2) Write the exceptions to stderr *)
+      Scheduler.within (fun () ->
+        Monitor.detach_and_get_next_error Monitor.main
+        >>> fun exn ->
+        Rpc.Rpc.dispatch handle_worker_exn_rpc conn (id, Error.of_exn exn)
+        >>> fun _ ->
+        eprintf !"%{sexp:Exn.t}\n" exn;
+        eprintf "Shutting down\n";
+        Shutdown.shutdown 254);
+      (* Set up cleanup so the worker shuts down when it loses connection to the master
+         (unless [config.disown = true]) *)
       (if not config.disown then
          Rpc.Connection.close_finished conn
-         >>> fun () -> Shutdown.shutdown 255);
+         >>> fun () ->
+         Shutdown.shutdown 254);
+      (* Once we've connected back to the master, it's safe to detach. Calling
+         [release_daemon] will fail if stdout/stderr redirection fails. This will write
+         the uncaught exception to the workers stderr which is read by the master. We
+         must not call [release_daemon] after the dispatch because the worker will die at
+         a particularly bad time (the master may report the closed connection before
+         reading the worker's stderr / RPC handshake or connection closed exceptions
+         may report first) *)
+      release_daemon ();
       (* Register itself as a worker *)
-      ignore (Rpc.Rpc.dispatch_exn register_worker_rpc conn (id, host_and_port)
-              (* Once we've connected back to the master, it's safe to detach. *)
-             >>> release_daemon)
+      ignore (Rpc.Rpc.dispatch_exn register_worker_rpc conn (id, host_and_port))
 
   (* setup everything needed to act as an rpc_parallel master. *)
-  let setup_master ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config () =
+  let setup_master ?rpc_max_message_size ?rpc_handshake_timeout
+      ?rpc_heartbeat_config ?where_to_listen () =
     let pending = Worker_id.Table.create () in
     let processes = Worker_id.Table.create () in
     let workers = Worker_id.Table.create () in
@@ -486,9 +521,8 @@ module Make(
     in
     let handle_worker_exn_implementation =
       Rpc.Rpc.implement handle_worker_exn_rpc (fun () (id, error) ->
-        Scheduler.within ~monitor:Monitor.main (fun () ->
-          let on_failure = Hashtbl.find_exn on_failures id in
-          on_failure error);
+        let on_failure = Hashtbl.find_exn on_failures id in
+        on_failure error;
         return ())
     in
     let implementations =
@@ -501,7 +535,8 @@ module Make(
        ?max_message_size:rpc_max_message_size
        ?handshake_timeout:rpc_handshake_timeout
        ?heartbeat_config:rpc_heartbeat_config
-       ~where_to_listen:Tcp.on_port_chosen_by_os ()
+       ~where_to_listen:(Option.value where_to_listen ~default:Tcp.on_port_chosen_by_os)
+       ()
      >>> fun serv ->
      let master_host_and_port =
        Host_and_port.create ~host:(Unix.gethostname())
@@ -534,8 +569,11 @@ module Make(
   let clear_env_vars () =
     List.iter [is_child_env_var] ~f:Unix.unsetenv
 
-  let run ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config command =
-    setup_master ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config ();
+  let run ?rpc_max_message_size ?rpc_handshake_timeout
+      ?rpc_heartbeat_config ?where_to_listen command =
+    setup_master
+      ?rpc_max_message_size ?rpc_handshake_timeout
+      ?rpc_heartbeat_config ?where_to_listen ();
     let worker_config = parse_worker_config () in
     clear_env_vars ();
     match worker_config with
@@ -545,16 +583,17 @@ module Make(
          Rpc. This allows us to report any initialization errors to the master via the SSH
          connection. *)
       let redirect_stdout =
-        Option.map config.redirect_stdout
-          ~f:Fd_redirection.to_daemon_fd_redirection
+        Fd_redirection.to_daemon_fd_redirection config.redirect_stdout
       in
       let redirect_stderr =
-        Option.map config.redirect_stderr
-          ~f:Fd_redirection.to_daemon_fd_redirection
+        Fd_redirection.to_daemon_fd_redirection config.redirect_stderr
       in
       let release_daemon =
         Staged.unstage (
-          Daemon.daemonize_wait ?redirect_stdout ?redirect_stderr
+          (* This call can fail (e.g. cd to a nonexistent directory). The uncaught
+             exception will automatically be written to stderr which is read by the
+             master *)
+          Daemon.daemonize_wait ~redirect_stdout ~redirect_stderr
             ?cd:config.cd
             ?umask:config.umask
             ()

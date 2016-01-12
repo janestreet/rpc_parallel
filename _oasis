@@ -1,168 +1,42 @@
-OASISFormat:      0.3
-OCamlVersion:     >= 4.00.0
-FindlibVersion:   >= 1.3.2
-Name:             rpc_parallel
-Version:          113.00.00
-Synopsis:         Type-safe parallel library built on top of Async_rpc
-Authors:          Jane Street Group, LLC <opensource@janestreet.com>
-Copyrights:       (C) 2014 Jane Street Group LLC <opensource@janestreet.com>
-Maintainers:      Jane Street Group, LLC <opensource@janestreet.com>
-License:          Apache-2.0
-LicenseFile:      LICENSE.txt
-Homepage:         https://github.com/janestreet/rpc_parallel
-Plugins:          StdFiles (0.3), DevFiles (0.3), META (0.3)
-XStdFilesAUTHORS: false
-XStdFilesREADME:  false
-BuildTools:       ocamlbuild, camlp4o
+OASISFormat:           0.4
+OCamlVersion:          >= 4.02.3
+FindlibVersion:        >= 1.3.2
+Name:                  rpc_parallel
+Version:               113.24.00
+Synopsis:              Type-safe parallel library built on top of Async_rpc
+Authors:               Jane Street Group, LLC <opensource@janestreet.com>
+Copyrights:            (C) 2014-2016 Jane Street Group LLC <opensource@janestreet.com>
+Maintainers:           Jane Street Group, LLC <opensource@janestreet.com>
+License:               Apache-2.0
+LicenseFile:           LICENSE.txt
+Homepage:              https://github.com/janestreet/rpc_parallel
+Plugins:               StdFiles (0.3), DevFiles (0.3), META (0.3)
+XStdFilesAUTHORS:      false
+XStdFilesREADME:       false
+BuildTools:            ocamlbuild
+AlphaFeatures:         ocamlbuild_more_args
+XOCamlbuildPluginTags: package(ppx_driver.ocamlbuild)
+FilesAB:               META.ab
 Description:
   Rpc_parallel offers an API to define various workers and protocols,
   spawn workers as separate processes, and communicate with them using
   Async Rpc.
+  .
 
-Library rpc_parallel
-  Path:               src
-  FindlibName:        rpc_parallel
-  Pack:               true
-  Modules:            Map_reduce,
-                      Parallel,
-                      Std
-  BuildDepends:       core,
-                      async,
-                      rpc_parallel.core,
-                      pa_ounit,
-                      pa_ounit.syntax,
-                      sexplib,
-                      sexplib.syntax,
-                      bin_prot,
-                      bin_prot.syntax,
-                      threads
-  XMETARequires:      core,
-                      async,
-                      rpc_parallel.core,
-                      pa_ounit,
-                      sexplib,
-                      bin_prot
-
-Library rpc_parallel_core
-  Path:               core/src
-  FindlibName:        core
-  FindlibParent:      rpc_parallel
-  Pack:               true
-  Modules:            Parallel,
-                      Worker_id,
-                      Std
-  BuildDepends:       core,
-                      async,
-                      pa_ounit,
-                      pa_ounit.syntax,
-                      sexplib,
-                      sexplib.syntax,
-                      bin_prot,
-                      bin_prot.syntax,
-                      threads
-  XMETARequires:      core,
-                      async
-
-Executable core_simple
-  Path:               core/example
-  MainIs:             simple.ml
-  Install:            false
-  BuildDepends:       rpc_parallel.core,
-                      sexplib.syntax,
-                      bin_prot.syntax
-
-Executable core_timeouts
-  Path:               core/example
-  MainIs:             timeouts.ml
-  Install:            false
-  BuildDepends:       rpc_parallel.core,
-                      sexplib.syntax,
-                      bin_prot.syntax
-
-Executable test_zombies
-  Path:               core/example
-  MainIs:             test_zombies.ml
-  Install:            false
-  BuildDepends:       rpc_parallel.core,
-                      sexplib.syntax,
-                      bin_prot.syntax
-
-Executable add_numbers
-  Path:               example
-  MainIs:             add_numbers.ml
-  Install:            false
-  BuildDepends:       rpc_parallel,
-                      sexplib.syntax,
-                      bin_prot.syntax
-
-Executable copy_executable
-  Path:               example
-  MainIs:             copy_executable.ml
-  Install:            false
-  BuildDepends:       rpc_parallel,
-                      sexplib.syntax,
-                      bin_prot.syntax
-
-Executable env_test
-  Path:               example
-  MainIs:             env_test.ml
-  Install:            false
-  BuildDepends:       rpc_parallel,
-                      sexplib.syntax,
-                      bin_prot.syntax
-
-Executable run_exn
-  Path:               example
-  MainIs:             run_exn.ml
-  Install:            false
-  BuildDepends:       rpc_parallel,
-                      sexplib.syntax,
-                      bin_prot.syntax
-
-Executable side_arg
-  Path:               example
-  MainIs:             side_arg.ml
-  Install:            false
-  BuildDepends:       rpc_parallel,
-                      sexplib.syntax,
-                      bin_prot.syntax
-
-Executable simple
-  Path:               example
-  MainIs:             simple.ml
-  Install:            false
-  BuildDepends:       rpc_parallel,
-                      sexplib.syntax,
-                      bin_prot.syntax
-
-Executable stress_test
-  Path:               example
-  MainIs:             stress_test.ml
-  Install:            false
-  BuildDepends:       rpc_parallel,
-                      sexplib.syntax,
-                      bin_prot.syntax
-
-Executable workers_as_masters
-  Path:               example
-  MainIs:             workers_as_masters.ml
-  Install:            false
-  BuildDepends:       rpc_parallel,
-                      sexplib.syntax,
-                      bin_prot.syntax
-
-Executable worker_binprot2
-  Path:               example
-  MainIs:             worker_binprot2.ml
-  Install:            false
-  BuildDepends:       rpc_parallel,
-                      sexplib.syntax,
-                      bin_prot.syntax
-
-Executable worker_binprot
-  Path:               example
-  MainIs:             worker_binprot.ml
-  Install:            false
-  BuildDepends:       rpc_parallel,
-                      sexplib.syntax,
-                      bin_prot.syntax
+Library rpc_parallel_core_deprecated
+  Path:         core/src
+  Pack:         true
+  Modules:      Parallel,
+                Std,
+                Worker_id
+  BuildDepends: async,
+                bin_prot,
+                core,
+                fieldslib,
+                ppx_assert.runtime-lib,
+                ppx_bench.runtime-lib,
+                ppx_expect.collector,
+                ppx_inline_test.runtime-lib,
+                sexplib,
+                typerep,
+                variantslib

@@ -1,6 +1,6 @@
 open Core.Std
 open Async.Std
-open Rpc_parallel_core.Std
+open Rpc_parallel_core_deprecated.Std
 
 (* A simple use of the [Rpc_parallel_core] library, testing the timeouts. Spawns a worker
    that is unresponsive for an extended period of time before replying. *)
@@ -23,19 +23,16 @@ let implementations =
   Rpc.Implementations.create_exn ~implementations:[unresponsive_rpc_impl]
     ~on_unknown_rpc:`Close_connection
 
-let worker_main ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config () =
+let worker_main () =
   Rpc.Connection.serve ~implementations
-    ?max_message_size:rpc_max_message_size
-    ?handshake_timeout:rpc_handshake_timeout
-    ?heartbeat_config:rpc_heartbeat_config
     ~initial_connection_state:(fun _ _ -> ())
     ~where_to_listen:Tcp.on_port_chosen_by_os ()
   >>| fun serv ->
   Host_and_port.create ~host:(Unix.gethostname()) ~port:(Tcp.Server.listening_on serv)
 
-module Parallel_app = Parallel.Make(struct
-  type worker_arg = unit with bin_io
-  type worker_ret = Host_and_port.t with bin_io
+module Parallel_app = Parallel_deprecated.Make(struct
+  type worker_arg = unit [@@deriving bin_io]
+  type worker_ret = Host_and_port.t [@@deriving bin_io]
   let worker_main = worker_main
 end)
 
@@ -49,20 +46,22 @@ let command =
       +> flag "sleep-for" (required int) ~doc:""
       +> flag "timeout" (required int) ~doc:""
     )
-    (fun sleep_for timeout () ->
+    (fun sleep_for timeout_int () ->
        let heartbeat_config =
-         { Rpc.Connection.Heartbeat_config.
-           timeout = Time.Span.of_sec (Float.of_int timeout)
-         ; send_every = Time.Span.of_sec (Float.of_int (timeout/3))
-         }
+         let timeout = Time_ns.Span.of_sec (Float.of_int timeout_int) in
+         let send_every = Time_ns.Span.of_sec (Float.of_int (timeout_int / 3)) in
+         Rpc.Connection.Heartbeat_config.create ~timeout ~send_every
        in
        Parallel_app.spawn_worker_exn
-         ~rpc_handshake_timeout:(Time.Span.of_sec (Float.of_int timeout))
+         ~rpc_handshake_timeout:(Time.Span.of_sec (Float.of_int timeout_int))
          ~rpc_heartbeat_config:heartbeat_config
-         ~where:`Local ()
+         ~where:`Local
+         ~redirect_stdout:`Dev_null
+         ~redirect_stderr:`Dev_null
+         ()
          ~on_failure:(handle_error "unresponsive worker") >>= fun (worker, _id) ->
        (Rpc.Connection.with_client
-          ~handshake_timeout:(Time.Span.of_sec (Float.of_int timeout))
+          ~handshake_timeout:(Time.Span.of_sec (Float.of_int timeout_int))
           ~heartbeat_config
           ~host:(Host_and_port.host worker)
           ~port:(Host_and_port.port worker)

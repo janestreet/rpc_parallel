@@ -1,6 +1,9 @@
+<**/*.ml{,i}>: warn(-40), no_alias_deps
+<**/*>: thread
+# This prevents the implicit addition of -ppx options by ocamlfind
+<**/*.ml{,i}>: predicate(ppx_driver)
+<core/src/*.ml>: for-pack(Rpc_parallel_core_deprecated)
+<core/src/*.ml{,i}>: pp(ppx-jane -dump-ast -inline-test-lib rpc_parallel.core)
+<src/*>: ugly_hack_to_workaround_ocamlbuild_nightmare
 # OASIS_START
 # OASIS_STOP
-<**/*.ml{,i}>: syntax_camlp4o, warn(-40)
-<src/*.ml{,i}>: pa_ounit_lib(rpc_parallel)
-<core/src/*.ml{,i}>: pa_ounit_lib(rpc_parallel_core)
-<src/*>: ugly_hack_to_workaround_ocamlbuild_nightmare

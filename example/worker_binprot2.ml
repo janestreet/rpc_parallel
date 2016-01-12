@@ -9,7 +9,7 @@ module Args = struct
     ; max_elt         : int
     ; process_delay   : float
     ; num_elts        : int
-    } with bin_io
+    } [@@deriving bin_io]
 
   let default =
     { checkpoint_time = 1.
@@ -43,7 +43,7 @@ module Worker = struct
       ; mutable num_elts        : int
       }
 
-    type init_arg = [`Even | `Odd] * Args.t with bin_io
+    type init_arg = [`Even | `Odd] * Args.t [@@deriving bin_io]
 
     let init (worker_type, (args : Args.t)) =
       let state =
@@ -145,9 +145,15 @@ let command =
     (fun checkpoint_time max_elt process_delay num_elts () ->
        let args : Args.t = {checkpoint_time; max_elt; process_delay; num_elts} in
        (* Spawn the workers *)
-       Worker.spawn_exn (`Even, args) ~on_failure:(handle_error "even worker")
+       Worker.spawn_exn
+         ~redirect_stdout:`Dev_null
+         ~redirect_stderr:`Dev_null
+         (`Even, args) ~on_failure:(handle_error "even worker")
        >>= fun even_worker ->
-       Worker.spawn_exn (`Odd, args) ~on_failure:(handle_error "odd worker")
+       Worker.spawn_exn
+         ~redirect_stdout:`Dev_null
+         ~redirect_stderr:`Dev_null
+         (`Odd, args) ~on_failure:(handle_error "odd worker")
        >>= fun odd_worker ->
        (* Tell workers to start doing work *)
        Worker.run_exn even_worker ~f:Worker.functions.start_work ~arg:odd_worker

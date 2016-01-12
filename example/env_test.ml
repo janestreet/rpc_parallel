@@ -7,7 +7,7 @@ module Pre_worker = struct
     getenv : ('w, string, string option) Parallel.Function.t
   }
 
-  type init_arg = unit with bin_io
+  type init_arg = unit [@@deriving bin_io]
   type state = unit
 
   let init = return
@@ -39,7 +39,8 @@ let command =
            `Remote (Or_error.ok_exn remote_executable)
        end
        >>= fun where ->
-       Worker.spawn_exn ~env:[key, data] ~where () ~on_failure:Error.raise
+       Worker.spawn_exn ~env:[key, data] ~where ~redirect_stdout:`Dev_null
+         ~redirect_stderr:`Dev_null () ~on_failure:Error.raise
        >>= fun worker ->
        Worker.run_exn worker ~f:Worker.functions.getenv ~arg:key
        >>= fun result ->

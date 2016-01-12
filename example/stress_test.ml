@@ -6,7 +6,7 @@ module Worker = struct
   module T = struct
     type 'worker functions = {ping:('worker, unit, unit) Parallel.Function.t}
 
-    type init_arg = unit with bin_io
+    type init_arg = unit [@@deriving bin_io]
     type state = unit
     let init  = return
 
@@ -50,7 +50,8 @@ let command =
            begin
              let start = Time.to_float (Time.now ()) in
              Deferred.all_unit (List.map (List.range 0 num_workers) ~f:(fun _i ->
-               Worker.spawn_exn ~where:executable () ~on_failure:Error.raise
+               Worker.spawn_exn ~where:executable ~redirect_stdout:`Dev_null
+                 ~redirect_stderr:`Dev_null () ~on_failure:Error.raise
                >>= fun worker ->
                Worker.run_exn worker ~f:Worker.functions.ping ~arg:() >>= fun () ->
                Worker.kill_exn worker))

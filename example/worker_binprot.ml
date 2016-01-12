@@ -17,7 +17,7 @@ module Worker = struct
        dispatch: ('worker, 'worker, int) Parallel.Function.t}
 
     (* Don't do any initialization *)
-    type init_arg = unit with bin_io
+    type init_arg = unit [@@deriving bin_io]
     type state = unit
     let init = return
 
@@ -50,8 +50,14 @@ let command =
       empty
     )
     (fun () ->
-       Worker.spawn_exn () ~on_failure:Error.raise >>= fun worker1 ->
-       Worker.spawn_exn () ~on_failure:Error.raise >>= fun worker2 ->
+       Worker.spawn_exn
+         ~redirect_stdout:`Dev_null
+         ~redirect_stderr:`Dev_null
+         () ~on_failure:Error.raise >>= fun worker1 ->
+       Worker.spawn_exn
+         ~redirect_stdout:`Dev_null
+         ~redirect_stderr:`Dev_null
+         () ~on_failure:Error.raise >>= fun worker2 ->
        let repeat job n =
          Deferred.List.iter (List.range 0 n) ~f:(fun _i -> job ())
        in

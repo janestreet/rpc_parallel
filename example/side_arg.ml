@@ -5,13 +5,13 @@ open Rpc_parallel.Std
 module Side_arg_map_function = Map_reduce.Make_map_function_with_init(struct
   type state_type = string
   module Param = struct
-    type t = string with bin_io
+    type t = string [@@deriving bin_io]
   end
   module Input = struct
-    type t = unit with bin_io
+    type t = unit [@@deriving bin_io]
   end
   module Output = struct
-    type t = string with bin_io
+    type t = string [@@deriving bin_io]
   end
 
   let init param =

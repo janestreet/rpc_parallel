@@ -3,10 +3,10 @@ open Async.Std
 
 module Half_open_interval = struct
   module T = struct
-    type t = int * int with sexp
+    type t = int * int [@@deriving sexp]
     let create_exn l u =
       if l >= u then failwiths "Lower bound must be less than upper bound"
-                       (l, u) <:sexp_of<int * int>>;
+                       (l, u) [%sexp_of: int * int];
       (l, u)
     let lbound t = fst t
     let ubound t = snd t
@@ -17,7 +17,7 @@ module Half_open_interval = struct
       else
         (if intersects t1 t2 then
            failwiths "Cannot compare unequal intersecting intervals"
-             (t1, t2) <:sexp_of<t * t>>;
+             (t1, t2) [%sexp_of: t * t];
          Int.compare (lbound t1) (lbound t2))
   end
   include T
@@ -84,7 +84,7 @@ module Make_rpc_parallel_worker(S : Rpc_parallel_worker_spec) = struct
     module Types = struct
       type 'worker functions =
         { execute : ('worker, S.Run_input.t, S.Run_output.t) Parallel.Function.t }
-      type init_arg = S.Param.t with bin_io
+      type init_arg = S.Param.t [@@deriving bin_io]
       type state = S.state_type
     end
 
@@ -110,7 +110,8 @@ module Make_rpc_parallel_worker(S : Rpc_parallel_worker_spec) = struct
   type run_output_type = S.Run_output.t
 
   let spawn_exn where param =
-    Parallel_worker.spawn_exn ~where param ~on_failure:Error.raise
+    Parallel_worker.spawn_exn ~where ~redirect_stdout:`Dev_null
+      ~redirect_stderr:`Dev_null param ~on_failure:Error.raise
 
   let spawn_config_exn {Config.local; remote} param =
     if local < 0 then
@@ -122,7 +123,7 @@ module Make_rpc_parallel_worker(S : Rpc_parallel_worker_spec) = struct
     if local = 0 &&
        not (List.exists remote ~f:(fun (_remote, n) -> n > 0)) then
       failwiths "total number of workers must be positive"
-        (local, List.map remote ~f:snd) <:sexp_of<int * int list>>;
+        (local, List.map remote ~f:snd) [%sexp_of: int * int list];
     let spawn_n where n = Deferred.List.init n ~f:(fun _i -> spawn_exn where param) in
     Deferred.both
       (spawn_n `Local local)
@@ -188,7 +189,7 @@ module Make_map_function(S : Map_function_spec) =
   Make_map_function_with_init(struct
     type state_type = unit
     module Param = struct
-      type t = unit with bin_io
+      type t = unit [@@deriving bin_io]
     end
     module Input = S.Input
     module Output = S.Output
@@ -240,7 +241,7 @@ struct
         | `Combine of Accum.t * Accum.t
         | `Map_right_combine of Accum.t * Input.t
         ]
-      with bin_io
+      [@@deriving bin_io]
     end
     module Run_output = Accum
 
@@ -265,7 +266,7 @@ module Make_map_reduce_function(S : Map_reduce_function_spec) =
   Make_map_reduce_function_with_init(struct
     type state_type = unit
     module Param = struct
-      type t = unit with bin_io
+      type t = unit [@@deriving bin_io]
     end
     module Accum = S.Accum
     module Input = S.Input

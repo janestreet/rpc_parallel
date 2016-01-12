@@ -3,7 +3,7 @@ open Async.Std
 open Rpc_parallel.Std
 
 (* An example demonstrating how workers can themselves act as masters and spawn more
-   workers. We have to layers of workers, where the first layer spawns the workers of the
+   workers. We have two layers of workers, where the first layer spawns the workers of the
    second layer. *)
 
 module Secondary_worker = struct
@@ -12,7 +12,7 @@ module Secondary_worker = struct
       { ping:('worker, unit, string) Parallel.Function.t
       }
 
-    type init_arg = unit with bin_io
+    type init_arg = unit [@@deriving bin_io]
     type state = unit
 
     let init = return
@@ -31,7 +31,7 @@ end
 
 module Primary_worker = struct
   module T = struct
-    type ping_result = string list with bin_io
+    type ping_result = string list [@@deriving bin_io]
     type 'worker functions =
       { run:('worker, int, unit) Parallel.Function.t
       ; ping:('worker, unit, ping_result) Parallel.Function.t
@@ -40,7 +40,7 @@ module Primary_worker = struct
     let workers = Bag.create ()
     let next_worker_name () = sprintf "Secondary worker #%i" (Bag.length workers)
 
-    type init_arg = unit with bin_io
+    type init_arg = unit [@@deriving bin_io]
     type state = unit
 
     let init () =
@@ -50,7 +50,8 @@ module Primary_worker = struct
     module Functions(C:Parallel.Creator with type state := state) = struct
       let run_impl () num_workers =
         Deferred.List.init ~how:`Parallel num_workers ~f:(fun _i ->
-          Secondary_worker.spawn_exn () ~on_failure:Error.raise
+          Secondary_worker.spawn_exn ~redirect_stdout:`Dev_null
+            ~redirect_stderr:`Dev_null () ~on_failure:Error.raise
           >>| fun secondary_worker ->
           ignore(Bag.add workers (next_worker_name (), secondary_worker));
         )
@@ -62,7 +63,8 @@ module Primary_worker = struct
         Deferred.List.map ~how:`Parallel (Bag.to_list workers) ~f:(fun (name, worker) ->
           Secondary_worker.run worker ~arg:() ~f:Secondary_worker.functions.ping
           >>| function
-          | Error e -> sprintf "%s: failed (%s)" name (Error.to_string_hum e)
+          | Error e ->
+            sprintf "%s: failed (%s)" name (Error.to_string_hum e)
           | Ok s -> sprintf "%s: %s" name s
         )
 
@@ -87,7 +89,8 @@ let command =
     )
     (fun primary secondary () ->
        Deferred.List.init ~how:`Parallel primary ~f:(fun worker_id ->
-         Primary_worker.spawn_exn () ~on_failure:Error.raise
+         Primary_worker.spawn_exn ~redirect_stdout:`Dev_null
+           ~redirect_stderr:`Dev_null () ~on_failure:Error.raise
          >>= fun primary_worker ->
          Primary_worker.run_exn primary_worker
            ~f:Primary_worker.functions.run ~arg:secondary

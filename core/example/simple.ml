@@ -1,6 +1,6 @@
 open Core.Std
 open Async.Std
-open Rpc_parallel_core.Std
+open Rpc_parallel_core_deprecated.Std
 
 (* A simple use of the [Rpc_parallel_core] library. Spawn two different types of
    workers, one that can compute sums and another that can compute products. Give work to
@@ -42,24 +42,20 @@ let prod_implementations =
   Rpc.Implementations.create_exn ~implementations:[prod_rpc_impl]
     ~on_unknown_rpc:`Close_connection
 
-let worker_main ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
-      op =
+let worker_main op =
   let implementations = (match op with
   | `Sum -> sum_implementations
   | `Product -> prod_implementations)
   in
   Rpc.Connection.serve ~implementations
-    ?max_message_size:rpc_max_message_size
-    ?handshake_timeout:rpc_handshake_timeout
-    ?heartbeat_config:rpc_heartbeat_config
     ~initial_connection_state:(fun _ _ -> ())
     ~where_to_listen:Tcp.on_port_chosen_by_os ()
   >>| fun serv ->
   Host_and_port.create ~host:(Unix.gethostname()) ~port:(Tcp.Server.listening_on serv)
 
-module Parallel_app = Parallel.Make(struct
-  type worker_arg = [`Sum | `Product] with bin_io
-  type worker_ret = Host_and_port.t with bin_io
+module Parallel_app = Parallel_deprecated.Make(struct
+  type worker_arg = [`Sum | `Product] [@@deriving bin_io]
+  type worker_ret = Host_and_port.t [@@deriving bin_io]
   let worker_main = worker_main
 end)
 

@@ -5,7 +5,7 @@ open Rpc_parallel.Std
 module Failer_impl = struct
   type 'a functions = ('a, unit, unit) Parallel.Function.t
 
-  type init_arg = unit with bin_io
+  type init_arg = unit [@@deriving bin_io]
   type state = unit
 
   let init = return
@@ -27,13 +27,14 @@ let command =
     ~summary:"ensure that raising in a worker function passes the exception to the master"
     Command.Spec.empty
     (fun () ->
-       Failer.spawn_exn ~on_failure:Error.raise ()
+       Failer.spawn_exn ~on_failure:Error.raise ~redirect_stdout:`Dev_null
+         ~redirect_stderr:`Dev_null ()
        >>= fun failer ->
        Failer.run failer ~f:Failer.functions ~arg:()
        >>| function
        | Ok () -> failwith "expected to fail but did not"
-       | Error error ->
-         printf "expected failure: %s\n" (Error.to_string_hum error);)
+       | Error e -> printf !"expected failure: %{sexp:Error.t}\n" e)
+
 ;;
 
 let () = Parallel.start_app command

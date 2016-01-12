@@ -8,7 +8,7 @@ module Worker = struct
   module T = struct
     type 'worker functions = {ping:('worker, unit, unit) Parallel.Function.t}
 
-    type init_arg = unit with bin_io
+    type init_arg = unit [@@deriving bin_io]
     type state = unit
 
     let init = return
@@ -30,7 +30,8 @@ let copy_to_host_test worker dir =
   >>= function
   | Error e -> Error.raise e
   | Ok executable ->
-    Worker.spawn_exn ~where:(`Remote executable) () ~on_failure:Error.raise >>= fun w ->
+    Worker.spawn_exn ~where:(`Remote executable) ~redirect_stdout:`Dev_null
+      ~redirect_stderr:`Dev_null () ~on_failure:Error.raise >>= fun w ->
     Worker.run_exn w ~f:Worker.functions.ping ~arg:() >>| fun () ->
     executable
 
@@ -39,7 +40,8 @@ let existing_on_host_test worker path =
   let existing_executable =
     Parallel.Remote_executable.existing_on_host ~executable_path:path worker
   in
-  Worker.spawn_exn ~where:(`Remote existing_executable) () ~on_failure:Error.raise
+  Worker.spawn_exn ~where:(`Remote existing_executable) ~redirect_stdout:`Dev_null
+    ~redirect_stderr:`Dev_null () ~on_failure:Error.raise
   >>= fun w2 ->
   Worker.run_exn w2 ~f:Worker.functions.ping ~arg:()
 
@@ -56,7 +58,8 @@ let mismatching_executable_test worker dir =
     >>= function
     | Error e -> Error.raise e
     | Ok (_:string) ->
-      Worker.spawn ~where:(`Remote executable) () ~on_failure:Error.raise
+      Worker.spawn ~where:(`Remote executable) ~redirect_stdout:`Dev_null
+        ~redirect_stderr:`Dev_null () ~on_failure:Error.raise
       >>= function
       | Error e ->
         let error = Error.to_string_hum e in

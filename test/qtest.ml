@@ -17,7 +17,7 @@ module Count_map_reduce_function =
     module Param = Int
     module Accum = Int
     module Input = struct
-      type t = int list with bin_io
+      type t = int list [@@deriving bin_io]
     end
     type state_type = int
     let init = return
@@ -27,7 +27,7 @@ module Count_map_reduce_function =
 
 module Concat_map_reduce_function = Map_reduce.Make_map_reduce_function(struct
   module Accum = struct
-    type t = int list with bin_io
+    type t = int list [@@deriving bin_io]
   end
   module Input = Int
   let map x = return [x]

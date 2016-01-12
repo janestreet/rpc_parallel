@@ -12,7 +12,7 @@ module Unresponsive_worker = struct
        returns (). *)
     type 'worker functions = {wait:('worker, int, unit) Parallel.Function.t}
 
-    type init_arg = unit with bin_io
+    type init_arg = unit [@@deriving bin_io]
     type state = unit
     let init = return
 
@@ -43,15 +43,16 @@ let command =
     (fun sleep_for timeout_int () ->
        (* This is the main function called in the master. Spawn a local worker and run
           the [wait] function on this worker *)
-       let timeout = Time.Span.of_sec (Float.of_int timeout_int) in
+       let timeout = Time_ns.Span.of_sec (Float.of_int timeout_int) in
        let heartbeat_config =
-         { Rpc.Connection.Heartbeat_config.
-           timeout
-         ; send_every = Time.Span.of_sec (Float.of_int (timeout_int/3))
-         }
+         let send_every = Time_ns.Span.of_sec (Float.of_int (timeout_int / 3)) in
+         Rpc.Connection.Heartbeat_config.create ~timeout ~send_every
        in
-       Unresponsive_worker.spawn_exn ()
-         ~rpc_handshake_timeout:timeout
+       Unresponsive_worker.spawn_exn
+         ~redirect_stdout:`Dev_null
+         ~redirect_stderr:`Dev_null
+         ()
+         ~rpc_handshake_timeout:(Time_ns.Span.to_span timeout)
          ~rpc_heartbeat_config:heartbeat_config
          ~on_failure:(fun e -> Error.raise (Error.tag e "spawn_exn"))
        >>= fun worker ->
