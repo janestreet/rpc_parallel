@@ -31,25 +31,29 @@ let append_index reader =
     index := !index + 1;
     (item, item_index))
 
-type packed_remote = Packed_remote : 'remote Parallel.Remote_executable.t -> packed_remote
+type packed_remote = Packed_remote : 'remote Remote_executable.t -> packed_remote
 
 module Config = struct
   type t =
-    { local : int
-    ; remote : (packed_remote * int) list
+    { local           : int
+    ; remote          : (packed_remote * int) list
+    ; cd              : string option
+    ; redirect_stderr : [ `Dev_null | `File_append of string ]
+    ; redirect_stdout : [ `Dev_null | `File_append of string ]
     }
 
   let default_cores () =
     (ok_exn Linux_ext.cores) ()
 
-  let create ?(local = 0) ?(remote = []) () =
+  let create ?(local = 0) ?(remote = []) ?cd ~redirect_stderr ~redirect_stdout () =
     let (local, remote) =
       if local = 0 && (List.is_empty remote) then
         (default_cores (), remote)
       else
         (local, remote)
     in
-    { local; remote = List.map remote ~f:(fun (remote, n) -> (Packed_remote remote, n)) }
+    { local; remote = List.map remote ~f:(fun (remote, n) -> (Packed_remote remote, n));
+      cd; redirect_stderr; redirect_stdout }
 end
 
 (* Wrappers for generic worker *)
@@ -59,13 +63,9 @@ module type Worker = sig
   type run_input_type
   type run_output_type
 
-  val spawn_exn
-    :  [`Local | `Remote of _ Parallel.Remote_executable.t]
-    -> param_type
-    -> t Deferred.t
   val spawn_config_exn : Config.t -> param_type -> t list Deferred.t
   val run_exn : t -> run_input_type -> run_output_type Deferred.t
-  val kill_exn : t -> unit Deferred.t
+  val shutdown_exn : t -> unit Deferred.t
 end
 
 module type Rpc_parallel_worker_spec = sig
@@ -80,40 +80,55 @@ end
 
 module Make_rpc_parallel_worker(S : Rpc_parallel_worker_spec) = struct
   module Parallel_worker = struct
-    (* Types required for both Parallel.Worker_spec and Parallel.Worker *)
-    module Types = struct
-      type 'worker functions =
-        { execute : ('worker, S.Run_input.t, S.Run_output.t) Parallel.Function.t }
-      type init_arg = S.Param.t [@@deriving bin_io]
-      type state = S.state_type
-    end
-
     module T = struct
-      include Types
+      type 'worker functions =
+        { execute  : ('worker, S.Run_input.t, S.Run_output.t) Parallel.Function.t }
 
-      let init = S.init
+      module Worker_state = struct
+        type init_arg = S.Param.t [@@deriving bin_io]
+        type t   = S.state_type
+      end
 
-      module Functions(C : Parallel.Creator with type state := state) = struct
-        let execute = C.create_rpc ~f:S.execute
-                        ~bin_input:S.Run_input.bin_t ~bin_output:S.Run_output.bin_t ()
+      module Connection_state = struct
+        type init_arg = unit [@@deriving bin_io]
+        type t =  unit
+      end
+
+      module Functions(C : Parallel.Creator
+                       with type worker_state := Worker_state.t
+                        and type worker_state_init_arg := Worker_state.init_arg
+                        and type connection_state := Connection_state.t) = struct
+        let execute =
+          C.create_rpc
+            ~f:(fun ~worker_state ~conn_state:() -> S.execute worker_state)
+            ~bin_input:S.Run_input.bin_t ~bin_output:S.Run_output.bin_t ()
+
         let functions = { execute }
+
+        let init_worker_state ~parent_heartbeater arg =
+          Parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
+            parent_heartbeater
+          >>= fun ( `Connected | `No_parent ) ->
+          S.init arg
+
+        let init_connection_state ~connection:_ ~worker_state:_ () = return ()
       end
     end
 
-    include Types
-    include Parallel.Make_worker(T)
+    include Parallel.Make (T)
   end
 
-  type t = Parallel_worker.t
+  type t = Parallel_worker.Connection.t
   type param_type = S.Param.t
   type run_input_type = S.Run_input.t
   type run_output_type = S.Run_output.t
 
-  let spawn_exn where param =
-    Parallel_worker.spawn_exn ~where ~redirect_stdout:`Dev_null
-      ~redirect_stderr:`Dev_null param ~on_failure:Error.raise
+  let spawn_exn where param ?cd ~redirect_stderr ~redirect_stdout =
+    Parallel_worker.spawn_and_connect_exn ~where ?cd ~redirect_stderr
+      ~redirect_stdout param ~connection_state_init_arg:() ~on_failure:Error.raise
+    >>| fun (_worker, conn) -> conn
 
-  let spawn_config_exn {Config.local; remote} param =
+  let spawn_config_exn {Config.local; remote; cd; redirect_stderr; redirect_stdout} param =
     if local < 0 then
       failwiths "config.local must be nonnegative" local Int.sexp_of_t;
     (match List.find remote ~f:(fun (_remote, n) -> n < 0) with
@@ -124,19 +139,25 @@ module Make_rpc_parallel_worker(S : Rpc_parallel_worker_spec) = struct
        not (List.exists remote ~f:(fun (_remote, n) -> n > 0)) then
       failwiths "total number of workers must be positive"
         (local, List.map remote ~f:snd) [%sexp_of: int * int list];
-    let spawn_n where n = Deferred.List.init n ~f:(fun _i -> spawn_exn where param) in
+    let spawn_n where n =
+      Deferred.List.init n ~f:(fun _i ->
+        spawn_exn where param ?cd
+          ~redirect_stderr:(redirect_stderr :> Fd_redirection.t)
+          ~redirect_stdout:(redirect_stdout :> Fd_redirection.t))
+    in
     Deferred.both
-      (spawn_n `Local local)
+      (spawn_n Local local)
       (Deferred.List.concat_map ~how:`Parallel remote
-         ~f:(fun (Packed_remote remote, n) -> spawn_n (`Remote remote) n))
+         ~f:(fun (Packed_remote remote, n) -> spawn_n (Remote remote) n))
     >>| fun (local_workers, remote_workers) ->
     local_workers @ remote_workers
 
   let run_exn t input =
-    Parallel_worker.run_exn t ~f:Parallel_worker.functions.execute ~arg:input
+    Parallel_worker.Connection.run_exn t
+      ~f:Parallel_worker.functions.execute ~arg:input
 
-  let kill_exn t =
-    Parallel_worker.kill_exn t
+  let shutdown_exn t =
+    Parallel_worker.Connection.run_exn t ~f:Parallel.Function.shutdown ~arg:()
 end
 
 (* Map *)
@@ -290,7 +311,7 @@ let map_unordered (type param) (type a) (type b)
   let rec map_loop worker =
     Pipe.read input_with_index_reader
     >>= function
-    | `Eof -> Map_function.Worker.kill_exn worker
+    | `Eof -> Map_function.Worker.shutdown_exn worker
     | `Ok (input, index) ->
       Map_function.Worker.run_exn worker input
       >>= fun output ->
@@ -354,17 +375,17 @@ let find_map (type param) (type a) (type b)
   let rec find_loop worker =
     Pipe.read input_reader
     >>= function
-    | `Eof -> Map_function.Worker.kill_exn worker
+    | `Eof -> Map_function.Worker.shutdown_exn worker
     | `Ok input ->
       (* Check result and exit early if we've found something. *)
       match !found_value with
-      | Some _ -> Map_function.Worker.kill_exn worker
+      | Some _ -> Map_function.Worker.shutdown_exn worker
       | None ->
         Map_function.Worker.run_exn worker input
         >>= function
         | Some value ->
           found_value := Some value;
-          Map_function.Worker.kill_exn worker
+          Map_function.Worker.shutdown_exn worker
         | None ->
           find_loop worker
   in
@@ -403,13 +424,13 @@ let map_reduce_commutative (type param) (type a) (type accum)
       >>= combine_loop worker
     | None ->
       combined_acc := Some acc;
-      Map_reduce_function.Worker.kill_exn worker
+      Map_reduce_function.Worker.shutdown_exn worker
   in
   Deferred.all_unit (List.map workers ~f:(fun worker ->
     map_and_combine_loop worker None
     >>= function
     | Some acc -> combine_loop worker acc
-    | None -> Map_reduce_function.Worker.kill_exn worker))
+    | None -> Map_reduce_function.Worker.shutdown_exn worker))
   >>| fun () ->
   !combined_acc
 
@@ -465,7 +486,7 @@ let map_reduce (type param) (type a) (type accum)
   let rec map_and_combine_loop worker =
     Pipe.read input_with_index_reader
     >>= function
-    | `Eof -> Map_reduce_function.Worker.kill_exn worker
+    | `Eof -> Map_reduce_function.Worker.shutdown_exn worker
     | `Ok (input, index) ->
       let key = H.create_exn index (index + 1) in
       (match H.Map.closest_key !acc_map `Less_than key with

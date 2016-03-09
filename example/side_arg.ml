@@ -30,8 +30,12 @@ let command =
     )
     (fun ntimes nworkers () ->
        let list = (Pipe.of_list (List.init ntimes ~f:(fun _i -> ()))) in
+       let config =
+         Map_reduce.Config.create ~local:nworkers ()
+           ~redirect_stderr:`Dev_null ~redirect_stdout:`Dev_null
+       in
        Map_reduce.map_unordered
-         (Map_reduce.Config.create ~local:nworkers ())
+         config
          list
          ~m:(module Side_arg_map_function)
          ~param:"Message from the master"

@@ -1,333 +1,369 @@
-open Core.Std
-open Async.Std
+open! Core.Std
+open! Async.Std
 
-(** A type-safe parallel library built on top of Async_rpc.
-
-    module Worker = Parallel.Make_worker(T:Worker_spec)
-
-    The [Worker] module can be used to spawn new workers, either locally or remotely, and
-    run functions on these workers. [T] specifies which functions can be run on a
-    [Worker.t] as well as the implementations for these functions. In addition, different
-    instances of [Worker.t] types can be differentiated upon [spawn] by passing in a
-    different [init_arg] and handling this argument in the [init] function of [T].
-
-    Basic usage:
-
-    module Worker = struct
-      module T = struct
-        type 'worker functions = {f1:('worker, int, int) Parallel.Function.t}
-
-        type init_arg = unit with bin_io
-        let init = return
-
-        module Functions(C:Parallel.Creator) = struct
-          let f1 = C.create_rpc ~f:(fun i -> return (i+42)) ~bin_input:Int.bin_t
-            ~bin_output:Int.bin_t
-
-          let functions = {f1}
-        end
-      end
-      include Parallel.Make_worker(T)
-    end
-
-    let main ... =
-      ...
-      Worker.spawn_exn ~on_failure:Error.raise () >>= fun worker ->
-      ...
-      Worker.run_exn worker ~f:Worker.functions.f1 ~arg:0 >>= fun res ->
-      ...
-
-    let command = Command.async ~summary spec main
-
-    let () = Parallel.start_app command
-
-    * NOTE *: It is highly recommended for [Parallel.start_app] and [Parallel.Make_worker]
-    calls to be top-level. But the only real requirements are:
-
-    1) The master's state is initialized before any calls to [spawn]. This will be
-    achieved either by [Parallel.start_app] or [Parallel.init_master_exn].
-
-    2) Spawned workers (runs of your executable with a certain environment variable set)
-    must start running as a worker. This will be achieved either by [Parallel.start_app]
-    or [Parallel.run_as_worker_exn]. With [Parallel.run_as_worker_exn], you must carefully
-    supply the necessary command arguments to ensure [Parallel.run_as_worker_exn] is
-    indeed called.
-
-    3) Spawned workers must be able to find their function implementations when they start
-    running as a worker. These implementations are gathered on the application of the
-    [Parallel.Make_worker] functor.
-
-    A word on monitoring:
-
-    Exceptions in workers will always result in the worker shutting down. The master can
-    be notified of these exceptions in multiple ways:
-
-    - If the exception occured in a function implementation before return, the exception
-      will be returned back in the [Error.t] of the [run] (or [spawn]) call.
-
-    - If the exception occured after return, [on_failure exn] will be called.
-
-    - If [redirect_stderr] specifies a file, the worker will write its exception to that
-      file before shutting down. *)
-
-(** This module is used to transfer the currently running executable to a remote machine *)
-module Remote_executable : sig
-  type 'a t
-
-  (** [existing_on_host ~executable_path ?strict_host_key_checking host] will create a
-     [t] from the supplied host and path. The executable MUST be the exact same executable
-     that will be run in the master process. There will be a check for this in
-     [spawn_worker]. Use [strict_host_key_checking] to change the StrictHostKeyChecking
-     option used when sshing into this host *)
-  val existing_on_host
-    :  executable_path:string
-    -> ?strict_host_key_checking:[`No | `Ask | `Yes]
-    -> string
-    -> [`Undeletable] t
-
-  (** [copy_to_host ~executable_dir ?strict_host_key_checking host] will copy the currently
-     running executable to the desired host and path. It will keep the same name but add a
-     suffix .XXXXXXXX. Use [strict_host_key_checking] to change the StrictHostKeyChecking
-     option used when sshing into this host *)
-  val copy_to_host
-    :  executable_dir:string
-    -> ?strict_host_key_checking:[`No | `Ask | `Yes]
-    -> string
-    -> [`Deletable] t Or_error.t Deferred.t
-
-  (** [delete t] will delete a remote executable that was copied over by a previous call
-     to [copy_to_host] *)
-  val delete : [`Deletable] t -> unit Or_error.t Deferred.t
-
-  (** Get the underlying path, host, and host_key_checking *)
-  val path : _ t -> string
-  val host : _ t -> string
-  val host_key_checking : _ t -> string list
-end
-
-module Fd_redirection : sig
-  type t = [
-    | `Dev_null
-    | `File_append of string
-    | `File_truncate of string
-  ] [@@deriving sexp]
-end
+(** See README for more details *)
 
 (** A [('worker, 'query, 'response) Function.t] is a type-safe function ['query ->
     'response Deferred.t] that can only be run on a ['worker]. Under the hood it
     represents an Async Rpc protocol that we know a ['worker] will implement. *)
 module Function : sig
   type ('worker, 'query, 'response) t
+
+  (** Common functions that are implemented by all workers *)
+
+  (** This implementation simply calls [Shutdown.shutdown 0] *)
+  val shutdown  : (_, unit, unit) t
+
+  (** This implementation will add another [Log.Output] for [Log.Global] that transfers
+      log messages to the returned pipe. You can subscribe to a worker's log more than
+      once and from different processes, as each call simply adds a new [Log.Output].
+      Closing the pipe will remove the corresponding [Log.Output].
+
+      NOTE: You will never get any log messages before this implementation has run (there
+      is no queuing of log messages). As a consequence, you will never get any log
+      messages written in a worker's init functions. *)
+  val async_log : (_, unit, Log.Message.Stable.V2.t Pipe.Reader.t) t
+
+  (** A given process can have multiple worker servers running (of the same or different
+      worker types). This implementation closes the server on which it is run. All
+      existing open connections will remain open, but no further connections to this
+      worker server will be accepted.
+
+      NOTE: calling [close_server] on a worker process that is only running one worker
+      server will leave a stranded worker process if no other cleanup has been setup
+      (e.g. setting up [on_client_disconnect] or [Connection.close_finished] handlers) *)
+  val close_server : (_, unit, unit) t
+end
+
+(** A [Heartbeater.t] is an Rpc server only used for heartbeats. The only thing you can do
+    with a [Heartbeater.t] is connect to it and get notified when the connection
+    closed. *)
+module Heartbeater : sig
+  type t [@@deriving bin_io]
+
+  (** A helper function to be used on the [~parent_heartbeater] argument of the
+      [init_worker_state] function. The suggested use is:
+
+        Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn) parent_heartbeater
+
+      [if_spawned f parent_heartbeater] will run [f] on the heartbeater if this worker was
+      created with [spawn]. If the worker was created with [Connection.serve] (in
+      process), nothing occurs and [`No_parent] is returned. *)
+  val if_spawned
+    :  ( t -> ([> `No_parent ] as 'a) Deferred.t )
+    -> [ `Spawned of t | `Served ]
+    -> 'a Deferred.t
+
+  (** Connect to the given [Heartbeater.t] (host and port) and call
+      [Shutdown.shutdown] upon [Rpc.Connection.close_finished], raising an exception if
+      unable to connect. The returned [Deferred.t] is determined once the initial
+      connection has been established. *)
+  val connect_and_shutdown_on_disconnect_exn : t -> [> `Connected ] Deferred.t
+
+  val connect_and_wait_for_disconnect_exn
+    :  t
+    -> [> `Connected of [ `Disconnected ] Deferred.t ] Deferred.t
+end
+
+module type Worker = sig
+  (** A [Worker.t] type is defined [with bin_io] so it is possible to create functions
+      that take a worker as an argument. *)
+  type t [@@deriving bin_io, sexp_of]
+
+  (** A type alias to make the [Connection] and [Managed] signature more readable *)
+  type worker = t
+
+  type 'a functions
+
+  (** Accessor for the functions implemented by this worker type *)
+  val functions : t functions
+
+  type worker_state_init_arg
+  type connection_state_init_arg
+
+  module Id : Identifiable
+  val id : t -> Id.t
+
+  (** [serve arg] will start an Rpc server in process implementing all the functions
+      of the given worker. *)
+  val serve
+    :  ?max_message_size  : int
+    -> ?handshake_timeout : Time.Span.t
+    -> ?heartbeat_config  : Rpc.Connection.Heartbeat_config.t
+    -> worker_state_init_arg
+    -> worker Deferred.t
+
+  module Connection : sig
+    type t
+
+    (** Run functions implemented by this worker *)
+    val run
+      :  t
+      -> f : (worker, 'query, 'response) Function.t
+      -> arg : 'query
+      -> 'response Or_error.t Deferred.t
+
+    val run_exn
+      :  t
+      -> f : (worker, 'query, 'response) Function.t
+      -> arg : 'query
+      -> 'response Deferred.t
+
+    (** Connect to a given worker, returning a type wrapped [Rpc.Connection.t] that can be
+        used to run functions. *)
+    val client : worker -> connection_state_init_arg -> t Or_error.t Deferred.t
+    val client_exn : worker -> connection_state_init_arg -> t Deferred.t
+
+    (** [with_client worker init_arg f] connects to the [worker]'s server, initializes the
+        connection state with [init_arg]  and runs [f] until an exception is thrown or
+        until the returned Deferred is determined.
+
+        NOTE: You should be careful when using this with [Pipe_rpc].
+        See [Rpc.Connection.with_close] for more information. *)
+    val with_client
+      :  worker
+      -> connection_state_init_arg
+      -> f: (t -> 'a Deferred.t)
+      -> 'a Or_error.t Deferred.t
+
+    val close : t -> unit Deferred.t
+    val close_finished : t -> unit Deferred.t
+    val is_closed : t -> bool
+  end
+
+  type 'a with_spawn_args
+    =  ?where : Executable_location.t
+    -> ?env : (string * string) list
+    -> ?rpc_max_message_size  : int
+    -> ?rpc_handshake_timeout : Time.Span.t
+    -> ?rpc_heartbeat_config : Rpc.Connection.Heartbeat_config.t
+    -> ?connection_timeout:Time.Span.t
+    -> ?cd : string  (** default / *)
+    -> ?umask : int  (** defaults to use existing umask *)
+    -> redirect_stdout : Fd_redirection.t
+    -> redirect_stderr : Fd_redirection.t
+    -> on_failure : (Error.t -> unit)
+    -> worker_state_init_arg
+    -> 'a
+
+
+  (** [spawn init_arg ?where ?on_failure ()] will create a worker on [where]
+      that can subsequently run some functions.
+
+      [where] defaults to [`Local] but can be specified to be some remote host.
+
+      [cd] defaults to / and can be used to change the current working directory of a
+      spawned worker.
+
+      [on_failure exn] will be called inside [Monitor.current ()] at the time of the call
+      to [spawn] in the master when the spawned worker raises a background exception.
+      All exceptions raised before function return will be returned to the caller.
+
+      [worker_state_init_arg] will be passed to [Worker_state.init] of the given [Worker_spec]
+      module. This initializes a persistent worker state for all connections to this
+      worker. *)
+  val spawn : t Or_error.t Deferred.t with_spawn_args
+
+  val spawn_exn : t Deferred.t with_spawn_args
+
+  val spawn_and_connect
+    : (connection_state_init_arg : connection_state_init_arg
+       -> (t * Connection.t) Or_error.t Deferred.t) with_spawn_args
+
+  val spawn_and_connect_exn
+    : (connection_state_init_arg : connection_state_init_arg
+       -> (t * Connection.t) Deferred.t) with_spawn_args
+end
+
+module type Functions = sig
+  type worker
+
+  type worker_state_init_arg
+  type worker_state
+
+  type connection_state_init_arg
+  type connection_state
+
+  type 'worker functions
+  val functions : worker functions
+
+  (** [init_worker_state] is called with the [init_arg] passed to [spawn] or [serve]
+
+      If [spawn] was called, it is highly recommeded to call
+      [connect_and_shutdown_on_disconnect_exn] on the supplied heartbeater of the spawner.
+
+      The [Cleanup.connect_and_shutdown_on_disconnect_if_spawned_exn] function does just
+      this for you. *)
+  val init_worker_state
+    :  parent_heartbeater : [ `Spawned of Heartbeater.t | `Served ]
+    -> worker_state_init_arg
+    -> worker_state Deferred.t
+
+  (** [init_connection_state] is called with the [init_arg] passed to [Connection.client]
+
+      [connection] should only be used to register [close_finished] callbacks, not to
+      dispatch.  *)
+  val init_connection_state
+    :  connection   : Rpc.Connection.t
+    -> worker_state : worker_state
+    -> connection_state_init_arg
+    -> connection_state Deferred.t
 end
 
 module type Creator = sig
-  type worker [@@deriving bin_io]
-  type state
+  type worker
+
+  type worker_state
+  type worker_state_init_arg
+  type connection_state
+  type connection_state_init_arg
 
   (** [create_rpc ?name ~f ~bin_input ~bin_output ()] will create an [Rpc.Rpc.t] with
       [name] if specified and use [f] as an implementation for this Rpc. It returns back a
-      [Function.t], a type-safe [Rpc.Rpc.t]. *)
+      [Function.t], a type-safe Rpc protocol. *)
   val create_rpc
-    :  ?name: string
-    -> f:(state -> 'query -> 'response Deferred.t)
-    -> bin_input: 'query Bin_prot.Type_class.t
-    -> bin_output: 'response Bin_prot.Type_class.t
+    :  ?name : string
+    -> f
+       : (worker_state : worker_state
+          -> conn_state : connection_state
+          -> 'query
+          -> 'response Deferred.t)
+    -> bin_input : 'query Bin_prot.Type_class.t
+    -> bin_output : 'response Bin_prot.Type_class.t
     -> unit
     -> (worker, 'query, 'response) Function.t
 
   (** [create_pipe ?name ~f ~bin_input ~bin_output ()] will create an [Rpc.Pipe_rpc.t]
       with [name] if specified. The implementation for this Rpc is a function that creates
       a [Pipe.Reader.t] and a [Pipe.Writer.t], then calls [f arg ~writer] and returns the
-      reader. [create_pipe] returns a [Function_piped.t] which is a type-safe
-      [Rpc.Pipe_rpc.t]. *)
-  val create_pipe :
-    ?name: string
-    -> f:(state -> 'query -> 'response Pipe.Reader.t Deferred.t)
-    -> bin_input: 'query Bin_prot.Type_class.t
-    -> bin_output: 'response Bin_prot.Type_class.t
+      reader.
+
+      Notice that [aborted] is not exposed. The pipe is closed upon aborted. *)
+  val create_pipe
+    :  ?name : string
+    -> f
+       : (worker_state  : worker_state
+          -> conn_state : connection_state
+          -> 'query
+          -> 'response Pipe.Reader.t Deferred.t)
+    -> bin_input : 'query Bin_prot.Type_class.t
+    -> bin_output : 'response Bin_prot.Type_class.t
     -> unit
     -> (worker, 'query, 'response Pipe.Reader.t) Function.t
+
+  (** [create_one_way ?name ~f ~bin_msg ()] will create an [Rpc.One_way.t] with [name] if
+      specified and use [f] as an implementation. *)
+  val create_one_way
+    :  ?name : string
+    -> f
+       : (worker_state  : worker_state
+          -> conn_state : connection_state
+          -> 'query
+          ->  unit)
+    -> bin_input : 'query Bin_prot.Type_class.t
+    -> unit
+    -> (worker, 'query, unit) Function.t
 
   (** [of_async_rpc ~f rpc] is the analog to [create_rpc] but instead of creating an Rpc
       protocol, it uses the supplied one *)
   val of_async_rpc
-    :  f:(state -> 'query -> 'response Deferred.t)
+    :  f
+       : (worker_state  : worker_state
+          -> conn_state : connection_state
+          -> 'query
+          -> 'response Deferred.t)
     -> ('query, 'response) Rpc.Rpc.t
     -> (worker, 'query, 'response) Function.t
 
   (** [of_async_pipe_rpc ~f rpc] is the analog to [create_pipe] but instead of creating a
-      Pipe_rpc protocol, it uses the supplied one *)
+      Pipe rpc protocol, it uses the supplied one.
+
+      Notice that [aborted] is not exposed. The pipe is closed upon aborted. *)
   val of_async_pipe_rpc
-    :  f:(state -> 'query -> 'response Pipe.Reader.t Deferred.t)
+    :  f
+       : (worker_state  : worker_state
+          -> conn_state : connection_state
+          -> 'query
+          -> 'response Pipe.Reader.t Deferred.t)
     -> ('query, 'response, Error.t) Rpc.Pipe_rpc.t
     -> (worker, 'query, 'response Pipe.Reader.t) Function.t
 
-  (** [run] is exposed in this interface so the implementations of functions can include
-      running other functions defined on this worker. A function can take a [worker] as an
-      argument and call [run] on this worker *)
-  val run
-    :  worker
-    -> f: (worker, 'query, 'response) Function.t
-    -> arg: 'query
-    -> 'response Or_error.t Deferred.t
-
-  val run_exn
-    :  worker
-    -> f: (worker, 'query, 'response) Function.t
-    -> arg: 'query
-    -> 'response Deferred.t
-end
-
-module type Functions = sig
-  type worker
-  type 'worker functions
-  val functions : worker functions
-end
-
-module type Worker = sig
-  (** A [Worker.t] type is defined [with bin_io] so it is possible to create functions
-      that take a worker as an argument. See sample code for examples *)
-  type t [@@deriving bin_io]
-  type 'a functions
-  type init_arg
-
-  (** Accessor for the functions implemented by this worker type *)
-  val functions : t functions
-
-  (** [spawn_worker arg ?where ?on_failure ?disown ()] will create a worker on [where]
-      that can subsequently run some functions.
-
-      [where] defaults to [`Local] but can be specified to be some remote host.
-
-      Specifying [?log_dir] as a folder on the worker machine leads to the worker
-      redirecting its stdout and stderr to files in this folder, named with the worker id.
-      When [?name] is also specified, the log file will use this name instead.
-
-      [on_failure] will be called when the spawned worker either loses connection
-      or raises a background exception.
-
-      [disown] defaults to false. If it is set to [true] then this worker will not
-      shutdown upon losing connection with the master process. It will continue to report
-      back any exceptions as long as it remains connected to the master. The spawned
-      workers will be running with some name [name.exe.XXXXXXXX] where [name.exe] was the
-      name of the original running executable. *)
-  val spawn
-    :  ?where : [`Local | `Remote of _ Remote_executable.t]
-    -> ?disown : bool
-    -> ?env : (string * string) list
-    -> ?rpc_max_message_size  : int
-    -> ?rpc_handshake_timeout : Time.Span.t
-    -> ?rpc_heartbeat_config : Rpc.Connection.Heartbeat_config.t
-    -> ?connection_timeout:Time.Span.t
-    -> ?cd : string  (** default / *)
-    -> ?umask : int  (** defaults to use existing umask *)
-    -> redirect_stdout : Fd_redirection.t
-    -> redirect_stderr : Fd_redirection.t
-    -> init_arg
-    -> on_failure : (Error.t -> unit)
-    -> t Or_error.t Deferred.t
-
-  val spawn_exn
-    :  ?where : [`Local | `Remote of _ Remote_executable.t]
-    -> ?disown : bool
-    -> ?env : (string * string) list
-    -> ?rpc_max_message_size  : int
-    -> ?rpc_handshake_timeout : Time.Span.t
-    -> ?rpc_heartbeat_config : Rpc.Connection.Heartbeat_config.t
-    -> ?connection_timeout:Time.Span.t
-    -> ?cd : string  (** default / *)
-    -> ?umask : int  (** defaults to use existing umask *)
-    -> redirect_stdout : Fd_redirection.t
-    -> redirect_stderr : Fd_redirection.t
-    -> init_arg
-    -> on_failure : (Error.t -> unit)
-    -> t Deferred.t
-
-  (** [run t ~f ~arg] will run [f] on [t] with the argument [arg]. *)
-  val run
-    :  t
-    -> f: (t, 'query, 'response) Function.t
-    -> arg: 'query
-    -> 'response Or_error.t Deferred.t
-
-  val run_exn
-    :  t
-    -> f: (t, 'query, 'response) Function.t
-    -> arg: 'query
-    -> 'response Deferred.t
-
-  (** [async_log t] will return a [Pipe.Reader.t] collecting messages corresponding to
-      [Log.Global] calls in [t]. You need not be the master of [t] to get its log.
-
-      Note: there is no queueing of log messages on the worker side, so all log messages
-      that were written before the call to [async_log] will not be written to the
-      pipe. A consequence of this is that you will never get any log messages written in
-      a worker's init function. *)
-  val async_log : t -> Log.Message.Stable.V2.t Pipe.Reader.t Deferred.Or_error.t
-
-
-  (** [kill t] will close the established connection with the spawned worker and kill the
-      worker process. Subsequent calls to [run] or [kill] on this worker will result in an
-      error. [kill] only works from the master that initially spawned the worker, and will
-      fail with an error if you run it from any other process. *)
-  val kill     : t -> unit Or_error.t Deferred.t
-  val kill_exn : t -> unit            Deferred.t
-
-  (** Get the underlying host/port information of the given worker *)
-  val host_and_port : t -> Host_and_port.t
+  (** [of_async_one_way_rpc ~f rpc] is the analog to [create_one_way] but instead of
+      creating a One_way rpc protocol, it uses the supplied one *)
+  val of_async_one_way_rpc
+    :  f
+       : (worker_state  : worker_state
+          -> conn_state : connection_state
+          -> 'query
+          -> unit)
+    -> 'query Rpc.One_way.t
+    -> (worker, 'query, unit) Function.t
 end
 
 (** Specification for the creation of a worker type *)
 module type Worker_spec = sig
   (** A type to encapsulate all the functions that can be run on this worker. Using a
-      record type here is often the most convenient and readable *)
+      record type here is often the most convenient and readable. *)
   type 'worker functions
 
-  (** [init init_arg] will be called in a worker when it is spawned *)
-  type init_arg [@@deriving bin_io]
-  type state
-  val init : init_arg -> state Deferred.t
+  (** State associated with each [Worker.t]. If this state is mutable, you must
+      think carefully when making multiple connections to the same spawned worker. *)
+  module Worker_state : sig
+    type t
+    type init_arg [@@deriving bin_io]
+  end
+
+  (** State associated with each connection to a [Worker.t] *)
+  module Connection_state : sig
+    type t
+    type init_arg [@@deriving bin_io]
+  end
 
   (** The functions that can be run on this worker type *)
-  module Functions(C:Creator with type state := state) : Functions
-    with type 'a functions := 'a functions
-    with type worker := C.worker
+  module Functions
+      (C : Creator
+       with type worker_state = Worker_state.t
+        and type worker_state_init_arg = Worker_state.init_arg
+        and type connection_state = Connection_state.t
+        and type connection_state_init_arg = Connection_state.init_arg)
+    : Functions
+      with type worker := C.worker
+       and type 'a functions := 'a functions
+       and type worker_state := Worker_state.t
+       and type worker_state_init_arg := Worker_state.init_arg
+       and type connection_state := Connection_state.t
+       and type connection_state_init_arg := Connection_state.init_arg
 end
 
-(** module Worker = Make_worker(T)
+(** module Worker = Make(T)
 
-    The [Worker] module has specialized functions to spawn workers, kill workers, and run
-    functions on workers. *)
-module Make_worker(S: Worker_spec) : Worker
+    The [Worker] module has specialized functions to spawn workers and run functions on
+    workers. *)
+module Make (S : Worker_spec) : Worker
   with type 'a functions := 'a S.functions
-  with type init_arg := S.init_arg
+   and type worker_state_init_arg := S.Worker_state.init_arg
+   and type connection_state_init_arg := S.Connection_state.init_arg
 
-(** [start_app command] should be called from the top-level in order to start the parallel
-    application. [command] must be constructed with a call to [Command.async] so that the
-    Async scheduler is started. This function will parse certain environment variables and
-    determine whether to start as a master or a worker.
+(** [start_app command] should be called from the top-level in order to start the
+    parallel application. [command] must be constructed with a call to [Command.async] so
+    that the Async scheduler is started. This function will parse certain environment
+    variables and determine whether to start as a master or a worker.
 
     [rpc_max_message_size], [rpc_heartbeat_config], [where_to_listen] specify the RPC
-    server that the master starts.
-
-    [implementations] are additional implementations that the master will implement.
-*)
+    server that the master starts. *)
 val start_app
-  : ?rpc_max_message_size : int
+  :  ?rpc_max_message_size : int
   -> ?rpc_handshake_timeout : Time.Span.t
   -> ?rpc_heartbeat_config : Rpc.Connection.Heartbeat_config.t
-  (** You should almost always let the OS choose what host/port the master's rpc server
-      lives on. *)
-  -> ?where_to_listen : Tcp.Where_to_listen.inet
-  -> ?implementations : unit Rpc.Implementation.t list
   -> Command.t
   -> unit
 
-(** Use [State.get] to query whether [start_app] was used. We return a [State.t] rather
-    than a [bool] so that you can require evidence at the type level. If you want to
-    certify, as a precondition, for some function that [start_app] was used, require a
-    [State.t] as an argument. If you don't need the [State.t] anymore, just pattern match
-    on it. *)
+(** Use [State.get] to query whether the current process has been initialized as an rpc
+    parallel master ([start_app] or [init_master_exn] has been called). We return a
+    [State.t] rather than a [bool] so that you can require evidence at the type level.
+    If you want to certify, as a precondition, for some function that [start_app] was
+    used, require a [State.t] as an argument. If you don't need the [State.t] anymore,
+    just pattern match on it. *)
 module State : sig
   type t = private [< `started ]
 
@@ -346,23 +382,16 @@ module Expert : sig
     :  ?rpc_max_message_size  : int
     -> ?rpc_handshake_timeout : Time.Span.t
     -> ?rpc_heartbeat_config : Rpc.Connection.Heartbeat_config.t
-    -> ?where_to_listen : Tcp.Where_to_listen.inet
-    -> ?implementations : unit Rpc.Implementation.t list
     -> worker_command_args : string list
     -> unit
     -> unit
 
   (** [run_as_worker_exn] is the entry point for all workers. It is illegal to call both
       [init_master_exn] and [run_as_worker_exn] in the same process. Will also raise an
-      exception if the process was not spawned by a master. Make sure to pass in
-      [worker_command_args] here as well so this spawned worker can also successfully
-      spawn workers.
+      exception if the process was not spawned by a master.
 
       NOTE: Various information is sent from the master to the spawned worker as a sexp
       through its stdin. A spawned worker should *never* read from stdin before calling
-      [run_as_worker_exn].
-  *)
-  val run_as_worker_exn
-    :  worker_command_args : string list
-    -> never_returns
+      [run_as_worker_exn]. *)
+  val run_as_worker_exn : unit -> never_returns
 end

@@ -8,23 +8,28 @@ open Rpc_parallel.Std
 
 module Sum_worker = struct
   module T = struct
-    (* A [Sum_worker.t] implements a single function [sum : int -> int]. Because this
+    (* A [Sum_worker.worker] implements a single function [sum : int -> int]. Because this
        function is parameterized on a ['worker], it can only be run on workers of the
-       [Sum_worker.t] type. *)
+       [Sum_worker.worker] type. *)
     type 'worker functions = {sum:('worker, int, int) Parallel.Function.t}
 
-    (* A [Sum_worker.t] doesn't have any initialization upon [spawn] *)
-    type init_arg = unit [@@deriving bin_io]
-    type state = unit
+    (* No initialization upon spawn *)
+    module Worker_state = struct
+      type init_arg = unit [@@deriving bin_io]
+      type t = unit
+    end
 
-    let init () =
-      (* See comment in [Parallel.mli], this log message will not be sent to the master *)
-      Log.Global.info "Sum_worker.init\n";
-      return ()
+    module Connection_state = struct
+      type init_arg = unit [@@deriving bin_io]
+      type t = unit
+    end
 
-    module Functions(C:Parallel.Creator with type state := state) = struct
+    module Functions
+        (C : Parallel.Creator
+         with type worker_state := Worker_state.t
+          and type connection_state := Connection_state.t) = struct
       (* Define the implementation for the [sum] function *)
-      let sum_impl () arg =
+      let sum_impl ~worker_state:() ~conn_state:() arg =
         let sum = List.fold ~init:0 ~f:(+) (List.init arg ~f:Fn.id) in
         Log.Global.info "Sum_worker.sum: %i\n" sum;
         return sum
@@ -34,9 +39,16 @@ module Sum_worker = struct
 
       (* This type must match the ['worker functions] type defined above *)
       let functions = {sum}
+
+      let init_worker_state ~parent_heartbeater () =
+        Parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
+          parent_heartbeater
+        >>| fun ( `Connected | `No_parent ) -> ()
+
+      let init_connection_state ~connection:_ ~worker_state:_ = return
     end
   end
-  include Parallel.Make_worker(T)
+  include Parallel.Make(T)
 end
 
 let main max log_dir () =
@@ -47,28 +59,29 @@ let main max log_dir () =
   in
   (* This is the main function called in the master. Spawn a local worker and run
      the [sum] function on this worker *)
-  Sum_worker.spawn ~on_failure:Error.raise
-    ?cd:log_dir ~redirect_stdout ~redirect_stderr ()
-  >>=? fun sum_worker ->
-  Sum_worker.async_log sum_worker
-  >>=? fun log ->
-  don't_wait_for(Pipe.iter log ~f:(fun line ->
-    printf !"%{sexp:Log.Message.Stable.V2.t}\n" line |> return));
-  Sum_worker.run sum_worker ~f:Sum_worker.functions.sum ~arg:max
-  >>|? fun res ->
-  printf "sum_worker: %d\n%!" res
+  Sum_worker.spawn_and_connect
+    ~on_failure:Error.raise
+    ?cd:log_dir
+    ~redirect_stdout
+    ~redirect_stderr
+    ~connection_state_init_arg:()
+    ()
+  >>=? fun (_sum_worker, conn) ->
+  Sum_worker.Connection.run conn ~f:Sum_worker.functions.sum ~arg:max
+  >>=? fun res ->
+  Core.Std.Printf.printf "sum_worker: %d\n%!" res;
+  Deferred.Or_error.ok_unit
 
 let command =
   (* Make sure to always use [Command.async] *)
-  Command.async ~summary:"Simple use of Async Parallel V2"
+  Command.async_or_error ~summary:"Simple use of Async Parallel V2"
     Command.Spec.(
       empty
       +> flag "max" (required int) ~doc:""
       +> flag "log-dir" (optional string)
            ~doc:" Folder to write worker logs to"
     )
-    (fun max log_dir () ->
-       main max log_dir () >>| Or_error.ok_exn)
+    main
 
 (* This call to [Parallel.start_app] must be top level *)
 let () = Parallel.start_app command

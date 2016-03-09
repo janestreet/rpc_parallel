@@ -32,9 +32,13 @@ let command =
     )
     (fun max ntimes nworkers ordered () ->
        let list = (Pipe.of_list (List.init ntimes ~f:(fun i -> (i, max)))) in
+       let config =
+         Map_reduce.Config.create ~local:nworkers
+           ~redirect_stderr:`Dev_null ~redirect_stdout:`Dev_null ()
+       in
        if ordered then
          (Map_reduce.map
-            (Map_reduce.Config.create ~local:nworkers ())
+            config
             list
             ~m:(module Add_numbers_map_function)
             ~param:()
@@ -45,7 +49,7 @@ let command =
           ))
        else
          (Map_reduce.map_unordered
-            (Map_reduce.Config.create ~local:nworkers ())
+            config
             list
             ~m:(module Add_numbers_map_function)
             ~param:()

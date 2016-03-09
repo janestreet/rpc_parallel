@@ -60,9 +60,10 @@ let command =
               Map_reduce.Config.create
                 ~remote:[ (Parallel.Remote_executable.existing_on_host
                              ~executable_path:remote_path remote_host, nworkers) ]
-                ()
+                ~redirect_stderr:`Dev_null ~redirect_stdout:`Dev_null ()
             | _ -> failwith "No remote path specified")
-         | _ -> Map_reduce.Config.create ~local:nworkers ()
+         | _ -> Map_reduce.Config.create ~local:nworkers
+                  ~redirect_stderr:`Dev_null ~redirect_stdout:`Dev_null ()
        in
        Map_reduce.map_unordered config
          (Pipe.of_list (List.init nblocks ~f:(Fn.const ())))

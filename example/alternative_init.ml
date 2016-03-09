@@ -6,15 +6,21 @@ module Sum_worker = struct
   module T = struct
     type 'worker functions = {sum:('worker, int, int) Parallel.Function.t}
 
-    type init_arg = unit [@@deriving bin_io]
-    type state = unit
+    module Worker_state = struct
+      type init_arg = unit [@@deriving bin_io]
+      type t = unit
+    end
 
-    let init () =
-      printf "Sum_worker.init\n";
-      return ()
+    module Connection_state = struct
+      type init_arg = unit [@@deriving bin_io]
+      type t = unit
+    end
 
-    module Functions(C:Parallel.Creator with type state := state) = struct
-      let sum_impl () arg =
+    module Functions
+        (C : Parallel.Creator
+         with type worker_state := Worker_state.t
+          and type connection_state := Connection_state.t) = struct
+      let sum_impl ~worker_state:() ~conn_state:() arg =
         let sum = List.fold ~init:0 ~f:(+) (List.init arg ~f:Fn.id) in
         printf "Sum_worker.sum: %i\n" sum;
         return sum
@@ -22,13 +28,21 @@ module Sum_worker = struct
       let sum = C.create_rpc ~f:sum_impl ~bin_input:Int.bin_t ~bin_output:Int.bin_t ()
 
       let functions = {sum}
+
+      let init_worker_state ~parent_heartbeater () =
+        printf "Sum_worker.init\n";
+        Parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
+          parent_heartbeater
+        >>| fun ( `Connected | `No_parent ) -> ()
+
+      let init_connection_state ~connection:_ ~worker_state:_ = return
     end
   end
-  include Parallel.Make_worker(T)
+  include Parallel.Make(T)
 end
 
 let command =
-  Command.async ~summary:"Simple use of Async Parallel V2"
+  Command.async_or_error ~summary:"Simple use of Async Parallel V2"
     Command.Spec.(
       empty
       +> flag "max" (required int) ~doc:"NUM what number to add up to"
@@ -39,8 +53,7 @@ let command =
     (fun max log_dir as_worker () ->
        if as_worker then
          never_returns
-           (Parallel.Expert.run_as_worker_exn
-              ~worker_command_args:["-max"; "10"; "-as-worker"])
+           (Parallel.Expert.run_as_worker_exn ())
        else begin
          Parallel.Expert.init_master_exn
            ~worker_command_args:["-max"; "10"; "-as-worker"] ();
@@ -49,11 +62,14 @@ let command =
            | None -> (`Dev_null, `Dev_null)
            | Some _ -> (`File_append "sum.out", `File_append "sum.err")
          in
-         Sum_worker.spawn_exn ~on_failure:Error.raise
+         Sum_worker.spawn ~on_failure:Error.raise
            ?cd:log_dir ~redirect_stdout ~redirect_stderr ()
-         >>= fun sum_worker ->
-         Sum_worker.run_exn sum_worker ~f:Sum_worker.functions.sum ~arg:max >>= fun res ->
-         return (Core.Std.Printf.printf "sum_worker: %d\n%!" res)
+         >>=? fun sum_worker ->
+         Sum_worker.Connection.client sum_worker ()
+         >>=? fun conn ->
+         Sum_worker.Connection.run conn ~f:Sum_worker.functions.sum ~arg:max
+         >>|? fun res ->
+         Core.Std.Printf.printf "sum_worker: %d\n%!" res
        end)
 
 let () = Command.run command

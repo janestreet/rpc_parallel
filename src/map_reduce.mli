@@ -1,17 +1,21 @@
 (** A parallel map/reduce library. See examples/add_numbers.ml and
     examples/number_stats.ml for examples. *)
 
-open Core.Std
-open Async.Std
+open! Core.Std
+open! Async.Std
 
 module Config : sig
   type t
 
-  (** default is to create the same number of local workers as the cores in local
-      machine *)
+  (** Default is to create the same number of local workers as the cores in local
+      machine. All spawned workers will their redirect stdout and stderr to the same
+      file. *)
   val create
     :  ?local : int
-    -> ?remote : (_ Parallel.Remote_executable.t * int) list
+    -> ?remote : (_ Remote_executable.t * int) list
+    -> ?cd : string  (** default / *)
+    -> redirect_stderr : [ `Dev_null | `File_append of string ]
+    -> redirect_stdout : [ `Dev_null | `File_append of string ]
     -> unit
     -> t
 end
@@ -22,13 +26,9 @@ module type Worker = sig
   type run_input_type
   type run_output_type
 
-  val spawn_exn
-    :  [`Local | `Remote of _ Parallel.Remote_executable.t]
-    -> param_type
-    -> t Deferred.t
   val spawn_config_exn : Config.t -> param_type -> t list Deferred.t
   val run_exn : t -> run_input_type -> run_output_type Deferred.t
-  val kill_exn : t -> unit Deferred.t
+  val shutdown_exn : t -> unit Deferred.t
 end
 
 (** {4 Map functions} *)
