@@ -179,10 +179,12 @@ let command =
        Stream_worker.Connection.run stream_conn ~f:Stream_worker.functions.start ~arg:()
        >>=? fun () ->
        (* Collect the results *)
-       Deferred.all_unit
-         (List.mapi workers ~f:(fun i worker ->
-            Pipe.iter worker
-              ~f:(fun num -> return (Core.Std.Printf.printf "worker %d: %d\n%!" i num))))
-       >>= fun () -> Deferred.Or_error.ok_unit)
+       let elements = List.init num_elements ~f:(fun _i -> Ivar.create ()) in
+       don't_wait_for (Deferred.List.iter ~how:`Parallel workers ~f:(fun worker ->
+         Pipe.iter worker ~f:(fun num -> Ivar.fill (List.nth_exn elements num) () |> return)));
+       Deferred.all_unit (List.map elements ~f:Ivar.read)
+       >>| fun () ->
+       printf "Ok.\n";
+       Or_error.return ())
 
 let () = Parallel.start_app command

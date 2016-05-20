@@ -94,7 +94,7 @@ module type Worker = sig
     -> worker Deferred.t
 
   module Connection : sig
-    type t
+    type t [@@deriving sexp_of]
 
     (** Run functions implemented by this worker *)
     val run
@@ -128,51 +128,93 @@ module type Worker = sig
 
     val close : t -> unit Deferred.t
     val close_finished : t -> unit Deferred.t
+    val close_reason : t -> on_close: [`started | `finished] -> Info.t Deferred.t
     val is_closed : t -> bool
   end
 
+  (** The various [spawn] functions can be used to create a new worker process that
+      implements the functions specified in the [Worker_spec].
+
+      [name] can be useful for debugging as it will be attached to certain error messages
+
+      [env] can be used to extend the environment of the spawned worker process.
+
+      [rpc_max_message_size], [rpc_handshake_timeout], [rpc_heartbeat_config] can be used
+      to alter the rpc defaults. This can be useful if you have long async jobs.
+
+      [connection_timeout] is the timeout used when waiting to establish a connection from
+      the spawned worker process.
+
+      [cd] can be used to change the current working directory of a spawned worker process.
+
+      [on_failure exn] will be called in the spawning process upon the worker process
+      raising a background exception. All exceptions raised before functions return will be
+      returned to the caller. [on_failure] will be called in [Monitor.current ()] at the
+      time of this spawn call.
+
+      [worker_state_init_arg] (below) will be passed to [init_worker_state] of the given
+      [Worker_spec] module. This initializes a persistent worker state for all connections
+      to this worker. *)
   type 'a with_spawn_args
-    =  ?where : Executable_location.t
+    =  ?where : Executable_location.t  (** default Local *)
+    -> ?name : string
     -> ?env : (string * string) list
     -> ?rpc_max_message_size  : int
     -> ?rpc_handshake_timeout : Time.Span.t
     -> ?rpc_heartbeat_config : Rpc.Connection.Heartbeat_config.t
-    -> ?connection_timeout:Time.Span.t
+    -> ?connection_timeout:Time.Span.t  (** default 10 sec *)
     -> ?cd : string  (** default / *)
-    -> ?umask : int  (** defaults to use existing umask *)
-    -> redirect_stdout : Fd_redirection.t
-    -> redirect_stderr : Fd_redirection.t
     -> on_failure : (Error.t -> unit)
-    -> worker_state_init_arg
     -> 'a
 
+  (** The spawned worker process daemonizes. Any initialization errors that wrote to
+      stderr (Rpc_parallel internal initialization, not user initialization code) will be
+      captured and rewritten to the spawning process's stderr with the prefix
+      "[WORKER STDERR]".
 
-  (** [spawn init_arg ?where ?on_failure ()] will create a worker on [where]
-      that can subsequently run some functions.
+      [redirect_stdout] and [redirect_stderr] specify stdout and stderr of the worker
+      process. *)
+  val spawn
+    : (?umask : int  (** defaults to use existing umask *)
+       -> redirect_stdout : Fd_redirection.t
+       -> redirect_stderr : Fd_redirection.t
+       -> worker_state_init_arg
+       -> t Or_error.t Deferred.t) with_spawn_args
 
-      [where] defaults to [`Local] but can be specified to be some remote host.
-
-      [cd] defaults to / and can be used to change the current working directory of a
-      spawned worker.
-
-      [on_failure exn] will be called inside [Monitor.current ()] at the time of the call
-      to [spawn] in the master when the spawned worker raises a background exception.
-      All exceptions raised before function return will be returned to the caller.
-
-      [worker_state_init_arg] will be passed to [Worker_state.init] of the given [Worker_spec]
-      module. This initializes a persistent worker state for all connections to this
-      worker. *)
-  val spawn : t Or_error.t Deferred.t with_spawn_args
-
-  val spawn_exn : t Deferred.t with_spawn_args
-
+  (** Similar to [spawn] but make an initial connection to the spawned worker process. *)
   val spawn_and_connect
-    : (connection_state_init_arg : connection_state_init_arg
+    : (?umask : int  (** defaults to use existing umask *)
+       -> redirect_stdout : Fd_redirection.t
+       -> redirect_stderr : Fd_redirection.t
+       -> connection_state_init_arg : connection_state_init_arg
+       -> worker_state_init_arg
        -> (t * Connection.t) Or_error.t Deferred.t) with_spawn_args
 
+  (** Similar to [spawn] but the worker process does not daemonize. If the process was
+      spawned on a remote host, the ssh [Process.t] is returned. *)
+  val spawn_in_foreground
+    : (worker_state_init_arg
+       -> (t * Process.t) Or_error.t Deferred.t) with_spawn_args
+
+  (** Matching spawn functions that raise on an error *)
+  val spawn_exn
+    : (?umask : int
+       -> redirect_stdout : Fd_redirection.t
+       -> redirect_stderr : Fd_redirection.t
+       -> worker_state_init_arg
+       -> t Deferred.t) with_spawn_args
+
   val spawn_and_connect_exn
-    : (connection_state_init_arg : connection_state_init_arg
+    : (?umask : int
+       -> redirect_stdout : Fd_redirection.t
+       -> redirect_stderr : Fd_redirection.t
+       -> connection_state_init_arg : connection_state_init_arg
+       -> worker_state_init_arg
        -> (t * Connection.t) Deferred.t) with_spawn_args
+
+  val spawn_in_foreground_exn
+    : (worker_state_init_arg
+       -> (t * Process.t) Deferred.t) with_spawn_args
 end
 
 module type Functions = sig
@@ -391,7 +433,13 @@ module Expert : sig
       exception if the process was not spawned by a master.
 
       NOTE: Various information is sent from the master to the spawned worker as a sexp
-      through its stdin. A spawned worker should *never* read from stdin before calling
-      [run_as_worker_exn]. *)
+      through its stdin. A spawned worker must never read from stdin before the
+      [init_worker_state] function begins running.
+
+      NOTE: This has the side effect of calling [chdir] (always) and redirecting
+      stdout/stderr (unless [spawn_in_foreground]). This could be potentially confusing if
+      you rely on your current working directory or these file descriptors before calling
+      [run_as_worker_exn].
+  *)
   val run_as_worker_exn : unit -> never_returns
 end

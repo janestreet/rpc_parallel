@@ -2,12 +2,8 @@ open Core.Std
 open Async.Std
 
 
-(* This seems pretty silly but having the [Port.Table.t] type makes the code more
-   readable *)
-module Port : sig
-  type t = int [@@deriving bin_io]
-  include Hashable.S with type t := int
-end
+module Worker_id = Uuid
+module Worker_type_id : Unique_id
 
 (* The internal connection state we keep with every connection to a worker.
 
@@ -18,7 +14,7 @@ end
    stored here to gracefully handle the cleanup needed when [close_server] is called when
    there are still open connections.
 
-   [server] is the host and port of the worker server that this connection is to. This is
+   [worker_id] is the id of the worker server that this connection is to. This is
    needed because there can be multiple instances of a given worker server in a single
    process.
 
@@ -27,7 +23,7 @@ module Internal_connection_state : sig
   type ('worker_state, 'conn_state) t1 =
     { worker_state : 'worker_state
     ; conn_state   : 'conn_state
-    ; server       : Port.t }
+    ; worker_id    : Worker_id.t }
 
   type ('worker_state, 'conn_state) t =
     Rpc.Connection.t * ('worker_state, 'conn_state) t1 Set_once.t

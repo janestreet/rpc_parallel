@@ -13,9 +13,7 @@ open Async.Std
     worker, using this functor might require less code. *)
 
 module type Worker = sig
-  (** NOTE: If you are passing around [Worker.t]'s, keep in mind that a large
-      connection state init arg means you are passing around a lot of data. *)
-  type t [@@deriving bin_io, sexp_of]
+  type t [@@deriving sexp_of]
   type unmanaged_t
 
   type 'a functions

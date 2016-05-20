@@ -2,7 +2,7 @@ open Core.Std
 open Async.Std
 
 module type Worker = sig
-  type t [@@deriving bin_io, sexp_of]
+  type t [@@deriving sexp_of]
   type unmanaged_t
 
   type 'a functions
@@ -72,7 +72,6 @@ module Make (S : Parallel.Worker_spec) = struct
     ; connection_init_arg : S.Connection_state.init_arg
     ; id : Id.t
     }
-  [@@deriving bin_io]
 
   type unmanaged_t = Unmanaged.t
 

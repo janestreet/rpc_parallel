@@ -385,9 +385,7 @@ module Make(
             | Ok res ->
               Hashtbl.add_exn st.workers ~key:id ~data:connection;
               (* Setup cleanup *)
-              (Rpc.Connection.close_finished connection
-               >>> fun () ->
-               Rpc.Connection.close_reason connection
+              (Rpc.Connection.close_reason ~on_close:`finished connection
                >>> fun info ->
                match Hashtbl.find st.workers id with
                | None ->

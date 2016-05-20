@@ -42,34 +42,37 @@ module Sum_worker = struct
 end
 
 let command =
-  Command.async_or_error ~summary:"Simple use of Async Parallel V2"
-    Command.Spec.(
-      empty
-      +> flag "max" (required int) ~doc:"NUM what number to add up to"
-      +> flag "log-dir" (optional string)
-           ~doc:" Folder to write worker logs to"
-      +> flag "as-worker" no_arg ~doc:"Run as a worker (Should not be called directly)"
-    )
-    (fun max log_dir as_worker () ->
-       if as_worker then
-         never_returns
-           (Parallel.Expert.run_as_worker_exn ())
-       else begin
-         Parallel.Expert.init_master_exn
-           ~worker_command_args:["-max"; "10"; "-as-worker"] ();
-         let redirect_stdout, redirect_stderr =
-           match log_dir with
-           | None -> (`Dev_null, `Dev_null)
-           | Some _ -> (`File_append "sum.out", `File_append "sum.err")
-         in
-         Sum_worker.spawn ~on_failure:Error.raise
-           ?cd:log_dir ~redirect_stdout ~redirect_stderr ()
-         >>=? fun sum_worker ->
-         Sum_worker.Connection.client sum_worker ()
-         >>=? fun conn ->
-         Sum_worker.Connection.run conn ~f:Sum_worker.functions.sum ~arg:max
-         >>|? fun res ->
-         Core.Std.Printf.printf "sum_worker: %d\n%!" res
-       end)
+  Command.group
+    ~summary:"Simple use of Async Parallel V2"
+    [ "worker",
+      Command.basic
+        ~summary:"for internal use"
+        Command.Spec.empty
+        (fun () -> never_returns (Parallel.Expert.run_as_worker_exn ()))
+    ; "main",
+      Command.async_or_error
+        ~summary:"start the master and spawn the workers"
+        Command.Spec.(
+          empty
+          +> flag "max" (required int) ~doc:"NUM what number to add up to"
+          +> flag "log-dir" (optional string)
+               ~doc:" Folder to write worker logs to")
+        (fun max log_dir () ->
+           Parallel.Expert.init_master_exn ~worker_command_args:["worker"] ();
+           let redirect_stdout, redirect_stderr =
+             match log_dir with
+             | None -> (`Dev_null, `Dev_null)
+             | Some _ -> (`File_append "sum.out", `File_append "sum.err")
+           in
+           Sum_worker.spawn ~on_failure:Error.raise
+             ?cd:log_dir ~redirect_stdout ~redirect_stderr ()
+           >>=? fun sum_worker ->
+           Sum_worker.Connection.client sum_worker ()
+           >>=? fun conn ->
+           Sum_worker.Connection.run conn ~f:Sum_worker.functions.sum ~arg:max
+           >>|? fun res ->
+           Core.Std.Printf.printf "sum_worker: %d\n%!" res
+        )
+    ]
 
 let () = Command.run command

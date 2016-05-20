@@ -1,8 +1,8 @@
 open Core.Std
 open Async.Std
 
-module Worker_type_id = Unique_id.Int ()
-module Worker_id      = Unique_id.Int ()
+module Worker_type_id = Utils.Worker_type_id
+module Worker_id      = Utils.Worker_id
 
 (* All processes start a "master" rpc server. This is a server that has two
    implementations:
@@ -198,6 +198,19 @@ module Function = struct
   let close_server = One_way Close_server_rpc.rpc
 end
 
+module Daemonize_args = struct
+  type args =
+    { umask           : int option
+    ; redirect_stderr : Fd_redirection.t
+    ; redirect_stdout : Fd_redirection.t }
+  [@@deriving sexp]
+
+  type t =
+    [ `Don't_daemonize
+    | `Daemonize of args ]
+  [@@deriving sexp]
+end
+
 module Heartbeater = struct
   type t = Host_and_port.t * Rpc_settings.t [@@deriving bin_io]
 
@@ -255,7 +268,7 @@ module type Worker = sig
     -> worker Deferred.t
 
   module Connection : sig
-    type t
+    type t [@@deriving sexp_of]
 
     val run
       :  t
@@ -280,35 +293,59 @@ module type Worker = sig
 
     val close : t -> unit Deferred.t
     val close_finished : t -> unit Deferred.t
+    val close_reason : t -> on_close: [`started | `finished] -> Info.t Deferred.t
     val is_closed : t -> bool
   end
 
   type 'a with_spawn_args
     =  ?where : Executable_location.t
+    -> ?name : string
     -> ?env : (string * string) list
     -> ?rpc_max_message_size  : int
     -> ?rpc_handshake_timeout : Time.Span.t
     -> ?rpc_heartbeat_config : Rpc.Connection.Heartbeat_config.t
     -> ?connection_timeout:Time.Span.t
     -> ?cd : string
-    -> ?umask : int
-    -> redirect_stdout : Fd_redirection.t
-    -> redirect_stderr : Fd_redirection.t
     -> on_failure : (Error.t -> unit)
-    -> worker_state_init_arg
     -> 'a
 
-  val spawn : t Or_error.t Deferred.t with_spawn_args
-
-  val spawn_exn : t Deferred.t with_spawn_args
+  val spawn
+    : (?umask : int
+       -> redirect_stdout : Fd_redirection.t
+       -> redirect_stderr : Fd_redirection.t
+       -> worker_state_init_arg
+       -> t Or_error.t Deferred.t) with_spawn_args
 
   val spawn_and_connect
-    : (connection_state_init_arg : connection_state_init_arg
+    : (?umask : int
+       -> redirect_stdout : Fd_redirection.t
+       -> redirect_stderr : Fd_redirection.t
+       -> connection_state_init_arg : connection_state_init_arg
+       -> worker_state_init_arg
        -> (t * Connection.t) Or_error.t Deferred.t) with_spawn_args
 
+  val spawn_in_foreground
+    : (worker_state_init_arg
+       -> (t * Process.t) Or_error.t Deferred.t) with_spawn_args
+
+  val spawn_exn
+    : (?umask : int
+       ->redirect_stdout : Fd_redirection.t
+       -> redirect_stderr : Fd_redirection.t
+       -> worker_state_init_arg
+       -> t Deferred.t) with_spawn_args
+
   val spawn_and_connect_exn
-    : (connection_state_init_arg : connection_state_init_arg
+    : (?umask : int
+       -> redirect_stdout : Fd_redirection.t
+       -> redirect_stderr : Fd_redirection.t
+       -> connection_state_init_arg : connection_state_init_arg
+       -> worker_state_init_arg
        -> (t * Connection.t) Deferred.t) with_spawn_args
+
+  val spawn_in_foreground_exn
+    : (worker_state_init_arg
+       -> (t * Process.t) Deferred.t) with_spawn_args
 end
 
 module type Functions = sig
@@ -458,10 +495,7 @@ type master_state =
 (* All global state that is not specific to worker types is collected here *)
 type worker_state =
   {(* Currently running worker servers in this process *)
-    my_worker_servers: (Socket.Address.Inet.t, int) Tcp.Server.t Utils.Port.Table.t
-  (* We make sure that if this process was spawned, it has daemonized before starting
-     to run any user code. *)
-  ; has_daemonized: unit Ivar.t }
+    my_worker_servers: (Socket.Address.Inet.t, int) Tcp.Server.t Worker_id.Table.t }
 
 type global_state =
   { as_master : master_state
@@ -493,14 +527,12 @@ let start_server ?max_message_size ?handshake_timeout ?heartbeat_config
 
 module Worker_config = struct
   type t =
-    { worker_type           : Worker_type_id.t
-    ; master                : Host_and_port.t * Rpc_settings.t
-    ; rpc_settings          : Rpc_settings.t
-    ; cd                    : string option
-    ; umask                 : int option
-    ; redirect_stdout       : Fd_redirection.t
-    ; redirect_stderr       : Fd_redirection.t
-    ; worker_command_args   : string list
+    { worker_type         : Worker_type_id.t
+    ; master              : Host_and_port.t * Rpc_settings.t
+    ; rpc_settings        : Rpc_settings.t
+    ; cd                  : string
+    ; daemonize_args      : Daemonize_args.t
+    ; worker_command_args : string list
     } [@@deriving sexp]
 end
 
@@ -568,7 +600,7 @@ let init_master_state ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbea
     (* Use [size:1] so there is minimal top-level overhead linking with Rpc_parallel *)
     let pending = Worker_id.Table.create ~size:1 () in
     let on_failures = Worker_id.Table.create ~size:1 () in
-    let my_worker_servers = Utils.Port.Table.create ~size:1 () in
+    let my_worker_servers = Worker_id.Table.create ~size:1 () in
     (* Lazily start our master rpc server *)
     let my_server = lazy begin
       start_server ?max_message_size:rpc_max_message_size
@@ -585,7 +617,7 @@ let init_master_state ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbea
       { my_server; my_rpc_settings; pending; worker_command_args; on_failures }
     in
     let as_worker =
-      { my_worker_servers; has_daemonized = Ivar.create () }
+      { my_worker_servers }
     in
     Set_once.set_exn global_state {as_master; as_worker};
 
@@ -597,6 +629,7 @@ module Make (S : Worker_spec) = struct
     { host_and_port : Host_and_port.t
     ; rpc_settings  : Rpc_settings.t
     ; id            : Worker_id.t
+    ; name          : string option
     }
   [@@deriving bin_io, sexp_of]
 
@@ -604,7 +637,7 @@ module Make (S : Worker_spec) = struct
 
   (* Internally we use [Worker_id.t] for all worker ids, but we want to expose an [Id]
      module that is specific to each worker. *)
-  let id t = Worker_id.to_string t.id |> Id.of_string
+  let id t = t.id
 
   type worker_state =
     {
@@ -613,7 +646,7 @@ module Make (S : Worker_spec) = struct
          top level, the master and the workers agree on these ids *)
       type_  : Worker_type_id.t
     (* Persistent states associated with instances of this worker server *)
-    ; states : S.Worker_state.t Utils.Port.Table.t
+    ; states : S.Worker_state.t Worker_id.Table.t
     (* Build up a list of all implementations for this worker type *)
     ; mutable implementations :
         (S.Worker_state.t, S.Connection_state.t) Utils.Internal_connection_state.t
@@ -622,7 +655,7 @@ module Make (S : Worker_spec) = struct
 
   let worker_state =
     { type_ = Worker_type_id.create ()
-    ; states = Utils.Port.Table.create ~size:1 ()
+    ; states = Worker_id.Table.create ~size:1 ()
     ; implementations = [] }
 
   (* Schedule all worker implementations in [Monitor.main] so no exceptions are lost.
@@ -636,7 +669,7 @@ module Make (S : Worker_spec) = struct
   module Init_worker_state_rpc = struct
     type query =
       { master : Heartbeater.t    (* The heartbeater of the process that called [spawn] *)
-      ; worker : Utils.Port.t    (* The process that got spawned *)
+      ; worker : Worker_id.t      (* The process that got spawned *)
       ; arg    : S.Worker_state.init_arg
       } [@@deriving bin_io]
 
@@ -651,8 +684,8 @@ module Make (S : Worker_spec) = struct
 
   module Init_connection_state_rpc = struct
     type query =
-      { server : Utils.Port.t
-      ; arg    : S.Connection_state.init_arg}
+      { worker_id : Worker_id.t
+      ; arg       : S.Connection_state.init_arg}
     [@@deriving bin_io]
 
     let rpc =
@@ -664,20 +697,6 @@ module Make (S : Worker_spec) = struct
         ~bin_response:Unit.bin_t
   end
 
-  (* The workers fork. This causes the standard file descriptors to remain open once the
-     process has exited. We close them here to avoid a file descriptor leak. *)
-  let cleanup_standard_fds process =
-    Process.wait process
-    >>> fun (exit_or_signal : Unix.Exit_or_signal.t) ->
-    (Reader.contents (Process.stderr process) >>> fun s ->
-     Writer.write (Lazy.force Writer.stderr) s;
-     don't_wait_for (Reader.close (Process.stderr process)));
-    don't_wait_for (Writer.close (Process.stdin  process));
-    don't_wait_for (Reader.close (Process.stdout process));
-    match exit_or_signal with
-    | Ok () -> ()
-    | Error _ -> eprintf "Worker process %s\n"
-                   (Unix.Exit_or_signal.to_string_hum exit_or_signal)
 
   let run_executable where ~env ~id ~worker_command_args ~input =
     Utils.create_worker_env ~extra:env ~id |> return
@@ -688,18 +707,14 @@ module Make (S : Worker_spec) = struct
       >>= fun binary ->
       Process.create ~prog:binary ~args:worker_command_args ~env:(`Extend env) ()
       >>|? fun p ->
-      (* It is important that we start waiting for the child process here. The
-         worker it forks daemonizes, thus this process ends. This will happen before
-         the worker process quits or closes his RPC connection. If we only [wait]
-         once the RPC connection is closed, we will have zombie processes hanging
-         around until then. *)
-      cleanup_standard_fds p;
-      Writer.write_sexp (Process.stdin p) input
+      Writer.write_sexp (Process.stdin p) input;
+      p
     | Executable_location.Remote exec ->
       Remote_executable.run exec ~env ~args:worker_command_args
       >>|? fun p ->
-      cleanup_standard_fds p;
-      Writer.write_sexp (Process.stdin p) input
+      Writer.write_sexp (Process.stdin p) input;
+      p
+  ;;
 
   module Function_creator = struct
     type nonrec worker = worker
@@ -759,29 +774,32 @@ module Make (S : Worker_spec) = struct
       start_server ?max_message_size ?handshake_timeout ?heartbeat_config
         ~where_to_listen:Tcp.on_port_chosen_by_os ()
       >>= fun server ->
+      let id = Worker_id.create () in
       let host = Unix.gethostname () in
       let port = Tcp.Server.listening_on server in
       let global_state = get_worker_state_exn () in
-      Hashtbl.add_exn global_state.my_worker_servers ~key:port ~data:server;
+      Hashtbl.add_exn global_state.my_worker_servers ~key:id ~data:server;
       User_functions.init_worker_state ~parent_heartbeater:`Served worker_state_init_arg
       >>| fun state ->
-      Hashtbl.add_exn worker_state.states ~key:port ~data:state;
+      Hashtbl.add_exn worker_state.states ~key:id ~data:state;
       let rpc_settings =
         Rpc_settings.create ?max_message_size ?handshake_timeout
           ?heartbeat_config ()
       in
       { host_and_port = Host_and_port.create ~host ~port
       ; rpc_settings
-      ; id = Worker_id.create () }
+      ; id
+      ; name = None }
 
   module Connection = struct
-    type t = Rpc.Connection.t
+    type t = Rpc.Connection.t [@@deriving sexp_of]
 
     let close t        = Rpc.Connection.close t
     let close_finished = Rpc.Connection.close_finished
+    let close_reason   = Rpc.Connection.close_reason
     let is_closed      = Rpc.Connection.is_closed
 
-    let client { host_and_port; rpc_settings; id = _ } init_arg =
+    let client { host_and_port; rpc_settings; id; _} init_arg =
       let {Rpc_settings.max_message_size; handshake_timeout; heartbeat_config} =
         rpc_settings in
       Rpc.Connection.client
@@ -795,7 +813,7 @@ module Make (S : Worker_spec) = struct
       | Error exn -> return (Error (Error.of_exn exn))
       | Ok conn ->
         Rpc.Rpc.dispatch Init_connection_state_rpc.rpc conn
-          { server = Host_and_port.port host_and_port; arg = init_arg }
+          { worker_id = id; arg = init_arg }
         >>|? Fn.const conn
 
     let client_exn worker init_arg = client worker init_arg >>| Or_error.ok_exn
@@ -815,24 +833,19 @@ module Make (S : Worker_spec) = struct
 
   type 'a with_spawn_args
     =  ?where : Executable_location.t
+    -> ?name : string
     -> ?env : (string * string) list
     -> ?rpc_max_message_size  : int
     -> ?rpc_handshake_timeout : Time.Span.t
     -> ?rpc_heartbeat_config : Rpc.Connection.Heartbeat_config.t
     -> ?connection_timeout:Time.Span.t
     -> ?cd : string  (** default / *)
-    -> ?umask : int  (** defaults to use existing umask *)
-    -> redirect_stdout : Fd_redirection.t
-    -> redirect_stderr : Fd_redirection.t
     -> on_failure : (Error.t -> unit)
-    -> S.Worker_state.init_arg
     -> 'a
 
-  let spawn
-        ?(where=Executable_location.Local) ?(env=[])
-        ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
-        ?(connection_timeout=(sec 10.)) ?cd ?umask ~redirect_stdout ~redirect_stderr
-        ~on_failure worker_state_init_arg =
+  let spawn_process
+        ?(where=Executable_location.Local) ?(env=[]) ?(cd="/") ~rpc_settings
+        ~daemonize_args =
     begin match Set_once.get global_state with
     | None ->
       Deferred.Or_error.error_string
@@ -843,27 +856,15 @@ module Make (S : Worker_spec) = struct
     >>=? fun global_state ->
     (* generate a unique identifier for this worker *)
     let id = Worker_id.create () in
-    let host =
-      match where with
-      | Executable_location.Local -> "local"
-      | Executable_location.Remote exec -> Remote_executable.host exec
-    in
     Lazy.force global_state.my_server
     >>= fun master_server ->
-    let rpc_settings =
-      Rpc_settings.create ?max_message_size:rpc_max_message_size
-        ?handshake_timeout:rpc_handshake_timeout
-        ?heartbeat_config:rpc_heartbeat_config ()
-    in
     let input =
       { Worker_config.
         worker_type = worker_state.type_
       ; master = master_server, global_state.my_rpc_settings
       ; rpc_settings
       ; cd
-      ; umask
-      ; redirect_stdout
-      ; redirect_stderr
+      ; daemonize_args
       ; worker_command_args = global_state.worker_command_args
       } |> Worker_config.sexp_of_t
     in
@@ -871,93 +872,176 @@ module Make (S : Worker_spec) = struct
     Hashtbl.add_exn global_state.pending ~key:id ~data:pending_ivar;
     run_executable where ~env ~id:(Worker_id.to_string id)
       ~worker_command_args:global_state.worker_command_args ~input
-    >>= function
+    >>| function
     | Error _ as err ->
       Hashtbl.remove global_state.pending id;
-      return err
-    | Ok () ->
-      (* We have successfully copied over the binary and got it running, now we ensure
-         that we got a register from the worker *)
-      Clock.with_timeout connection_timeout (Ivar.read pending_ivar)
-      >>= function
-      | `Timeout ->
-        (* Worker didn't register in time *)
-        Hashtbl.remove global_state.pending id;
-        Deferred.Or_error.errorf "Timed out getting connection from %s process" host
-      | `Result worker_host_and_port ->
-        Hashtbl.remove global_state.pending id;
-        (* Add the on_failure now, before the worker has daemonized or started running any
-           user code. This way we are guaranteed any exceptions raised in the worker will
-           not be lost *)
-        Hashtbl.add_exn global_state.on_failures
-          ~key:id ~data:(on_failure, Monitor.current ());
-        Rpc.Connection.with_client
-          ?max_message_size:rpc_max_message_size
-          ?handshake_timeout:rpc_handshake_timeout
-          ?heartbeat_config:rpc_heartbeat_config
-          ~host:(Host_and_port.host worker_host_and_port)
-          ~port:(Host_and_port.port worker_host_and_port) (fun conn ->
+      err
+    | Ok process ->
+      Ok (id, process)
+
+  let with_client worker ~f =
+    let { host_and_port; rpc_settings; _ } = worker in
+    let { Rpc_settings.
+          max_message_size;
+          handshake_timeout;
+          heartbeat_config } = rpc_settings
+    in
+    Rpc.Connection.with_client
+      ?max_message_size
+      ?handshake_timeout
+      ?heartbeat_config
+      ~host:(Host_and_port.host host_and_port)
+      ~port:(Host_and_port.port host_and_port) f
+
+  let with_shutdown_on_error worker ~f =
+    f ()
+    >>= function
+    | Ok _ as ret -> return ret
+    | Error _ as ret ->
+      with_client worker ~f:(fun conn ->
+        Rpc.One_way.dispatch Shutdown_rpc.rpc conn () |> return)
+      >>= fun _ ->
+      return ret
+
+  let wait_for_connection_and_initialize ?name ?(connection_timeout=sec 10.) ~rpc_settings
+        ~on_failure ~id init_arg =
+    let global_state = get_master_state_exn () in
+    let pending_ivar = Hashtbl.find_exn global_state.pending id in
+    (* Ensure that we got a register from the worker *)
+    Clock.with_timeout connection_timeout (Ivar.read pending_ivar)
+    >>= function
+    | `Timeout ->
+      Hashtbl.remove global_state.pending id;
+      Deferred.Or_error.error_string "Timed out getting connection from process"
+    | `Result host_and_port ->
+      Hashtbl.remove global_state.pending id;
+      let worker = { host_and_port; rpc_settings; id; name } in
+      Lazy.force global_state.my_server
+      >>= fun master_server ->
+      Hashtbl.add_exn global_state.on_failures
+        ~key:worker.id ~data:(on_failure, Monitor.current ());
+      with_shutdown_on_error worker ~f:(fun () ->
+        with_client worker ~f:(fun conn ->
           Rpc.Rpc.dispatch Init_worker_state_rpc.rpc conn
             { Init_worker_state_rpc.
               master = master_server, global_state.my_rpc_settings;
-              worker = Host_and_port.port worker_host_and_port;
-              arg = worker_state_init_arg })
+              worker = id;
+              arg = init_arg })
         >>| function
         | Error exn ->
-          Hashtbl.remove global_state.on_failures id;
+          Hashtbl.remove global_state.on_failures worker.id;
           Error (Error.of_exn exn)
         | Ok (Error e) ->
-          Hashtbl.remove global_state.on_failures id;
+          Hashtbl.remove global_state.on_failures worker.id;
           Error e
         | Ok (Ok ()) ->
-          Ok
-            { host_and_port = worker_host_and_port
-            ; rpc_settings
-            ; id }
-  ;;
+          Ok worker)
 
-  let spawn_exn ?where ?env
+  let spawn_in_foreground ?where ?name ?env
         ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
-        ?connection_timeout ?cd ?umask ~redirect_stdout ~redirect_stderr
-        ~on_failure worker_state_init_arg =
-    spawn ?where ?env
+        ?connection_timeout ?cd ~on_failure init_arg =
+    let daemonize_args = `Don't_daemonize in
+    let rpc_settings =
+      Rpc_settings.create ?max_message_size:rpc_max_message_size
+        ?handshake_timeout:rpc_handshake_timeout
+        ?heartbeat_config:rpc_heartbeat_config ()
+    in
+    spawn_process ?where ?env ?cd ~rpc_settings ~daemonize_args
+    >>= function
+    | Error e -> return (Error e)
+    | Ok (id, process) ->
+      wait_for_connection_and_initialize ?name ?connection_timeout
+        ~rpc_settings ~on_failure ~id init_arg
+      >>| Or_error.map ~f:(fun worker -> worker, process)
+
+  let spawn_in_foreground_exn ?where ?name ?env
+        ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
+        ?connection_timeout ?cd ~on_failure init_arg =
+    spawn_in_foreground ?where ?name ?env
       ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
-      ?connection_timeout ?cd ?umask ~redirect_stdout ~redirect_stderr
-      ~on_failure worker_state_init_arg
+      ?connection_timeout ?cd ~on_failure init_arg
     >>| Or_error.ok_exn
 
-  let spawn_and_connect ?where ?env
+  let wait_for_daemonization_and_collect_stderr name process =
+    Writer.close (Process.stdin process)
+    >>= fun () ->
+    Process.wait process
+    >>= fun exit_or_signal ->
+    let worker_stderr = Reader.lines (Process.stderr process) in
+    Pipe.iter worker_stderr ~f:(fun line ->
+      let line' = sprintf "[WORKER %s STDERR]: %s\n" name line in
+      Writer.write (Lazy.force Writer.stderr) line' |> return)
+    >>| fun () ->
+    match exit_or_signal with
+    | Ok () -> Ok ()
+    | Error _ ->
+      let error_string =
+        sprintf "Worker process %s" (Unix.Exit_or_signal.to_string_hum exit_or_signal)
+      in
+      Error (Error.of_string error_string)
+
+  let spawn ?where ?name ?env
         ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
-        ?connection_timeout ?cd ?umask ~redirect_stdout ~redirect_stderr
-        ~on_failure worker_state_init_arg ~connection_state_init_arg =
-    spawn ?where ?env
+        ?connection_timeout ?cd
+        ~on_failure ?umask ~redirect_stdout ~redirect_stderr init_arg =
+    let daemonize_args =
+      `Daemonize { Daemonize_args.umask; redirect_stderr; redirect_stdout }
+    in
+    let rpc_settings =
+      Rpc_settings.create ?max_message_size:rpc_max_message_size
+        ?handshake_timeout:rpc_handshake_timeout
+        ?heartbeat_config:rpc_heartbeat_config ()
+    in
+    spawn_process ?where ?env ?cd ~rpc_settings ~daemonize_args
+    >>= function
+    | Error e -> return (Error e)
+    | Ok (id, process) ->
+      let id_or_name = Option.value ~default:(Worker_id.to_string id) name in
+      wait_for_daemonization_and_collect_stderr id_or_name process
+      >>= function
+      | Error e -> return (Error e)
+      | Ok () ->
+        wait_for_connection_and_initialize ?name ?connection_timeout
+          ~rpc_settings ~on_failure ~id init_arg
+
+  let spawn_exn ?where ?name ?env
+        ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
+        ?connection_timeout ?cd
+         ~on_failure ?umask ~redirect_stdout ~redirect_stderr init_arg =
+    spawn ?where ?name ?env
+      ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
+      ?connection_timeout ?cd ?umask ~redirect_stdout ~redirect_stderr
+      init_arg ~on_failure
+    >>| Or_error.ok_exn
+
+  let spawn_and_connect ?where ?name ?env
+        ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
+        ?connection_timeout ?cd ~on_failure
+        ?umask ~redirect_stdout ~redirect_stderr
+        ~connection_state_init_arg worker_state_init_arg =
+    spawn ?where ?name ?env
       ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
       ?connection_timeout ?cd ?umask ~redirect_stdout ~redirect_stderr
       ~on_failure worker_state_init_arg
     >>=? fun worker ->
-    Connection.client worker connection_state_init_arg
-    >>| function
-    | Error e ->
-      Error e
-    | Ok conn -> Ok (worker, conn)
+    with_shutdown_on_error worker ~f:(fun () ->
+      Connection.client worker connection_state_init_arg
+      >>| Or_error.map ~f:(fun conn -> worker, conn))
 
-  let spawn_and_connect_exn ?where ?env
+  let spawn_and_connect_exn ?where ?name ?env
         ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
-        ?connection_timeout ?cd ?umask ~redirect_stdout ~redirect_stderr
-        ~on_failure worker_state_init_arg ~connection_state_init_arg =
-    spawn_and_connect ?where ~connection_state_init_arg ?env
+        ?connection_timeout ?cd ~on_failure
+        ?umask ~redirect_stdout ~redirect_stderr
+        ~connection_state_init_arg worker_state_init_arg =
+    spawn_and_connect ?where ?name ?env
       ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
       ?connection_timeout ?cd ?umask ~redirect_stdout ~redirect_stderr
-      ~on_failure worker_state_init_arg
+      ~on_failure ~connection_state_init_arg worker_state_init_arg
     >>| Or_error.ok_exn
 
   let init_worker_state_impl =
     Rpc.Rpc.implement Init_worker_state_rpc.rpc
       (fun _conn_state { Init_worker_state_rpc.master; worker; arg } ->
-         (* Make sure we have daemonized before we start running any user code.*)
-         let global_state = get_worker_state_exn () in
-         Ivar.read global_state.has_daemonized
-         >>= fun () ->
          Utils.try_within_exn ~monitor
            (fun () ->
               User_functions.init_worker_state
@@ -967,13 +1051,13 @@ module Make (S : Worker_spec) = struct
 
   let init_connection_state_impl =
     Rpc.Rpc.implement Init_connection_state_rpc.rpc
-      (fun (connection, internal_conn_state) { server; arg = init_arg } ->
-         let worker_state = Hashtbl.find_exn worker_state.states server in
+      (fun (connection, internal_conn_state) { worker_id; arg = init_arg } ->
+         let worker_state = Hashtbl.find_exn worker_state.states worker_id in
          Utils.try_within_exn ~monitor
            (fun () -> User_functions.init_connection_state ~connection ~worker_state init_arg)
          >>| fun conn_state ->
          Set_once.set_exn internal_conn_state
-           { Utils.Internal_connection_state.server; conn_state;  worker_state })
+           { Utils.Internal_connection_state.worker_id; conn_state;  worker_state })
 
   let shutdown_impl =
     Rpc.One_way.implement Shutdown_rpc.rpc
@@ -983,16 +1067,16 @@ module Make (S : Worker_spec) = struct
 
   let close_server_impl =
     Rpc.One_way.implement Close_server_rpc.rpc (fun (_conn, conn_state) () ->
-      let {Utils.Internal_connection_state.server; _} =
+      let {Utils.Internal_connection_state.worker_id; _} =
         Set_once.get_exn conn_state in
       let global_state = get_worker_state_exn () in
-      match Hashtbl.find global_state.my_worker_servers server with
+      match Hashtbl.find global_state.my_worker_servers worker_id with
       | None -> ()
       | Some tcp_server ->
         Tcp.Server.close tcp_server
         >>> fun () ->
-        Hashtbl.remove global_state.my_worker_servers server;
-        Hashtbl.remove worker_state.states server)
+        Hashtbl.remove global_state.my_worker_servers worker_id;
+        Hashtbl.remove worker_state.states worker_id)
 
   let async_log_impl =
     Rpc.Pipe_rpc.implement Async_log_rpc.rpc (fun _conn_state () ->
@@ -1032,7 +1116,7 @@ end
 
 (* Start an Rpc server based on the implementations defined in the [Make] functor
    for this worker type. Return a [Host_and_port.t] describing the server *)
-let worker_main ~id ~(config : Worker_config.t) ~release_daemon =
+let worker_main ~id ~(config : Worker_config.t) ~maybe_release_daemon =
   let master_host_and_port,
       {Rpc_settings.max_message_size; handshake_timeout; heartbeat_config} =
     config.master in
@@ -1076,7 +1160,7 @@ let worker_main ~id ~(config : Worker_config.t) ~release_daemon =
     failwith
       "Worker could not find RPC implementations. Make sure the Parallel.Make () \
        functor is applied in the worker. It is suggested to make this toplevel."
-  | Some start_server ->
+ | Some start_server ->
     start_server
       ?max_message_size:config.rpc_settings.Rpc_settings.max_message_size
       ?handshake_timeout:config.rpc_settings.Rpc_settings.handshake_timeout
@@ -1087,14 +1171,13 @@ let worker_main ~id ~(config : Worker_config.t) ~release_daemon =
     let host = Unix.gethostname () in
     let port = Tcp.Server.listening_on server in
     let global_state = get_worker_state_exn () in
-    Hashtbl.add_exn global_state.my_worker_servers ~key:port ~data:server;
+    Hashtbl.add_exn global_state.my_worker_servers ~key:id ~data:server;
     register (Host_and_port.create ~host ~port)
     >>> fun () ->
-    (* Careful to setup exception handling before we call [release_daemon] because
-       [release_daemon] can fail (e.g. can't redirect stdout/stderr). *)
     setup_exception_handling ();
-    release_daemon ();
-    Ivar.fill global_state.has_daemonized ()
+    (* Daemonize as late as possible but still before running any user code. This lets
+       us read any setup errors from stderr *)
+    maybe_release_daemon ();
 
 module Expert = struct
   let run_as_worker_exn () =
@@ -1112,28 +1195,27 @@ module Expert = struct
         ?rpc_heartbeat_config:heartbeat_config
         ~worker_command_args:config.worker_command_args;
       let id = Worker_id.of_string id_str in
-      (* The worker is started via SSH. We want to go to the background so we can close
-         the SSH connection, but not until we've connected back to the master via
-         Rpc. This allows us to report any initialization errors to the master via the SSH
-         connection. *)
-      let redirect_stdout =
-        Utils.to_daemon_fd_redirection config.redirect_stdout
+      let maybe_release_daemon =
+        match config.daemonize_args with
+        | `Don't_daemonize ->
+          Core.Std.Unix.chdir config.cd;
+          Fn.id
+        | `Daemonize {Daemonize_args.umask; redirect_stderr; redirect_stdout} ->
+          (* The worker is started via SSH. We want to go to the background so we can close
+             the SSH connection, but not until we've connected back to the master via
+             Rpc. This allows us to report any initialization errors to the master via the SSH
+             connection. *)
+          let redirect_stdout =
+            Utils.to_daemon_fd_redirection redirect_stdout
+          in
+          let redirect_stderr =
+            Utils.to_daemon_fd_redirection redirect_stderr
+          in
+          Staged.unstage (
+            Daemon.daemonize_wait ~cd:config.cd ~redirect_stdout ~redirect_stderr
+              ?umask:umask ())
       in
-      let redirect_stderr =
-        Utils.to_daemon_fd_redirection config.redirect_stderr
-      in
-      let release_daemon =
-        Staged.unstage (
-          (* This call can fail (e.g. cd to a nonexistent directory). The uncaught
-             exception will automatically be written to stderr which is read by the
-             master *)
-          Daemon.daemonize_wait ~redirect_stdout ~redirect_stderr
-            ?cd:config.cd
-            ?umask:config.umask
-            ()
-        )
-      in
-      worker_main ~id ~config ~release_daemon;
+      worker_main ~id ~config ~maybe_release_daemon;
       never_returns (Scheduler.go ())
 
   let init_master_exn ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config

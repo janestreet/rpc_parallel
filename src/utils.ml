@@ -1,16 +1,14 @@
 open Core.Std
 open Async.Std
 
-module Port = struct
-  type t = int [@@deriving bin_io]
-  include Hashable.Make (Int)
-end
+module Worker_id = Uuid
+module Worker_type_id = Unique_id.Int ()
 
 module Internal_connection_state = struct
   type ('worker_state, 'conn_state) t1 =
     { worker_state : 'worker_state
     ; conn_state   : 'conn_state
-    ; server       : Port.t }
+    ; worker_id    : Worker_id.t }
 
   type ('worker_state, 'conn_state) t =
     Rpc.Connection.t * ('worker_state, 'conn_state) t1 Set_once.t
