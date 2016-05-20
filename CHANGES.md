@@ -1,3 +1,33 @@
+## 113.43.00
+
+- Take away `@@deriving bin_io` for managed workers.
+
+  app/decomposer was the only affected client, so I moved this over to unmanaged world.
+
+- Introduce a `spawn_in_foreground` function that returns a `Process.t` along with the worker.
+
+  Also use this opportunity to clean up the handling of file descriptors in the `spawn` case as well.
+
+- Add a couple features to Rpc\_parallel to make debugging connection issues
+  easier.
+
+  * Add `Worker.Connection.close_reason`
+  * Add `Worker.Connection.sexp_of_t`
+
+
+- Add some extra security around making Rpc calls to workers.
+
+  Because we do not expose the port of a worker, unless you do really
+  hacky things, you are going to go through Rpc\_parallel when running
+  Rpcs.  When Rpc\_parallel connects to a worker, it initializes a
+  connection state (that includes the worker state). This
+  initialization would raise if the worker did not have a server
+  listening on the port that the client was talking to. Add some
+  security by enforcing unification of worker\_ids instead of ports
+  (which will be reused by the OS).
+
+- Make an Rpc_parallel test case deterministic
+
 ## 113.33.00
 
 - Adding the mandatory arguments `redirect_stderr` and `redirect_stdout` to `Map_reduce` so it is easier to debug your workers.
@@ -168,4 +198,3 @@
 ## 112.01.00
 
 Initial import.
-
