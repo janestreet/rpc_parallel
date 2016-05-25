@@ -44,8 +44,8 @@ val try_within_exn
   -> (unit -> 'a Deferred.t)
   -> 'a Deferred.t
 
-(* Get the location of the currently running binary *)
-val our_binary : unit -> string Deferred.t
+(* Get the location of the currently running binary. *)
+val our_binary : unit -> string
 
 (* Get an md5 hash of the currently running binary *)
 val our_md5 : unit -> string Or_error.t Deferred.t

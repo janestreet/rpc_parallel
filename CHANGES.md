@@ -2,8 +2,6 @@
 
 - Take away `@@deriving bin_io` for managed workers.
 
-  app/decomposer was the only affected client, so I moved this over to unmanaged world.
-
 - Introduce a `spawn_in_foreground` function that returns a `Process.t` along with the worker.
 
   Also use this opportunity to clean up the handling of file descriptors in the `spawn` case as well.

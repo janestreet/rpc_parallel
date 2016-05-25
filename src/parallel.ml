@@ -703,9 +703,8 @@ module Make (S : Worker_spec) = struct
     >>=? fun env ->
     match where with
     | Executable_location.Local ->
-      Utils.our_binary ()
-      >>= fun binary ->
-      Process.create ~prog:binary ~args:worker_command_args ~env:(`Extend env) ()
+      Process.create ~prog:(Utils.our_binary ())
+        ~args:worker_command_args ~env:(`Extend env) ()
       >>|? fun p ->
       Writer.write_sexp (Process.stdin p) input;
       p

@@ -28,18 +28,19 @@ let try_within_exn ~monitor f =
   | Ok x -> x
   | Error e -> Error.raise e
 
+(* Use /proc/PID/exe to get the currently running executable.
+   - argv[0] might have been deleted (this is quite common with jenga)
+   - `cp /proc/PID/exe dst` works as expected while `cp /proc/self/exe dst` does not *)
 let our_binary =
   let our_binary_lazy =
-    lazy (Unix.getpid () |> Pid.to_int |> sprintf "/proc/%d/exe" |> Unix.readlink)
+    lazy (Unix.getpid () |> Pid.to_int |> sprintf "/proc/%d/exe")
   in
   fun () -> Lazy.force our_binary_lazy
 
 let our_md5 =
   let our_md5_lazy =
     lazy begin
-      our_binary ()
-      >>= fun binary ->
-      Process.run ~prog:"md5sum" ~args:[binary] ()
+      Process.run ~prog:"md5sum" ~args:[our_binary ()] ()
       >>|? fun our_md5 ->
       let our_md5, _ = String.lsplit2_exn ~on:' ' our_md5 in
       our_md5

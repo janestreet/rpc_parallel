@@ -19,16 +19,14 @@ let existing_on_host ~executable_path ?strict_host_key_checking host =
     host_key_checking = hostkey_checking_options strict_host_key_checking }
 
 let copy_to_host ~executable_dir ?strict_host_key_checking host =
-  Utils.our_binary ()
-  >>= fun binary ->
-  let our_basename = Filename.basename binary in
+  let our_basename = Filename.basename Sys.executable_name in
   Process.run ~prog:"mktemp"
     ~args:["-u"; sprintf "%s.XXXXXXXX" our_basename] ()
   >>=? fun new_basename ->
   let options = hostkey_checking_options strict_host_key_checking in
   let path = String.strip (executable_dir ^/ new_basename) in
   Process.run ~prog:"scp"
-    ~args:(options @ [binary; sprintf "%s:%s" host path]) ()
+    ~args:(options @ [Utils.our_binary (); sprintf "%s:%s" host path]) ()
   >>|? Fn.const { host; path; host_key_checking=options }
 
 let delete executable =
