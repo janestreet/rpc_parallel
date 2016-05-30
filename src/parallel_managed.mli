@@ -30,9 +30,6 @@ module type Worker = sig
   val spawn
     :  ?where : Executable_location.t
     -> ?env : (string * string) list
-    -> ?rpc_max_message_size  : int
-    -> ?rpc_handshake_timeout : Time.Span.t
-    -> ?rpc_heartbeat_config : Rpc.Connection.Heartbeat_config.t
     -> ?connection_timeout:Time.Span.t
     -> ?cd : string  (** default / *)
     -> ?umask : int  (** defaults to use existing umask *)
@@ -46,9 +43,6 @@ module type Worker = sig
   val spawn_exn
     :  ?where : Executable_location.t
     -> ?env : (string * string) list
-    -> ?rpc_max_message_size  : int
-    -> ?rpc_handshake_timeout : Time.Span.t
-    -> ?rpc_heartbeat_config : Rpc.Connection.Heartbeat_config.t
     -> ?connection_timeout:Time.Span.t
     -> ?cd : string  (** default / *)
     -> ?umask : int  (** defaults to use existing umask *)

@@ -18,9 +18,6 @@ module type Worker = sig
   val spawn
     :  ?where : Executable_location.t
     -> ?env : (string * string) list
-    -> ?rpc_max_message_size  : int
-    -> ?rpc_handshake_timeout : Time.Span.t
-    -> ?rpc_heartbeat_config : Rpc.Connection.Heartbeat_config.t
     -> ?connection_timeout:Time.Span.t
     -> ?cd : string
     -> ?umask : int
@@ -34,9 +31,6 @@ module type Worker = sig
   val spawn_exn
     :  ?where : Executable_location.t
     -> ?env : (string * string) list
-    -> ?rpc_max_message_size  : int
-    -> ?rpc_handshake_timeout : Time.Span.t
-    -> ?rpc_heartbeat_config : Rpc.Connection.Heartbeat_config.t
     -> ?connection_timeout:Time.Span.t
     -> ?cd : string
     -> ?umask : int
@@ -109,11 +103,9 @@ module Make (S : Parallel.Worker_spec) = struct
         Ok conn
 
   let spawn ?where ?env
-        ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
         ?connection_timeout ?cd ?umask ~redirect_stdout ~redirect_stderr
         worker_state_init_arg connection_init_arg ~on_failure =
     Unmanaged.spawn ?where ?env
-      ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
       ?connection_timeout ?cd ?umask ~redirect_stdout ~redirect_stderr
       worker_state_init_arg ~on_failure
     >>=? fun worker ->
@@ -136,11 +128,9 @@ module Make (S : Parallel.Worker_spec) = struct
     { unmanaged = worker; connection_init_arg; id }
 
   let spawn_exn ?where ?env
-        ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
         ?connection_timeout ?cd ?umask ~redirect_stdout ~redirect_stderr
         worker_state_init_arg connection_init_arg ~on_failure =
     spawn ?where ?env
-      ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
       ?connection_timeout ?cd ?umask ~redirect_stdout ~redirect_stderr
       worker_state_init_arg connection_init_arg ~on_failure
     >>| Or_error.ok_exn

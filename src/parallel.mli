@@ -139,9 +139,6 @@ module type Worker = sig
 
       [env] can be used to extend the environment of the spawned worker process.
 
-      [rpc_max_message_size], [rpc_handshake_timeout], [rpc_heartbeat_config] can be used
-      to alter the rpc defaults. This can be useful if you have long async jobs.
-
       [connection_timeout] is the timeout used when waiting to establish a connection from
       the spawned worker process.
 
@@ -159,9 +156,6 @@ module type Worker = sig
     =  ?where : Executable_location.t  (** default Local *)
     -> ?name : string
     -> ?env : (string * string) list
-    -> ?rpc_max_message_size  : int
-    -> ?rpc_handshake_timeout : Time.Span.t
-    -> ?rpc_heartbeat_config : Rpc.Connection.Heartbeat_config.t
     -> ?connection_timeout:Time.Span.t  (** default 10 sec *)
     -> ?cd : string  (** default / *)
     -> on_failure : (Error.t -> unit)
@@ -391,8 +385,9 @@ module Make (S : Worker_spec) : Worker
     that the Async scheduler is started. This function will parse certain environment
     variables and determine whether to start as a master or a worker.
 
-    [rpc_max_message_size], [rpc_heartbeat_config], [where_to_listen] specify the RPC
-    server that the master starts. *)
+    [rpc_max_message_size], [rpc_handshake_timeout], [rpc_heartbeat_config] can be used
+    to alter the rpc defaults. These rpc settings will be used for all connections.
+    This can be useful if you have long async jobs. *)
 val start_app
   :  ?rpc_max_message_size : int
   -> ?rpc_handshake_timeout : Time.Span.t
