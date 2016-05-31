@@ -17,6 +17,7 @@ module type Worker = sig
 
   val spawn
     :  ?where : Executable_location.t
+    -> ?name : string
     -> ?env : (string * string) list
     -> ?connection_timeout:Time.Span.t
     -> ?cd : string
@@ -30,6 +31,7 @@ module type Worker = sig
 
   val spawn_exn
     :  ?where : Executable_location.t
+    -> ?name : string
     -> ?env : (string * string) list
     -> ?connection_timeout:Time.Span.t
     -> ?cd : string
@@ -63,7 +65,7 @@ module Make (S : Parallel.Worker_spec) = struct
 
   type nonrec t =
     { unmanaged : Unmanaged.t
-    ; connection_init_arg : S.Connection_state.init_arg
+    ; connection_state_init_arg : S.Connection_state.init_arg
     ; id : Id.t
     }
 
@@ -81,14 +83,14 @@ module Make (S : Parallel.Worker_spec) = struct
 
   let workers : conn Id.Table.t = Id.Table.create ()
 
-  let get_connection { unmanaged = t; connection_init_arg = init_arg; id } =
+  let get_connection { unmanaged = t; connection_state_init_arg; id } =
     match Hashtbl.find workers id with
     | Some (`Pending ivar) -> Ivar.read ivar
     | Some (`Connected conn) -> Deferred.Or_error.return conn
     | None ->
       let ivar = Ivar.create () in
       Hashtbl.add_exn workers ~key:id ~data:(`Pending ivar);
-      Unmanaged.Connection.client t init_arg
+      Unmanaged.Connection.client t connection_state_init_arg
       >>| function
       | Error e ->
         Ivar.fill ivar (Error e);
@@ -102,15 +104,13 @@ module Make (S : Parallel.Worker_spec) = struct
          Hashtbl.remove workers id);
         Ok conn
 
-  let spawn ?where ?env
+  let spawn ?where ?name ?env
         ?connection_timeout ?cd ?umask ~redirect_stdout ~redirect_stderr
-        worker_state_init_arg connection_init_arg ~on_failure =
-    Unmanaged.spawn ?where ?env
+        worker_state_init_arg connection_state_init_arg ~on_failure =
+    Unmanaged.spawn_and_connect ?where ?env ?name
       ?connection_timeout ?cd ?umask ~redirect_stdout ~redirect_stderr
-      worker_state_init_arg ~on_failure
-    >>=? fun worker ->
-    Unmanaged.Connection.client worker connection_init_arg
-    >>|? fun connection ->
+      ~connection_state_init_arg worker_state_init_arg ~on_failure
+    >>|? fun (worker, connection) ->
     let id = Id.create () in
     Hashtbl.add_exn workers ~key:id ~data:(`Connected connection);
     (Unmanaged.Connection.close_finished connection
@@ -125,12 +125,12 @@ module Make (S : Parallel.Worker_spec) = struct
          Error.createf !"Lost connection with worker"
        in
        on_failure error);
-    { unmanaged = worker; connection_init_arg; id }
+    { unmanaged = worker; connection_state_init_arg; id }
 
-  let spawn_exn ?where ?env
+  let spawn_exn ?where ?name ?env
         ?connection_timeout ?cd ?umask ~redirect_stdout ~redirect_stderr
         worker_state_init_arg connection_init_arg ~on_failure =
-    spawn ?where ?env
+    spawn ?where ?name ?env
       ?connection_timeout ?cd ?umask ~redirect_stdout ~redirect_stderr
       worker_state_init_arg connection_init_arg ~on_failure
     >>| Or_error.ok_exn

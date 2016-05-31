@@ -38,6 +38,49 @@ module Rpc_settings = struct
     { max_message_size; handshake_timeout; heartbeat_config }
 end
 
+(* Applications of the [Make()] functor have the side effect of populating
+   an [implementations] list which subsequently adds an entry for that worker type id to
+   the [worker_start_server_funcs]. *)
+let worker_start_server_funcs = Worker_type_id.Table.create ~size:1 ()
+
+(* All global state that is needed for a process to act as a master *)
+type master_state =
+  {(* The [Host_and_port.t] corresponding to one's own master Rpc server. *)
+    my_server: Host_and_port.t Deferred.t lazy_t
+  (* The rpc settings used universally for all rpc connections *)
+  ; app_rpc_settings : Rpc_settings.t
+  (* Used to facilitate timeout of connecting to a spawned worker *)
+  ; pending: Host_and_port.t Ivar.t Worker_id.Table.t
+  (* Arguments used when spawning a new worker *)
+  ; worker_command_args : string list
+  (* Callbacks for spawned worker exceptions along with the monitor that was current
+     when [spawn] was called *)
+  ; on_failures: ((Error.t -> unit) * Monitor.t) Worker_id.Table.t;
+  }
+
+(* All global state that is not specific to worker types is collected here *)
+type worker_state =
+  {(* Currently running worker servers in this process *)
+    my_worker_servers: (Socket.Address.Inet.t, int) Tcp.Server.t Worker_id.Table.t }
+
+type global_state =
+  { as_master : master_state
+  ; as_worker : worker_state }
+
+(* Each running instance has the capability to work as a master. This state includes
+   information needed to spawn new workers (my_server, my_rpc_settings, pending,
+   worker_command_args), information to handle existing spawned workerd (on_failures), and
+   information to handle worker servers that are running in process. *)
+let global_state : global_state Set_once.t = Set_once.create ()
+
+let get_state_exn () =
+  match Set_once.get global_state with
+  | None -> failwith "State should have been set already"
+  | Some state -> state
+
+let get_master_state_exn () = (get_state_exn ()).as_master
+let get_worker_state_exn () = (get_state_exn ()).as_worker
+
 (* Functions that are implemented by all workers *)
 module Shutdown_rpc = struct
   let rpc =
@@ -328,7 +371,7 @@ module type Worker = sig
 
   val spawn_exn
     : (?umask : int
-       ->redirect_stdout : Fd_redirection.t
+       -> redirect_stdout : Fd_redirection.t
        -> redirect_stderr : Fd_redirection.t
        -> worker_state_init_arg
        -> t Deferred.t) with_spawn_args
@@ -471,49 +514,6 @@ module type Worker_spec = sig
        and type connection_state_init_arg := Connection_state.init_arg
 end
 
-(* Applications of the [Make()] functor have the side effect of populating
-   an [implementations] list which subsequently adds an entry for that worker type id to
-   the [worker_start_server_funcs]. *)
-let worker_start_server_funcs = Worker_type_id.Table.create ~size:1 ()
-
-(* All global state that is needed for a process to act as a master *)
-type master_state =
-  {(* The [Host_and_port.t] corresponding to one's own master Rpc server. *)
-    my_server: Host_and_port.t Deferred.t lazy_t
-  (* The rpc settings used universally for all rpc connections *)
-  ; app_rpc_settings : Rpc_settings.t
-  (* Used to facilitate timeout of connecting to a spawned worker *)
-  ; pending: Host_and_port.t Ivar.t Worker_id.Table.t
-  (* Arguments used when spawning a new worker *)
-  ; worker_command_args : string list
-  (* Callbacks for spawned worker exceptions along with the monitor that was current
-     when [spawn] was called *)
-  ; on_failures: ((Error.t -> unit) * Monitor.t) Worker_id.Table.t;
-  }
-
-(* All global state that is not specific to worker types is collected here *)
-type worker_state =
-  {(* Currently running worker servers in this process *)
-    my_worker_servers: (Socket.Address.Inet.t, int) Tcp.Server.t Worker_id.Table.t }
-
-type global_state =
-  { as_master : master_state
-  ; as_worker : worker_state }
-
-(* Each running instance has the capability to work as a master. This state includes
-   information needed to spawn new workers (my_server, my_rpc_settings, pending,
-   worker_command_args), information to handle existing spawned workerd (on_failures), and
-   information to handle worker servers that are running in process. *)
-let global_state : global_state Set_once.t = Set_once.create ()
-
-let get_state_exn () =
-  match Set_once.get global_state with
-  | None -> failwith "State should have been set already"
-  | Some state -> state
-
-let get_master_state_exn () = (get_state_exn ()).as_master
-let get_worker_state_exn () = (get_state_exn ()).as_worker
-
 let start_server ?max_message_size ?handshake_timeout ?heartbeat_config
       ~where_to_listen ~implementations ~initial_connection_state () =
   let implementations =
@@ -527,6 +527,7 @@ let start_server ?max_message_size ?handshake_timeout ?heartbeat_config
 module Worker_config = struct
   type t =
     { worker_type         : Worker_type_id.t
+    ; name                : string option
     ; master              : Host_and_port.t
     ; app_rpc_settings    : Rpc_settings.t
     ; cd                  : string
@@ -561,7 +562,11 @@ module Register_rpc = struct
 end
 
 module Handle_exn_rpc = struct
-  type t = Worker_id.t * Error.t [@@deriving bin_io]
+  type t =
+    { id    : Worker_id.t
+    ; name  : string option
+    ; error : Error.t
+    } [@@deriving bin_io]
 
   let rpc =
     Rpc.Rpc.create
@@ -571,9 +576,11 @@ module Handle_exn_rpc = struct
       ~bin_response:Unit.bin_t
 
   let implementation =
-    Rpc.Rpc.implement rpc (fun () (id, error) ->
+    Rpc.Rpc.implement rpc (fun () { id; name; error } ->
       let global_state = get_master_state_exn () in
       let on_failure, monitor = Hashtbl.find_exn global_state.on_failures id in
+      let name = Option.value ~default:(Worker_id.to_string id) name in
+      let error = Error.tag error ~tag:name in
       (* We can't just run [on_failure error] because this will be caught by the Rpc
          monitor for this implementation. *)
       Scheduler.within ~monitor (fun () -> on_failure error);
@@ -684,8 +691,8 @@ module Make (S : Worker_spec) = struct
   module Init_connection_state_rpc = struct
     type query =
       { worker_id : Worker_id.t
-      ; arg       : S.Connection_state.init_arg}
-    [@@deriving bin_io]
+      ; arg       : S.Connection_state.init_arg
+      } [@@deriving bin_io]
 
     let rpc =
       Rpc.Rpc.create
@@ -695,7 +702,6 @@ module Make (S : Worker_spec) = struct
         ~bin_query
         ~bin_response:Unit.bin_t
   end
-
 
   let run_executable where ~env ~id ~worker_command_args ~input =
     Utils.create_worker_env ~extra:env ~id |> return
@@ -812,7 +818,13 @@ module Make (S : Worker_spec) = struct
       | Ok conn ->
         Rpc.Rpc.dispatch Init_connection_state_rpc.rpc conn
           { worker_id = id; arg = init_arg }
-        >>|? Fn.const conn
+        >>= function
+        | Error e ->
+          Rpc.Connection.close conn
+          >>| fun () ->
+          Error e
+        | Ok () ->
+          Deferred.Or_error.return conn
 
     let client_exn worker init_arg = client worker init_arg >>| Or_error.ok_exn
 
@@ -839,7 +851,7 @@ module Make (S : Worker_spec) = struct
     -> 'a
 
   let spawn_process
-        ?(where=Executable_location.Local) ?(env=[]) ?(cd="/")
+        ?(where=Executable_location.Local) ?(env=[]) ?(cd="/") ?name
         ~daemonize_args =
     begin match Set_once.get global_state with
     | None ->
@@ -856,6 +868,7 @@ module Make (S : Worker_spec) = struct
     let input =
       { Worker_config.
         worker_type = worker_state.type_
+      ; name
       ; master = master_server
       ; app_rpc_settings = global_state.app_rpc_settings
       ; cd
@@ -935,7 +948,7 @@ module Make (S : Worker_spec) = struct
   let spawn_in_foreground ?where ?name ?env
         ?connection_timeout ?cd ~on_failure init_arg =
     let daemonize_args = `Don't_daemonize in
-    spawn_process ?where ?env ?cd ~daemonize_args
+    spawn_process ?where ?env ?cd ?name ~daemonize_args
     >>= function
     | Error e -> return (Error e)
     | Ok (id, process) ->
@@ -973,7 +986,7 @@ module Make (S : Worker_spec) = struct
     let daemonize_args =
       `Daemonize { Daemonize_args.umask; redirect_stderr; redirect_stdout }
     in
-    spawn_process ?where ?env ?cd ~daemonize_args
+    spawn_process ?where ?env ?cd ?name ~daemonize_args
     >>= function
     | Error e -> return (Error e)
     | Ok (id, process) ->
@@ -1124,7 +1137,8 @@ let worker_main ~id ~(config : Worker_config.t) ~maybe_release_daemon =
         ?heartbeat_config
         ~host:(Host_and_port.host config.master)
         ~port:(Host_and_port.port config.master) (fun conn ->
-          Rpc.Rpc.dispatch Handle_exn_rpc.rpc conn (id, Error.of_exn exn))
+          Rpc.Rpc.dispatch Handle_exn_rpc.rpc conn
+            { id; name = config.name; error = Error.of_exn exn })
       >>> fun _ ->
       eprintf !"%{sexp:Exn.t}\n" exn;
       eprintf "Shutting down.\n";

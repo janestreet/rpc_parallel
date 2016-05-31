@@ -1,7 +1,6 @@
 open Core.Std
 open Async.Std
 
-
 (** This module is primarily meant for backwards compatibility with code that used earlier
     versions of [Rpc_parallel]. Please consider using the [Parallel.Make()] functor
     instead as the semantics are more transparent and intuitive.
@@ -29,6 +28,7 @@ module type Worker = sig
 
   val spawn
     :  ?where : Executable_location.t
+    -> ?name : string
     -> ?env : (string * string) list
     -> ?connection_timeout:Time.Span.t
     -> ?cd : string  (** default / *)
@@ -42,6 +42,7 @@ module type Worker = sig
 
   val spawn_exn
     :  ?where : Executable_location.t
+    -> ?name : string
     -> ?env : (string * string) list
     -> ?connection_timeout:Time.Span.t
     -> ?cd : string  (** default / *)

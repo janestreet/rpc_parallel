@@ -70,7 +70,7 @@ module type Worker = sig
       that take a worker as an argument. *)
   type t [@@deriving bin_io, sexp_of]
 
-  (** A type alias to make the [Connection] and [Managed] signature more readable *)
+  (** A type alias to make the [Connection] signature more readable *)
   type worker = t
 
   type 'a functions
@@ -132,17 +132,17 @@ module type Worker = sig
     val is_closed : t -> bool
   end
 
-  (** The various [spawn] functions can be used to create a new worker process that
+  (** The various [spawn] functions create a new worker process that
       implements the functions specified in the [Worker_spec].
 
-      [name] can be useful for debugging as it will be attached to certain error messages
+      [name] will be attached to certain error messages and is useful for debugging.
 
-      [env] can be used to extend the environment of the spawned worker process.
+      [env] extends the environment of the spawned worker process.
 
       [connection_timeout] is the timeout used when waiting to establish a connection from
       the spawned worker process.
 
-      [cd] can be used to change the current working directory of a spawned worker process.
+      [cd] changes the current working directory of a spawned worker process.
 
       [on_failure exn] will be called in the spawning process upon the worker process
       raising a background exception. All exceptions raised before functions return will be
@@ -164,7 +164,7 @@ module type Worker = sig
   (** The spawned worker process daemonizes. Any initialization errors that wrote to
       stderr (Rpc_parallel internal initialization, not user initialization code) will be
       captured and rewritten to the spawning process's stderr with the prefix
-      "[WORKER STDERR]".
+      "[WORKER %NAME% STDERR]".
 
       [redirect_stdout] and [redirect_stderr] specify stdout and stderr of the worker
       process. *)

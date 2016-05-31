@@ -17,7 +17,7 @@ end
 let try_within ~monitor f =
   let ivar = Ivar.create () in
   Scheduler.within ~monitor (fun () ->
-    Monitor.try_with ~extract_exn:true ~run:`Now ~rest:`Raise f
+    Monitor.try_with ~run:`Now ~rest:`Raise f
     >>> fun r ->
     Ivar.fill ivar (Result.map_error r ~f:Error.of_exn));
   Ivar.read ivar
