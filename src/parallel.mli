@@ -380,10 +380,9 @@ module Make (S : Worker_spec) : Worker
    and type worker_state_init_arg := S.Worker_state.init_arg
    and type connection_state_init_arg := S.Connection_state.init_arg
 
-(** [start_app command] should be called from the top-level in order to start the
-    parallel application. [command] must be constructed with a call to [Command.async] so
-    that the Async scheduler is started. This function will parse certain environment
-    variables and determine whether to start as a master or a worker.
+(** [start_app command] should be called from the top-level in order to start the parallel
+    application. This function will parse certain environment variables and determine
+    whether to start as a master or a worker.
 
     [rpc_max_message_size], [rpc_handshake_timeout], [rpc_heartbeat_config] can be used
     to alter the rpc defaults. These rpc settings will be used for all connections.
