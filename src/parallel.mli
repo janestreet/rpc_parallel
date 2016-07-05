@@ -430,6 +430,9 @@ module Expert : sig
       through its stdin. A spawned worker must never read from stdin before the
       [init_worker_state] function begins running.
 
+      NOTE: Anything written to stdout before calling [run_as_worker_exn] will not be
+      redirected according to [redirect_stdout]. It will be blackholed.
+
       NOTE: This has the side effect of calling [chdir] (always) and redirecting
       stdout/stderr (unless [spawn_in_foreground]). This could be potentially confusing if
       you rely on your current working directory or these file descriptors before calling

@@ -967,6 +967,8 @@ module Make (S : Worker_spec) = struct
     >>= fun () ->
     Process.wait process
     >>= fun exit_or_signal ->
+    Reader.close (Process.stdout process)
+    >>= fun () ->
     let worker_stderr = Reader.lines (Process.stderr process) in
     Pipe.iter worker_stderr ~f:(fun line ->
       let line' = sprintf "[WORKER %s STDERR]: %s\n" name line in
