@@ -45,27 +45,31 @@ let worker_start_server_funcs = Worker_type_id.Table.create ~size:1 ()
 
 (* All global state that is needed for a process to act as a master *)
 type master_state =
-  {(* The [Host_and_port.t] corresponding to one's own master Rpc server. *)
-    my_server: Host_and_port.t Deferred.t lazy_t
+  (* The [Host_and_port.t] corresponding to one's own master Rpc server. *)
+  { my_server : Host_and_port.t Deferred.t lazy_t
   (* The rpc settings used universally for all rpc connections *)
   ; app_rpc_settings : Rpc_settings.t
   (* Used to facilitate timeout of connecting to a spawned worker *)
-  ; pending: Host_and_port.t Ivar.t Worker_id.Table.t
+  ; pending : Host_and_port.t Ivar.t Worker_id.Table.t
   (* Arguments used when spawning a new worker *)
   ; worker_command_args : string list
   (* Callbacks for spawned worker exceptions along with the monitor that was current
      when [spawn] was called *)
-  ; on_failures: ((Error.t -> unit) * Monitor.t) Worker_id.Table.t;
+  ; on_failures : ((Error.t -> unit) * Monitor.t) Worker_id.Table.t;
   }
 
 (* All global state that is not specific to worker types is collected here *)
 type worker_state =
-  {(* Currently running worker servers in this process *)
-    my_worker_servers: (Socket.Address.Inet.t, int) Tcp.Server.t Worker_id.Table.t }
+  (* Currently running worker servers in this process *)
+  { my_worker_servers : (Socket.Address.Inet.t, int) Tcp.Server.t Worker_id.Table.t
+  (* To facilitate process creation cleanup.*)
+  ; initialized : [ `Init_started of [ `Initialized ] Or_error.t Deferred.t ] Set_once.t
+  }
 
 type global_state =
   { as_master : master_state
-  ; as_worker : worker_state }
+  ; as_worker : worker_state
+  }
 
 (* Each running instance has the capability to work as a master. This state includes
    information needed to spawn new workers (my_server, my_rpc_settings, pending,
@@ -623,7 +627,7 @@ let init_master_state ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbea
       { my_server; app_rpc_settings; pending; worker_command_args; on_failures }
     in
     let as_worker =
-      { my_worker_servers }
+      { my_worker_servers; initialized = Set_once.create () }
     in
     Set_once.set_exn global_state {as_master; as_worker};
 
@@ -1032,12 +1036,18 @@ module Make (S : Worker_spec) = struct
   let init_worker_state_impl =
     Rpc.Rpc.implement Init_worker_state_rpc.rpc
       (fun _conn_state { Init_worker_state_rpc.master; worker; arg } ->
-         Utils.try_within_exn ~monitor
-           (fun () ->
-              User_functions.init_worker_state
-                ~parent_heartbeater:(`Spawned master) arg)
-         >>| fun state ->
-         Hashtbl.add_exn worker_state.states ~key:worker ~data:state)
+         let init_finished =
+           Utils.try_within ~monitor
+             (fun () ->
+                User_functions.init_worker_state
+                  ~parent_heartbeater:(`Spawned master) arg)
+         in
+         Set_once.set_exn (get_worker_state_exn ()).initialized
+           (`Init_started (init_finished >>|? const `Initialized));
+         init_finished
+         >>| function
+         | Error e -> Error.raise e
+         | Ok state -> Hashtbl.add_exn worker_state.states ~key:worker ~data:state)
 
   let init_connection_state_impl =
     Rpc.Rpc.implement Init_connection_state_rpc.rpc
@@ -1146,12 +1156,29 @@ let worker_main ~id ~(config : Worker_config.t) ~maybe_release_daemon =
       eprintf "Shutting down.\n";
       Shutdown.shutdown 254)
   in
+  (* Ensure we do not leak processes. Make sure we have initialized successfully, meaning
+     we have heartbeats with the master established if the user wants them. *)
+  let setup_cleanup_on_timeout () =
+    let worker_timeout = sec 10. in
+    Clock.after worker_timeout
+    >>> fun () ->
+    match Set_once.get (get_worker_state_exn ()).initialized with
+    | None ->
+      eprintf "Timeout getting Init_worker_state rpc from master.\n";
+      eprintf "Shutting down.\n";
+      Shutdown.shutdown 254
+    | Some `Init_started initialize_result ->
+      initialize_result
+      >>> function
+      | Ok `Initialized -> ()
+      | Error e -> Error.raise e
+  in
   match Hashtbl.find worker_start_server_funcs config.worker_type with
   | None ->
     failwith
       "Worker could not find RPC implementations. Make sure the Parallel.Make () \
        functor is applied in the worker. It is suggested to make this toplevel."
- | Some start_server ->
+  | Some start_server ->
     start_server
       ?max_message_size
       ?handshake_timeout
@@ -1166,6 +1193,7 @@ let worker_main ~id ~(config : Worker_config.t) ~maybe_release_daemon =
     register (Host_and_port.create ~host ~port)
     >>> fun () ->
     setup_exception_handling ();
+    setup_cleanup_on_timeout ();
     (* Daemonize as late as possible but still before running any user code. This lets
        us read any setup errors from stderr *)
     maybe_release_daemon ();
