@@ -20,7 +20,7 @@ module Generate_random_map_function =
       Deferred.unit
     let map () () =
       return (Array.init 50000 ~f:(fun _ ->
-        atan (atan (atan (atan (atan (atan (Random.float 100.))))))))
+        Float.(atan (atan (atan (atan (atan (atan (Random.float 100.)))))))))
   end)
 
 module Compute_stats_map_reduce_function =
