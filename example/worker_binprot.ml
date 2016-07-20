@@ -2,6 +2,7 @@ open Core.Std
 open Async.Std
 open Rpc_parallel.Std
 
+
 (* This demonstrates how to take advantage of the feature in the [Rpc_parallel]
    library that a [Worker.t] type is defined [with bin_io]. *)
 

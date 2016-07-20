@@ -51,11 +51,11 @@ type master_state =
   ; app_rpc_settings : Rpc_settings.t
   (* Used to facilitate timeout of connecting to a spawned worker *)
   ; pending : Host_and_port.t Ivar.t Worker_id.Table.t
-  (* Arguments used when spawning a new worker *)
-  ; worker_command_args : string list
+  (* Arguments used when spawning a new worker. *)
+  ; worker_command_args : [ `Decorate_with_name | `User_supplied of string list ]
   (* Callbacks for spawned worker exceptions along with the monitor that was current
      when [spawn] was called *)
-  ; on_failures : ((Error.t -> unit) * Monitor.t) Worker_id.Table.t;
+  ; on_failures : ((Error.t -> unit) * Monitor.t) Worker_id.Table.t
   }
 
 (* All global state that is not specific to worker types is collected here *)
@@ -536,7 +536,7 @@ module Worker_config = struct
     ; app_rpc_settings    : Rpc_settings.t
     ; cd                  : string
     ; daemonize_args      : Daemonize_args.t
-    ; worker_command_args : string list
+    ; worker_command_args : [ `Decorate_with_name | `User_supplied of string list ]
     } [@@deriving sexp]
 end
 
@@ -624,10 +624,17 @@ let init_master_state ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbea
         ~port: (Tcp.Server.listening_on server)
     end in
     let as_master =
-      { my_server; app_rpc_settings; pending; worker_command_args; on_failures }
+      { my_server
+      ; app_rpc_settings
+      ; pending
+      ; worker_command_args
+      ; on_failures
+      }
     in
     let as_worker =
-      { my_worker_servers; initialized = Set_once.create () }
+      { my_worker_servers
+      ; initialized = Set_once.create ()
+      }
     in
     Set_once.set_exn global_state {as_master; as_worker};
 
@@ -881,9 +888,17 @@ module Make (S : Worker_spec) = struct
       } |> Worker_config.sexp_of_t
     in
     let pending_ivar = Ivar.create () in
+    let worker_command_args =
+      match global_state.worker_command_args with
+      | `Decorate_with_name ->
+        ["RPC_PARALLEL_WORKER"] @
+        (Option.value_map name ~default:[] ~f:(fun name -> [name]))
+      | `User_supplied args ->
+        args
+    in
     Hashtbl.add_exn global_state.pending ~key:id ~data:pending_ivar;
     run_executable where ~env ~id:(Worker_id.to_string id)
-      ~worker_command_args:global_state.worker_command_args ~input
+      ~worker_command_args ~input
     >>| function
     | Error _ as err ->
       Hashtbl.remove global_state.pending id;
@@ -1235,7 +1250,13 @@ module Expert = struct
               ?umask:umask ())
       in
       worker_main ~id ~config ~maybe_release_daemon;
-      never_returns (Scheduler.go ())
+      if Scheduler.is_running () then
+        failwith "[Parallel.run_as_worker_exn] must be called when the \
+                  Async scheduler is not running. You may need to use \
+                  [Command.basic] (with [Command.group]) instead of \
+                  [Command.async]. See the alternative_init.ml example."
+      else
+        never_returns (Scheduler.go ())
 
   let init_master_exn ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
         ~worker_command_args () =
@@ -1243,7 +1264,7 @@ module Expert = struct
     | `Worker _ -> failwith "Do not call [init_master_exn] in a spawned worker"
     | `Master ->
       init_master_state ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
-        ~worker_command_args
+        ~worker_command_args:(`User_supplied worker_command_args)
 end
 
 module State = struct
@@ -1258,8 +1279,8 @@ let start_app ?rpc_max_message_size ?rpc_handshake_timeout
   | `Worker _ ->
     Expert.run_as_worker_exn ()
   | `Master ->
-    Expert.init_master_exn ?rpc_max_message_size ?rpc_handshake_timeout
+    init_master_state ?rpc_max_message_size ?rpc_handshake_timeout
       ?rpc_heartbeat_config
-      ~worker_command_args:[] ();
+      ~worker_command_args:`Decorate_with_name;
     Command.run command
 ;;

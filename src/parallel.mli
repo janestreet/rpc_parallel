@@ -423,8 +423,8 @@ module Expert : sig
     -> unit
 
   (** [run_as_worker_exn] is the entry point for all workers. It is illegal to call both
-      [init_master_exn] and [run_as_worker_exn] in the same process. Will also raise an
-      exception if the process was not spawned by a master.
+      [init_master_exn] and [run_as_worker_exn] in the same process. Raises if the process
+      was not spawned by a master. It also raises if the scheduler is already running.
 
       NOTE: Various information is sent from the master to the spawned worker as a sexp
       through its stdin. A spawned worker must never read from stdin before the
