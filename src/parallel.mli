@@ -139,8 +139,11 @@ module type Worker = sig
 
       [env] extends the environment of the spawned worker process.
 
-      [connection_timeout] is the timeout used when waiting to establish a connection from
-      the spawned worker process.
+      [connection_timeout] serves two purposes. [spawn] returns an error if the master
+      hasn't gotten a register rpc from the spawned worker within [connection_timeout] or
+      if a worker hasn't gotten its init_arg from the master within [connection_timeout]
+      of sending the register rpc. This may need be to increased if the init arg is really
+      large (serialization and deserialization takes more than [connection_timeout]).
 
       [cd] changes the current working directory of a spawned worker process.
 
