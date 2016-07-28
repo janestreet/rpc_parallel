@@ -51,7 +51,7 @@ let is_child_env_var = "ASYNC_PARALLEL_IS_CHILD_MACHINE"
 
 let whoami () =
   match Sys.getenv is_child_env_var with
-  | Some id_str -> `Worker id_str
+  | Some _ -> `Worker
   | None -> `Master
 
 let clear_env () = Unix.unsetenv is_child_env_var
@@ -64,11 +64,11 @@ let validate_env env =
       e [%sexp_of: string*string]
   | None -> Ok ()
 
-let create_worker_env ~extra ~id =
+let create_worker_env ~extra =
   let open Or_error.Monad_infix in
   validate_env extra
   >>| fun () ->
-  extra @ [is_child_env_var, id]
+  extra @ [is_child_env_var, ""]
 
 let to_daemon_fd_redirection = function
   | `Dev_null -> `Dev_null

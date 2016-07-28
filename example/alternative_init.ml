@@ -35,12 +35,16 @@ end
 
 let worker_command =
   let open Command.Let_syntax in
-  Command.basic'
+  Command.Staged.async'
     ~summary:"for internal use"
     [%map_open
       let () = return ()
       in
-      fun () -> never_returns (Parallel.Expert.run_as_worker_exn ())
+      fun () ->
+        let worker_env = Parallel.Expert.worker_init_before_async_exn () in
+        stage (fun `Scheduler_started ->
+          Parallel.Expert.start_worker_server_exn worker_env;
+          Deferred.never ())
     ]
 
 let main_command =
@@ -51,7 +55,7 @@ let main_command =
       let () = return ()
       in
       fun () ->
-        Parallel.Expert.init_master_exn ~worker_command_args:["worker"] ();
+        Parallel.Expert.start_master_server_exn ~worker_command_args:["worker"] ();
         Worker.spawn_and_connect_exn ~on_failure:Error.raise
           ~redirect_stdout:`Dev_null ~redirect_stderr:`Dev_null
           ~connection_state_init_arg:() ()
@@ -61,7 +65,7 @@ let main_command =
 
 let command =
   Command.group
-    ~summary:"Simple use of Async Parallel V2"
+    ~summary:"Using Rpc_parallel.Expert"
     [ "worker", worker_command
     ; "main", main_command
     ]

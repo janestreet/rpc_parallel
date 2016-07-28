@@ -534,6 +534,7 @@ let start_server ~max_message_size ~handshake_timeout ~heartbeat_config
 module Worker_config = struct
   type t =
     { worker_type         : Worker_type_id.t
+    ; worker_id           : Worker_id.t
     ; name                : string option
     ; master              : Host_and_port.t
     ; app_rpc_settings    : Rpc_settings.t
@@ -541,7 +542,14 @@ module Worker_config = struct
     ; daemonize_args      : Daemonize_args.t
     ; connection_timeout  : Core.Span.t
     ; worker_command_args : [ `Decorate_with_name | `User_supplied of string list ]
-    } [@@deriving sexp]
+    } [@@deriving fields, sexp]
+end
+
+module Worker_env = struct
+  type t =
+    { config : Worker_config.t
+    ; maybe_release_daemon : unit -> unit
+    } [@@deriving fields]
 end
 
 (* Rpcs implemented by master *)
@@ -720,8 +728,8 @@ module Make (S : Worker_spec) = struct
         ~bin_response:Unit.bin_t
   end
 
-  let run_executable where ~env ~id ~worker_command_args ~input =
-    Utils.create_worker_env ~extra:env ~id |> return
+  let run_executable where ~env ~worker_command_args ~input =
+    Utils.create_worker_env ~extra:env |> return
     >>=? fun env ->
     match where with
     | Executable_location.Local ->
@@ -882,6 +890,7 @@ module Make (S : Worker_spec) = struct
     let input =
       { Worker_config.
         worker_type = worker_state.type_
+      ; worker_id = id
       ; name
       ; master = master_server
       ; app_rpc_settings = global_state.app_rpc_settings
@@ -901,8 +910,7 @@ module Make (S : Worker_spec) = struct
         args
     in
     Hashtbl.add_exn global_state.pending ~key:id ~data:pending_ivar;
-    run_executable where ~env ~id:(Worker_id.to_string id)
-      ~worker_command_args ~input
+    run_executable where ~env ~worker_command_args ~input
     >>| function
     | Error _ as err ->
       Hashtbl.remove global_state.pending id;
@@ -1144,10 +1152,12 @@ end
 
 (* Start an Rpc server based on the implementations defined in the [Make] functor
    for this worker type. Return a [Host_and_port.t] describing the server *)
-let worker_main ~id ~(config : Worker_config.t) ~maybe_release_daemon =
+let worker_main ~worker_env =
+  let { Worker_env.config; maybe_release_daemon } = worker_env in
   let {Rpc_settings.max_message_size; handshake_timeout; heartbeat_config} =
-    config.app_rpc_settings
+    Worker_config.app_rpc_settings config
   in
+  let id = Worker_config.worker_id config in
   let register my_host_and_port =
     Rpc.Connection.with_client
       ?max_message_size
@@ -1225,21 +1235,25 @@ let worker_main ~id ~(config : Worker_config.t) ~maybe_release_daemon =
     maybe_release_daemon ();
 
 module Expert = struct
-  let run_as_worker_exn () =
+  module Worker_env = Worker_env
+
+  let worker_init_before_async_exn () =
     match Utils.whoami () with
     | `Master ->
-      failwith "Could not find worker environment. Workers must be spawned by masters"
-    | `Worker id_str ->
+      failwith "[worker_init_before_async_exn] should not be called in a process that \
+                was not spawned."
+    | `Worker ->
+      if Scheduler.is_running () then
+        failwith "[worker_init_before_async_exn] must be called before the async \
+                  scheduler has been started.";
       Utils.clear_env ();
-      let config = Sexp.input_sexp In_channel.stdin |> Worker_config.t_of_sexp in
-      let {Rpc_settings.max_message_size; handshake_timeout; heartbeat_config} =
-        config.app_rpc_settings in
-      init_master_state
-        ~rpc_max_message_size:max_message_size
-        ~rpc_handshake_timeout:handshake_timeout
-        ~rpc_heartbeat_config:heartbeat_config
-        ~worker_command_args:config.worker_command_args;
-      let id = Worker_id.of_string id_str in
+      let config =
+        try Sexp.input_sexp In_channel.stdin |> Worker_config.t_of_sexp
+        with _ ->
+          failwith "Unable to read worker config from stdin. Make sure nothing is \
+                    read from stdin before [worker_init_before_async_exn] \
+                    is called."
+      in
       let maybe_release_daemon =
         match config.daemonize_args with
         | `Don't_daemonize ->
@@ -1260,19 +1274,27 @@ module Expert = struct
             Daemon.daemonize_wait ~cd:config.cd ~redirect_stdout ~redirect_stderr
               ?umask:umask ())
       in
-      worker_main ~id ~config ~maybe_release_daemon;
-      if Scheduler.is_running () then
-        failwith "[Parallel.run_as_worker_exn] must be called when the \
-                  Async scheduler is not running. You may need to use \
-                  [Command.basic] (with [Command.group]) instead of \
-                  [Command.async]. See the alternative_init.ml example."
-      else
-        never_returns (Scheduler.go ())
+      { Worker_env.config; maybe_release_daemon }
 
-  let init_master_exn ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
+  let start_worker_server_exn worker_env =
+    let {Rpc_settings.max_message_size; handshake_timeout; heartbeat_config} =
+      Worker_env.config worker_env |> Worker_config.app_rpc_settings
+    in
+    let worker_command_args =
+      Worker_env.config worker_env |> Worker_config.worker_command_args
+    in
+    init_master_state
+      ~rpc_max_message_size:max_message_size
+      ~rpc_handshake_timeout:handshake_timeout
+      ~rpc_heartbeat_config:heartbeat_config
+      ~worker_command_args;
+    worker_main ~worker_env
+
+  let start_master_server_exn
+        ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
         ~worker_command_args () =
     match Utils.whoami () with
-    | `Worker _ -> failwith "Do not call [init_master_exn] in a spawned worker"
+    | `Worker -> failwith "Do not call [init_master_exn] in a spawned worker"
     | `Master ->
       init_master_state ~rpc_max_message_size ~rpc_handshake_timeout ~rpc_heartbeat_config
         ~worker_command_args:(`User_supplied worker_command_args)
@@ -1286,8 +1308,10 @@ end
 
 let start_app ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config command =
   match Utils.whoami () with
-  | `Worker _ ->
-    Expert.run_as_worker_exn ()
+  | `Worker ->
+    let worker_env = Expert.worker_init_before_async_exn () in
+    Expert.start_worker_server_exn worker_env;
+    never_returns (Scheduler.go ())
   | `Master ->
     init_master_state ~rpc_max_message_size ~rpc_handshake_timeout ~rpc_heartbeat_config
       ~worker_command_args:`Decorate_with_name;

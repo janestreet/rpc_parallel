@@ -409,15 +409,15 @@ module State : sig
   val get : unit -> t option
 end
 
-(** If you want more direct control over your executable, you can use the [Expert]
-    module instead of [start_app]. If you use [Expert], you are responsible for
-    initializing the master service or running the worker. [worker_command_args] will be
-    the arguments sent to each spawned worker. Running your executable with these args
-    must follow a code path that calls [run_as_worker_exn]. *)
+(** If you want more direct control over your executable, you can use the [Expert] module
+    instead of [start_app]. If you use [Expert], you are responsible for starting the
+    master and worker rpc servers. [worker_command_args] will be the arguments sent to
+    each spawned worker. Running your executable with these args must follow a code path
+    that calls [worker_init_before_async_exn] and then [start_worker_server_exn]. *)
 module Expert : sig
-  (** [init_master_exn] should be called in the single master process. It is necessary to
-      be able to spawn workers. *)
-  val init_master_exn
+  (** [start_master_server_exn] must be called in the single master process. It is
+      necessary to be able to spawn workers. Raises if the process was spawned. *)
+  val start_master_server_exn
     :  ?rpc_max_message_size  : int
     -> ?rpc_handshake_timeout : Time.Span.t
     -> ?rpc_heartbeat_config : Rpc.Connection.Heartbeat_config.t
@@ -425,21 +425,24 @@ module Expert : sig
     -> unit
     -> unit
 
-  (** [run_as_worker_exn] is the entry point for all workers. It is illegal to call both
-      [init_master_exn] and [run_as_worker_exn] in the same process. Raises if the process
-      was not spawned by a master. It also raises if the scheduler is already running.
+  module Worker_env : sig
+    type t
+  end
 
-      NOTE: Various information is sent from the master to the spawned worker as a sexp
-      through its stdin. A spawned worker must never read from stdin before the
-      [init_worker_state] function begins running.
+  (** [worker_init_before_async_exn] must be called in a spawned worker process before the
+      async scheduler has started. You must not read from stdin before this function call.
 
-      NOTE: Anything written to stdout before calling [run_as_worker_exn] will not be
-      redirected according to [redirect_stdout]. It will be blackholed.
+      This has the side effect of calling [chdir]. *)
+  val worker_init_before_async_exn : unit -> Worker_env.t
 
-      NOTE: This has the side effect of calling [chdir] (always) and redirecting
-      stdout/stderr (unless [spawn_in_foreground]). This could be potentially confusing if
-      you rely on your current working directory or these file descriptors before calling
-      [run_as_worker_exn].
-  *)
-  val run_as_worker_exn : unit -> never_returns
+  (** [start_worker_server_exn] must be called in each spawned process. It is illegal to
+      call both [start_master_server_exn] and [start_worker_server_exn] in the same
+      process. Raises if the process was not spawned.
+
+      This has the side effect of scheduling a job that completes the daemonization of
+      this process (if the process should daemonize). This includes redirecting stdout and
+      stderr according to [redirect_stdout] and [redirect_stderr]. All writes to stdout
+      before this job runs are blackholed. All writes to stderr before this job runs are
+      redirected to the spawning process's stderr. *)
+  val start_worker_server_exn : Worker_env.t -> unit
 end

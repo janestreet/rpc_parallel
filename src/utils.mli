@@ -51,7 +51,7 @@ val our_binary : unit -> string
 val our_md5 : unit -> string Or_error.t Deferred.t
 
 (* Determine in what context the current executable is running *)
-val whoami : unit -> [ `Worker of string | `Master ]
+val whoami : unit -> [ `Worker | `Master ]
 
 (* Clear any environment variables that this library has set *)
 val clear_env : unit -> unit
@@ -59,7 +59,6 @@ val clear_env : unit -> unit
 (* Create an environment for a spawned worker to run in *)
 val create_worker_env
   :  extra:(string * string) list
-  -> id:string
   -> (string * string) list Or_error.t
 
 val to_daemon_fd_redirection
