@@ -1,0 +1,7 @@
+(executables
+ ((names (simple timeouts test_zombies errors))
+  (libraries (async
+              rpc_parallel_core_deprecated
+              core
+              jane
+              sexplib))))
