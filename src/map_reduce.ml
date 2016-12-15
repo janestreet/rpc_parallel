@@ -96,7 +96,6 @@ module Make_rpc_parallel_worker(S : Rpc_parallel_worker_spec) = struct
 
       module Functions(C : Parallel.Creator
                        with type worker_state := Worker_state.t
-                        and type worker_state_init_arg := Worker_state.init_arg
                         and type connection_state := Connection_state.t) = struct
         let execute =
           C.create_rpc

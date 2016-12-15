@@ -1,11 +1,9 @@
-
 open Core.Std
 open Async.Std
-open Rpc_parallel.Std
 
 module Worker = struct
   module T = struct
-    type 'worker functions = {print:('worker, string, unit) Parallel.Function.t}
+    type 'worker functions = {print:('worker, string, unit) Rpc_parallel.Function.t}
 
     module Worker_state = struct
       type init_arg = unit [@@deriving bin_io]
@@ -18,7 +16,7 @@ module Worker = struct
     end
 
     module Functions
-        (C : Parallel.Creator
+        (C : Rpc_parallel.Creator
          with type worker_state := Worker_state.t
           and type connection_state := Connection_state.t) = struct
       let print_impl ~worker_state:() ~conn_state:() string =
@@ -30,14 +28,14 @@ module Worker = struct
       let functions = {print}
 
       let init_worker_state ~parent_heartbeater () =
-        Parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
+        Rpc_parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
           parent_heartbeater
         >>| fun ( `Connected | `No_parent ) -> ()
 
       let init_connection_state ~connection:_ ~worker_state:_ = return
     end
   end
-  include Parallel.Make(T)
+  include Rpc_parallel.Make(T)
 end
 
 let main () =
@@ -49,7 +47,7 @@ let main () =
   >>=? fun () ->
   Worker.Connection.run conn ~f:Worker.functions.print ~arg:"HELLO2"
   >>=? fun () ->
-  Worker.Connection.run conn ~f:Parallel.Function.shutdown ~arg:()
+  Worker.Connection.run conn ~f:Rpc_parallel.Function.shutdown ~arg:()
   >>=? fun () ->
   Process.wait process
   >>= fun (_ : Unix.Exit_or_signal.t) ->
@@ -70,4 +68,4 @@ let command =
     Command.Spec.empty
     main
 
-let () = Parallel.start_app command
+let () = Rpc_parallel.start_app command

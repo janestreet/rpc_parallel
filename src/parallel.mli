@@ -253,9 +253,7 @@ module type Creator = sig
   type worker
 
   type worker_state
-  type worker_state_init_arg
   type connection_state
-  type connection_state_init_arg
 
   (** [create_rpc ?name ~f ~bin_input ~bin_output ()] will create an [Rpc.Rpc.t] with
       [name] if specified and use [f] as an implementation for this Rpc. It returns back a
@@ -362,9 +360,7 @@ module type Worker_spec = sig
   module Functions
       (C : Creator
        with type worker_state = Worker_state.t
-        and type worker_state_init_arg = Worker_state.init_arg
-        and type connection_state = Connection_state.t
-        and type connection_state_init_arg = Connection_state.init_arg)
+        and type connection_state = Connection_state.t)
     : Functions
       with type worker := C.worker
        and type 'a functions := 'a functions

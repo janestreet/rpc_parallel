@@ -1,6 +1,5 @@
 open Core.Std
 open Async.Std
-open Rpc_parallel.Std
 
 module Worker = struct
   module T = struct
@@ -17,20 +16,20 @@ module Worker = struct
     end
 
     module Functions
-        (C : Parallel.Creator
+        (C : Rpc_parallel.Creator
          with type worker_state := Worker_state.t
           and type connection_state := Connection_state.t) = struct
       let functions = ()
 
       let init_worker_state ~parent_heartbeater () =
-        Parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
+        Rpc_parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
           parent_heartbeater
         >>| fun ( `Connected | `No_parent ) -> ()
 
       let init_connection_state ~connection:_ ~worker_state:_ = return
     end
   end
-  include Parallel.Make(T)
+  include Rpc_parallel.Make(T)
 end
 
 let worker_command =
@@ -41,9 +40,9 @@ let worker_command =
       let () = return ()
       in
       fun () ->
-        let worker_env = Parallel.Expert.worker_init_before_async_exn () in
+        let worker_env = Rpc_parallel.Expert.worker_init_before_async_exn () in
         stage (fun `Scheduler_started ->
-          Parallel.Expert.start_worker_server_exn worker_env;
+          Rpc_parallel.Expert.start_worker_server_exn worker_env;
           Deferred.never ())
     ]
 
@@ -55,7 +54,7 @@ let main_command =
       let () = return ()
       in
       fun () ->
-        Parallel.Expert.start_master_server_exn ~worker_command_args:["worker"] ();
+        Rpc_parallel.Expert.start_master_server_exn ~worker_command_args:["worker"] ();
         Worker.spawn_and_connect_exn ~on_failure:Error.raise
           ~redirect_stdout:`Dev_null ~redirect_stderr:`Dev_null
           ~connection_state_init_arg:() ()

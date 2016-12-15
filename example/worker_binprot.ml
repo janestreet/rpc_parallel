@@ -1,6 +1,5 @@
 open Core.Std
 open Async.Std
-open Rpc_parallel.Std
 
 
 (* This demonstrates how to take advantage of the feature in the [Rpc_parallel]
@@ -11,7 +10,7 @@ module Worker = struct
     (* A [Worker.t] implements two functions: [ping : unit -> int] and
        [dispatch : Worker.t -> int] *)
     type 'worker functions =
-      { ping:('worker, unit, int) Parallel.Function.t }
+      { ping:('worker, unit, int) Rpc_parallel.Function.t }
 
     (* Internal state for each [Worker.t]. Every [Worker.t] has a counter that gets
        incremented anytime it gets pinged *)
@@ -26,9 +25,8 @@ module Worker = struct
     end
 
     module Functions
-        (C : Parallel.Creator
+        (C : Rpc_parallel.Creator
          with type worker_state := Worker_state.t
-          and type connection_state_init_arg := Connection_state.init_arg
           and type connection_state := Connection_state.t) = struct
       (* When a worker gets a [ping ()] call, increment its counter and return the current
          value *)
@@ -40,20 +38,20 @@ module Worker = struct
       let functions = {ping}
 
       let init_worker_state ~parent_heartbeater () =
-        Parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
+        Rpc_parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
           parent_heartbeater
         >>| fun ( `Connected | `No_parent ) -> ref 0
 
       let init_connection_state ~connection:_ ~worker_state:_ = return
     end
   end
-  include Parallel.Make (T)
+  include Rpc_parallel.Make (T)
 end
 
 module Dispatcher = struct
   module T = struct
     type 'worker functions =
-      { dispatch: ('worker, Worker.t, int) Parallel.Function.t }
+      { dispatch: ('worker, Worker.t, int) Rpc_parallel.Function.t }
 
     module Worker_state = struct
       type init_arg = unit [@@deriving bin_io]
@@ -66,9 +64,8 @@ module Dispatcher = struct
     end
 
     module Functions
-        (C : Parallel.Creator
+        (C : Rpc_parallel.Creator
          with type worker_state := Worker_state.t
-          and type connection_state_init_arg := Connection_state.init_arg
           and type connection_state := Connection_state.t) = struct
       (* When a worker gets a [dispatch worker] call, call [ping] on the supplied worker
          and return the same result. *)
@@ -83,7 +80,7 @@ module Dispatcher = struct
       let functions = {dispatch}
 
       let init_worker_state ~parent_heartbeater () =
-        Parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
+        Rpc_parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
           parent_heartbeater
         >>| fun ( `Connected | `No_parent ) -> ()
 
@@ -92,7 +89,7 @@ module Dispatcher = struct
     end
 
   end
-  include Parallel.Make (T)
+  include Rpc_parallel.Make (T)
 end
 
 let command =
@@ -132,4 +129,4 @@ let command =
            return ()) 10
        ] >>= fun () -> Deferred.Or_error.ok_unit)
 
-let () = Parallel.start_app command
+let () = Rpc_parallel.start_app command

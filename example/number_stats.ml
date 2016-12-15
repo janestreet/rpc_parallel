@@ -1,9 +1,8 @@
 open Jane.Std
 open Async.Std
-open Rpc_parallel.Std
 
 module Generate_random_map_function =
-  Map_reduce.Make_map_function_with_init(struct
+  Rpc_parallel.Map_reduce.Make_map_function_with_init(struct
     type state_type = unit
     module Param = struct
       type t = unit [@@deriving bin_io]
@@ -24,7 +23,7 @@ module Generate_random_map_function =
   end)
 
 module Compute_stats_map_reduce_function =
-  Map_reduce.Make_map_reduce_function(struct
+  Rpc_parallel.Map_reduce.Make_map_reduce_function(struct
     module Accum = struct
       type t = immutable Rstats.t [@@deriving bin_io]
     end
@@ -57,21 +56,21 @@ let command =
          | Some remote_host ->
            (match remote_path with
             | Some remote_path ->
-              Map_reduce.Config.create
-                ~remote:[ (Parallel.Remote_executable.existing_on_host
+              Rpc_parallel.Map_reduce.Config.create
+                ~remote:[ (Rpc_parallel.Remote_executable.existing_on_host
                              ~executable_path:remote_path remote_host, nworkers) ]
                 ~redirect_stderr:`Dev_null ~redirect_stdout:`Dev_null ()
             | _ -> failwith "No remote path specified")
-         | _ -> Map_reduce.Config.create ~local:nworkers
+         | _ -> Rpc_parallel.Map_reduce.Config.create ~local:nworkers
                   ~redirect_stderr:`Dev_null ~redirect_stdout:`Dev_null ()
        in
-       Map_reduce.map_unordered config
+       Rpc_parallel.Map_reduce.map_unordered config
          (Pipe.of_list (List.init nblocks ~f:(Fn.const ())))
          ~m:(module Generate_random_map_function)
          ~param:()
        >>= fun blocks ->
-       (if ordered then Map_reduce.map_reduce
-        else Map_reduce.map_reduce_commutative)
+       (if ordered then Rpc_parallel.Map_reduce.map_reduce
+        else Rpc_parallel.Map_reduce.map_reduce_commutative)
          config
          (Pipe.map blocks ~f:(fun (block, _index) -> block))
          ~m:(module Compute_stats_map_reduce_function)
@@ -86,4 +85,4 @@ let command =
          Deferred.unit
     )
 
-let () = Parallel.start_app command
+let () = Rpc_parallel.start_app command

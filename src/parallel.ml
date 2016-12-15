@@ -424,9 +424,7 @@ module type Creator = sig
   type worker
 
   type worker_state
-  type worker_state_init_arg
   type connection_state
-  type connection_state_init_arg
 
   val create_rpc
     :  ?name : string
@@ -509,9 +507,7 @@ module type Worker_spec = sig
   module Functions
       (C : Creator
        with type worker_state = Worker_state.t
-        and type worker_state_init_arg = Worker_state.init_arg
-        and type connection_state = Connection_state.t
-        and type connection_state_init_arg = Connection_state.init_arg)
+        and type connection_state = Connection_state.t)
     : Functions
       with type worker := C.worker
        and type 'a functions := 'a functions
@@ -540,7 +536,7 @@ module Worker_config = struct
     ; app_rpc_settings    : Rpc_settings.t
     ; cd                  : string
     ; daemonize_args      : Daemonize_args.t
-    ; connection_timeout  : Core.Span.t
+    ; connection_timeout  : Time.Span.t
     ; worker_command_args : [ `Decorate_with_name | `User_supplied of string list ]
     } [@@deriving fields, sexp]
 end
@@ -748,9 +744,7 @@ module Make (S : Worker_spec) = struct
   module Function_creator = struct
     type nonrec worker = worker
 
-    type connection_state_init_arg = S.Connection_state.init_arg
     type connection_state = S.Connection_state.t
-    type worker_state_init_arg = S.Worker_state.init_arg
     type worker_state = S.Worker_state.t
 
     let with_add_impl f =

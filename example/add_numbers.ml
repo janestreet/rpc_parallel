@@ -1,8 +1,7 @@
 open Core.Std
 open Async.Std
-open Rpc_parallel.Std
 
-module Add_numbers_map_function = Map_reduce.Make_map_function(struct
+module Add_numbers_map_function = Rpc_parallel.Map_reduce.Make_map_function(struct
   module Input = struct
     type t = int * int [@@deriving bin_io]
   end
@@ -33,11 +32,11 @@ let command =
     (fun max ntimes nworkers ordered () ->
        let list = (Pipe.of_list (List.init ntimes ~f:(fun i -> (i, max)))) in
        let config =
-         Map_reduce.Config.create ~local:nworkers
+         Rpc_parallel.Map_reduce.Config.create ~local:nworkers
            ~redirect_stderr:`Dev_null ~redirect_stdout:`Dev_null ()
        in
        if ordered then
-         (Map_reduce.map
+         (Rpc_parallel.Map_reduce.map
             config
             list
             ~m:(module Add_numbers_map_function)
@@ -48,7 +47,7 @@ let command =
             Deferred.unit
           ))
        else
-         (Map_reduce.map_unordered
+         (Rpc_parallel.Map_reduce.map_unordered
             config
             list
             ~m:(module Add_numbers_map_function)
@@ -61,4 +60,4 @@ let command =
           ))
     )
 
-let () = Parallel.start_app command
+let () = Rpc_parallel.start_app command

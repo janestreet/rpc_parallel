@@ -1,6 +1,5 @@
 open Core.Std
 open Async.Std
-open Rpc_parallel.Std
 
 (* An example demonstrating how workers can themselves act as masters and spawn more
    workers. We have two layers of workers, where the first layer spawns the workers of the
@@ -9,7 +8,7 @@ open Rpc_parallel.Std
 module Secondary_worker = struct
   module T = struct
     type 'worker functions =
-      { ping:('worker, unit, string) Parallel.Function.t
+      { ping:('worker, unit, string) Rpc_parallel.Function.t
       }
 
     module Worker_state = struct
@@ -23,7 +22,7 @@ module Secondary_worker = struct
     end
 
     module Functions
-        (C : Parallel.Creator
+        (C : Rpc_parallel.Creator
          with type worker_state := Worker_state.t
           and type connection_state := Connection_state.t) = struct
       let ping_impl ~worker_state:() ~conn_state:() () = return "pong"
@@ -34,22 +33,22 @@ module Secondary_worker = struct
       let functions = {ping}
 
       let init_worker_state ~parent_heartbeater () =
-        Parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
+        Rpc_parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
           parent_heartbeater
         >>| fun ( `Connected | `No_parent ) -> ()
 
       let init_connection_state ~connection:_ ~worker_state:_ = return
     end
   end
-  include Parallel.Make (T)
+  include Rpc_parallel.Make (T)
 end
 
 module Primary_worker = struct
   module T = struct
     type ping_result = string list [@@deriving bin_io]
     type 'worker functions =
-      { run:('worker, int, unit) Parallel.Function.t
-      ; ping:('worker, unit, ping_result) Parallel.Function.t
+      { run:('worker, int, unit) Rpc_parallel.Function.t
+      ; ping:('worker, unit, ping_result) Rpc_parallel.Function.t
       }
 
     let workers = Bag.create ()
@@ -66,9 +65,8 @@ module Primary_worker = struct
     end
 
     module Functions
-        (C : Parallel.Creator
+        (C : Rpc_parallel.Creator
          with type worker_state := Worker_state.t
-          and type connection_state_init_arg := Connection_state.init_arg
           and type connection_state := Connection_state.t) = struct
       let run_impl ~worker_state:() ~conn_state:() num_workers =
         Deferred.List.init ~how:`Parallel num_workers ~f:(fun _i ->
@@ -100,19 +98,19 @@ module Primary_worker = struct
       let functions = {run; ping}
 
       let init_worker_state ~parent_heartbeater () =
-        Parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
+        Rpc_parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
           parent_heartbeater
         >>| fun ( `Connected | `No_parent ) -> Bag.clear workers
 
       let init_connection_state ~connection:_ ~worker_state:_ = return
     end
   end
-  include Parallel.Make(T)
+  include Rpc_parallel.Make(T)
 end
 
 let command =
   (* Make sure to always use [Command.async] *)
-  Command.async_or_error ~summary:"Simple use of Async Parallel V2"
+  Command.async_or_error ~summary:"Simple use of Async Rpc_parallel V2"
     Command.Spec.(
       empty
       +> flag "primary" (required int)
@@ -138,5 +136,5 @@ let command =
        List.iter (List.join l) ~f:(printf "%s\n%!")
     )
 
-(* This call to [Parallel.start_app] must be top level *)
-let () = Parallel.start_app command
+(* This call to [Rpc_parallel.start_app] must be top level *)
+let () = Rpc_parallel.start_app command

@@ -1,6 +1,5 @@
 open Core.Std
 open Async.Std
-open Rpc_parallel.Std
 
 module Worker = struct
   module T = struct
@@ -16,11 +15,11 @@ module Worker = struct
       type t = unit
     end
 
-    module Functions (C : Parallel.Creator) = struct
+    module Functions (C : Rpc_parallel.Creator) = struct
       let functions = ()
 
       let init_worker_state ~parent_heartbeater () =
-        Parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
+        Rpc_parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
           parent_heartbeater
         >>| fun ( `Connected | `No_parent ) ->
         (Clock.after (sec 1.) >>> fun () -> Log.Global.info "tick1");
@@ -29,7 +28,7 @@ module Worker = struct
       let init_connection_state ~connection:_ ~worker_state:_ = return
     end
   end
-  include Parallel.Make(T)
+  include Rpc_parallel.Make(T)
 end
 
 let main () =
@@ -38,9 +37,9 @@ let main () =
   >>=? fun worker ->
   Worker.Connection.client worker ()
   >>=? fun conn ->
-  Worker.Connection.run conn ~f:Parallel.Function.async_log ~arg:()
+  Worker.Connection.run conn ~f:Rpc_parallel.Function.async_log ~arg:()
   >>=? fun log ->
-  Worker.Connection.run conn ~f:Parallel.Function.async_log ~arg:()
+  Worker.Connection.run conn ~f:Rpc_parallel.Function.async_log ~arg:()
   >>=? fun log2 ->
   don't_wait_for(Pipe.iter log ~f:(fun line ->
     printf !"1: %{sexp:Log.Message.Stable.V2.t}\n" line |> return));
@@ -58,4 +57,4 @@ let command =
     Command.Spec.empty
     main
 
-let () = Parallel.start_app command
+let () = Rpc_parallel.start_app command

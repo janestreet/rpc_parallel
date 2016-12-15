@@ -1,6 +1,5 @@
 open Core.Std
 open Async.Std
-open Rpc_parallel.Std
 
 (* This example involves a [Stream_worker.t] that generates a stream of elements.
    Each element of the stream is sent to a random [Worker.t] that has registered itself
@@ -10,8 +9,8 @@ open Rpc_parallel.Std
 module Stream_worker = struct
   module T = struct
     type 'worker functions =
-      { subscribe : ('worker, unit, int Pipe.Reader.t) Parallel.Function.t
-      ; start : ('worker, unit, unit) Parallel.Function.t }
+      { subscribe : ('worker, unit, int Pipe.Reader.t) Rpc_parallel.Function.t
+      ; start : ('worker, unit, unit) Rpc_parallel.Function.t }
 
     module Worker_state = struct
       type init_arg = int [@@deriving bin_io]
@@ -25,16 +24,14 @@ module Stream_worker = struct
       type t = unit
     end
 
-    module Functions (C : Parallel.Creator
-                      with type connection_state_init_arg := unit
-                       and type connection_state := unit
-                       and type worker_state_init_arg := Worker_state.init_arg
+    module Functions (C : Rpc_parallel.Creator
+                      with type connection_state := unit
                        and type worker_state := Worker_state.t) = struct
 
       let init_connection_state ~connection:_ ~worker_state:_ = return
 
       let init_worker_state ~parent_heartbeater num_elts =
-        Parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
+        Rpc_parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
           parent_heartbeater
         >>| fun ( `Connected | `No_parent ) ->
         { Worker_state.
@@ -87,13 +84,13 @@ module Stream_worker = struct
       let functions = { start; subscribe }
     end
   end
-  include Parallel.Make (T)
+  include Rpc_parallel.Make (T)
 end
 
 module Worker = struct
   module T = struct
     type 'worker functions =
-      { process_elts : ('worker, Stream_worker.t, int Pipe.Reader.t) Parallel.Function.t }
+      { process_elts : ('worker, Stream_worker.t, int Pipe.Reader.t) Rpc_parallel.Function.t }
 
     module Worker_state = struct
       type t = unit
@@ -106,9 +103,8 @@ module Worker = struct
     end
 
     module Functions
-        (C : Parallel.Creator
+        (C : Rpc_parallel.Creator
          with type worker_state := Worker_state.t
-          and type connection_state_init_arg := Connection_state.init_arg
           and type connection_state := Connection_state.t) = struct
 
       let process_elts_impl ~worker_state:() ~conn_state:() stream_worker =
@@ -129,7 +125,7 @@ module Worker = struct
       let functions = { process_elts }
 
       let init_worker_state ~parent_heartbeater () =
-        Parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
+        Rpc_parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
           parent_heartbeater
         >>| fun ( `Connected | `No_parent ) -> ()
 
@@ -137,7 +133,7 @@ module Worker = struct
     end
 
   end
-  include Parallel.Make (T)
+  include Rpc_parallel.Make (T)
 end
 
 let handle_error worker err =
@@ -187,4 +183,4 @@ let command =
        printf "Ok.\n";
        Or_error.return ())
 
-let () = Parallel.start_app command
+let () = Rpc_parallel.start_app command

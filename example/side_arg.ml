@@ -1,8 +1,7 @@
 open Core.Std
 open Async.Std
-open Rpc_parallel.Std
 
-module Side_arg_map_function = Map_reduce.Make_map_function_with_init(struct
+module Side_arg_map_function = Rpc_parallel.Map_reduce.Make_map_function_with_init(struct
   type state_type = string
   module Param = struct
     type t = string [@@deriving bin_io]
@@ -31,10 +30,10 @@ let command =
     (fun ntimes nworkers () ->
        let list = (Pipe.of_list (List.init ntimes ~f:(fun _i -> ()))) in
        let config =
-         Map_reduce.Config.create ~local:nworkers ()
+         Rpc_parallel.Map_reduce.Config.create ~local:nworkers ()
            ~redirect_stderr:`Dev_null ~redirect_stdout:`Dev_null
        in
-       Map_reduce.map_unordered
+       Rpc_parallel.Map_reduce.map_unordered
          config
          list
          ~m:(module Side_arg_map_function)
@@ -46,4 +45,4 @@ let command =
        )
     )
 
-let () = Parallel.start_app command
+let () = Rpc_parallel.start_app command

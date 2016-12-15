@@ -67,25 +67,24 @@ let hostkey_checking_options opt  =
   | Some `Yes -> [ "-o"; "StrictHostKeyChecking=yes" ]
 
 
-(* Get the location of the currently running binary. This is the best choice we have
-   because the executable could have been deleted *)
-let our_binary () =
-  let our_binary_lazy = lazy (
-    Unix.readlink (sprintf "/proc/%d/exe" (Pid.to_int (Unix.getpid ()))))
-  in Lazy.force our_binary_lazy
+(* Use /proc/PID/exe to get the currently running executable.
+   - argv[0] might have been deleted (this is quite common with jenga)
+   - `cp /proc/PID/exe dst` works as expected while `cp /proc/self/exe dst` does not *)
+let our_binary =
+  let our_binary_lazy =
+    lazy (Unix.getpid () |> Pid.to_int |> sprintf "/proc/%d/exe")
+  in
+  fun () -> Lazy.force our_binary_lazy
 
-let our_md5 () =
-  let our_md5_lazy = lazy (
-    our_binary () >>= fun binary ->
-    Process.run ~prog:"md5sum"
-      ~args:[binary]
-      ()
-    >>| function
-    | Error _ as err -> err
-    | Ok our_md5 ->
+let our_md5 =
+  let our_md5_lazy =
+    lazy begin
+      Process.run ~prog:"md5sum" ~args:[our_binary ()] ()
+      >>|? fun our_md5 ->
       let our_md5, _ = String.lsplit2_exn ~on:' ' our_md5 in
-      Ok our_md5)
-  in Lazy.force our_md5_lazy
+      our_md5
+    end
+  in fun () -> Lazy.force our_md5_lazy
 
 module Remote_executable = struct
   type 'a t = { host: string; path: string; host_key_checking: string list }
@@ -96,8 +95,7 @@ module Remote_executable = struct
       host_key_checking = hostkey_checking_options strict_host_key_checking }
 
   let copy_to_host ~executable_dir ?strict_host_key_checking host =
-    our_binary ()
-    >>= fun binary ->
+    let binary = our_binary () in
     let our_basename = Filename.basename binary in
     Process.run ~prog:"mktemp"
       ~args:["-u"; sprintf "%s.XXXXXXXX" our_basename] ()
@@ -271,8 +269,7 @@ module Make(
         ~env ~id ~where ~master ~disown =
     Ivar.read glob
     >>= fun st ->
-    our_binary ()
-    >>= fun binary ->
+    let binary = our_binary () in
     let worker_config =
       { Worker_config.
         disown

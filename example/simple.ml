@@ -1,6 +1,5 @@
 open Core.Std
 open Async.Std
-open Rpc_parallel.Std
 
 (* A bare bones use case of the [Rpc_parallel] library. This demonstrates how to
    define a simple worker type that implements some functions. The master then spawns a
@@ -11,7 +10,7 @@ module Sum_worker = struct
     (* A [Sum_worker.worker] implements a single function [sum : int -> int]. Because this
        function is parameterized on a ['worker], it can only be run on workers of the
        [Sum_worker.worker] type. *)
-    type 'worker functions = {sum:('worker, int, int) Parallel.Function.t}
+    type 'worker functions = {sum:('worker, int, int) Rpc_parallel.Function.t}
 
     (* No initialization upon spawn *)
     module Worker_state = struct
@@ -25,7 +24,7 @@ module Sum_worker = struct
     end
 
     module Functions
-        (C : Parallel.Creator
+        (C : Rpc_parallel.Creator
          with type worker_state := Worker_state.t
           and type connection_state := Connection_state.t) = struct
       (* Define the implementation for the [sum] function *)
@@ -34,21 +33,21 @@ module Sum_worker = struct
         Log.Global.info "Sum_worker.sum: %i\n" sum;
         return sum
 
-      (* Create a [Parallel.Function.t] from the above implementation *)
+      (* Create a [Rpc_parallel.Function.t] from the above implementation *)
       let sum = C.create_rpc ~f:sum_impl ~bin_input:Int.bin_t ~bin_output:Int.bin_t ()
 
       (* This type must match the ['worker functions] type defined above *)
       let functions = {sum}
 
       let init_worker_state ~parent_heartbeater () =
-        Parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
+        Rpc_parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
           parent_heartbeater
         >>| fun ( `Connected | `No_parent ) -> ()
 
       let init_connection_state ~connection:_ ~worker_state:_ = return
     end
   end
-  include Parallel.Make(T)
+  include Rpc_parallel.Make(T)
 end
 
 let main max log_dir () =
@@ -74,7 +73,7 @@ let main max log_dir () =
 
 let command =
   (* Make sure to always use [Command.async] *)
-  Command.async_or_error ~summary:"Simple use of Async Parallel V2"
+  Command.async_or_error ~summary:"Simple use of Async Rpc_parallel V2"
     Command.Spec.(
       empty
       +> flag "max" (required int) ~doc:""
@@ -83,5 +82,5 @@ let command =
     )
     main
 
-(* This call to [Parallel.start_app] must be top level *)
-let () = Parallel.start_app command
+(* This call to [Rpc_parallel.start_app] must be top level *)
+let () = Rpc_parallel.start_app command
