@@ -19,16 +19,8 @@ module Map_reduce          = Map_reduce
 include Parallel
 
 (** Old [Std] style interface, which has slightly different module names. *)
-module Std = struct
-  module Parallel = struct
-    include Parallel
-    module Remote_executable   = Remote_executable
-    module Executable_location = Executable_location
-  end
-
-  module Parallel_managed = Parallel_managed
-  module Map_reduce       = Map_reduce
-end
+module Std = struct end
+[@@deprecated "[since 2016-11] Use [Rpc_parallel] instead of [Rpc_parallel.Std]"]
 
 module Parallel = Parallel
 [@@deprecated "[since 2016-11] Use [Rpc_parallel] instead of [Rpc_parallel.Parallel]"]
