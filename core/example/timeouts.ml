@@ -1,4 +1,4 @@
-open Core.Std
+open Core
 open Async.Std
 open Rpc_parallel_core_deprecated.Std
 
@@ -15,7 +15,7 @@ let unresponsive_rpc =
 
 let unresponsive_rpc_impl =
   Rpc.Rpc.implement unresponsive_rpc (fun () sleep_time ->
-    Core.Std.Unix.sleep sleep_time;
+    Core.Unix.sleep sleep_time;
     return ()
   )
 
@@ -72,7 +72,7 @@ let command =
         | Ok (Ok i) -> i
        )
        >>= fun () ->
-       Core.Std.Printf.printf "worker returned\n";
+       Core.Printf.printf "worker returned\n";
        return ())
 
 let () = Parallel_app.run command

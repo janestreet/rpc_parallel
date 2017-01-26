@@ -1,4 +1,4 @@
-open Core.Std
+open Core
 open Async.Std
 
 (* This example involves a [Stream_worker.t] that generates a stream of elements.

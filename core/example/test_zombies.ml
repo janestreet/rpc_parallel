@@ -1,4 +1,4 @@
-open Core.Std
+open Core
 open Async.Std
 open Rpc_parallel_core_deprecated.Std
 
@@ -30,7 +30,7 @@ let rec run_worker_in_loop ~where () =
     true
     ~on_failure:(handle_error "test worker")
   >>= fun ((), _worker_id) ->
-  Core.Std.Printf.printf "Worker spawned\n%!";
+  Core.Printf.printf "Worker spawned\n%!";
   Clock.after (sec 1.)
   >>= fun () -> run_worker_in_loop ~where ()
 
@@ -41,16 +41,16 @@ let run_worker ~where () =
     false
     ~on_failure:(handle_error "test worker")
   >>= fun ((), worker_id) ->
-  Core.Std.Printf.printf "Worker spawned\n%!";
+  Core.Printf.printf "Worker spawned\n%!";
 
-  Core.Std.Printf.printf "Going to shutdown worker in 5s...\n%!";
+  Core.Printf.printf "Going to shutdown worker in 5s...\n%!";
   Clock.after (sec 5.)
   >>= fun () ->
-  Core.Std.Printf.printf "Initiating worker shutdown\n%!";
+  Core.Printf.printf "Initiating worker shutdown\n%!";
   Parallel_app.kill_worker worker_id
   >>= fun result ->
   Or_error.ok_exn result;
-  Core.Std.Printf.printf "Worker shutdown complete, exiting.\n%!";
+  Core.Printf.printf "Worker shutdown complete, exiting.\n%!";
   return ()
 
 let command =

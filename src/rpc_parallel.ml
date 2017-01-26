@@ -1,4 +1,4 @@
-open! Core.Std
+open! Core
 
 (** A type-safe parallel library built on top of Async_rpc.
 

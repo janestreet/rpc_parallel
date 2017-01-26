@@ -1,7 +1,7 @@
 (** A parallel map/reduce library. See examples/add_numbers.ml and
     examples/number_stats.ml for examples. *)
 
-open! Core.Std
+open! Core
 open! Async.Std
 
 module Config : sig

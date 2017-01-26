@@ -1,4 +1,4 @@
-open Core.Std
+open Core
 open Async.Std
 
 module Add_numbers_map_function = Rpc_parallel.Map_reduce.Make_map_function(struct

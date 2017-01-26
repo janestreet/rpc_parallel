@@ -1,4 +1,4 @@
-open Core.Std
+open Core
 open Async.Std
 
 module Worker_type_id = Utils.Worker_type_id
@@ -1251,7 +1251,7 @@ module Expert = struct
       let maybe_release_daemon =
         match config.daemonize_args with
         | `Don't_daemonize ->
-          Core.Std.Unix.chdir config.cd;
+          Core.Unix.chdir config.cd;
           Fn.id
         | `Daemonize {Daemonize_args.umask; redirect_stderr; redirect_stdout} ->
           (* The worker is started via SSH. We want to go to the background so we can close

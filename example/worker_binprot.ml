@@ -1,4 +1,4 @@
-open Core.Std
+open Core
 open Async.Std
 
 
@@ -119,13 +119,13 @@ let command =
            Dispatcher.Connection.run_exn dispatcher_conn ~f:Dispatcher.functions.dispatch
              ~arg:worker
            >>= fun count ->
-           Core.Std.Printf.printf "worker pinged from dispatcher: %d\n%!" count;
+           Core.Printf.printf "worker pinged from dispatcher: %d\n%!" count;
            return ()) 10;
          repeat (fun () ->
            Worker.Connection.run_exn worker_conn ~f:Worker.functions.ping
              ~arg:()
            >>= fun count ->
-           Core.Std.Printf.printf "worker pinged from master: %d\n%!" count;
+           Core.Printf.printf "worker pinged from master: %d\n%!" count;
            return ()) 10
        ] >>= fun () -> Deferred.Or_error.ok_unit)
 

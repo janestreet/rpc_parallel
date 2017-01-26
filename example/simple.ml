@@ -1,4 +1,4 @@
-open Core.Std
+open Core
 open Async.Std
 
 (* A bare bones use case of the [Rpc_parallel] library. This demonstrates how to
@@ -68,7 +68,7 @@ let main max log_dir () =
   >>=? fun (_sum_worker, conn) ->
   Sum_worker.Connection.run conn ~f:Sum_worker.functions.sum ~arg:max
   >>=? fun res ->
-  Core.Std.Printf.printf "sum_worker: %d\n%!" res;
+  Core.Printf.printf "sum_worker: %d\n%!" res;
   Deferred.Or_error.ok_unit
 
 let command =

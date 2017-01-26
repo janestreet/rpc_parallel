@@ -1,4 +1,4 @@
-open Core.Std
+open Core
 open Async.Std
 
 (** This module is primarily meant for backwards compatibility with code that used earlier

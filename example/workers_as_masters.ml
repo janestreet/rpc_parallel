@@ -1,4 +1,4 @@
-open Core.Std
+open Core
 open Async.Std
 
 (* An example demonstrating how workers can themselves act as masters and spawn more

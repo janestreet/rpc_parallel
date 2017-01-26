@@ -1,4 +1,4 @@
-open Core.Std
+open Core
 open Async.Std
 open Rpc_parallel_core_deprecated.Std
 
