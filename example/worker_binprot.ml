@@ -1,5 +1,5 @@
 open Core
-open Async.Std
+open Async
 
 
 (* This demonstrates how to take advantage of the feature in the [Rpc_parallel]

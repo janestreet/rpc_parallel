@@ -1,5 +1,5 @@
 open Core
-open Async.Std
+open Async
 
 module Fd_redirection : sig
   type t = [
@@ -214,7 +214,7 @@ module Make(
   end
 
   let validate_extra_env env =
-    match List.find env ~f:(fun (key, _) -> List.mem env_vars key) with
+    match List.find env ~f:(fun (key, _) -> List.mem env_vars key ~equal:String.equal) with
     | Some e ->
       Or_error.error
         "Environment variable conflicts with Rpc_parallel machinery"

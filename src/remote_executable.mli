@@ -1,5 +1,5 @@
 open Core
-open Async.Std
+open Async
 
 (** This module is used to transfer the currently running executable to a remote server *)
 type 'a t

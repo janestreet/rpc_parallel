@@ -1,5 +1,5 @@
 open Core
-open Async.Std
+open Async
 open Rpc_parallel_core_deprecated.Std
 
 (* A simple use of the [Rpc_parallel_core] library. Spawn long-running workers and

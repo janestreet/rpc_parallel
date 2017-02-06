@@ -2,7 +2,7 @@
     examples/number_stats.ml for examples. *)
 
 open! Core
-open! Async.Std
+open! Async
 
 module Config : sig
   type t

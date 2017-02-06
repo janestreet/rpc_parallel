@@ -1,5 +1,5 @@
 open Core
-open Async.Std
+open Async
 
 module type Worker = sig
   type t [@@deriving sexp_of]

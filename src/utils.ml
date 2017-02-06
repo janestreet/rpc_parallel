@@ -1,5 +1,5 @@
 open Core
-open Async.Std
+open Async
 
 module Worker_id = Uuid
 module Worker_type_id = Unique_id.Int ()

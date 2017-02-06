@@ -1,5 +1,5 @@
 open Core
-open Async.Std
+open Async
 
 (* This example involves a [Stream_worker.t] that generates a stream of elements.
    Each element of the stream is sent to a random [Worker.t] that has registered itself

@@ -1,5 +1,5 @@
 open Core
-open Async.Std
+open Async
 
 (** This module is primarily meant for backwards compatibility with code that used earlier
     versions of [Rpc_parallel]. Please consider using the [Parallel.Make()] functor

@@ -1,5 +1,5 @@
 open Jane.Std
-open Async.Std
+open Async
 
 module Generate_random_map_function =
   Rpc_parallel.Map_reduce.Make_map_function_with_init(struct

@@ -1,5 +1,5 @@
 open Core
-open Async.Std
+open Async
 open Rpc_parallel_core_deprecated.Std
 
 type arg = [`Ok | `Exn_now | `Exn_later] [@@deriving bin_io]

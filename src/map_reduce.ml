@@ -1,5 +1,5 @@
 open Core
-open Async.Std
+open Async
 
 module Half_open_interval = struct
   module T = struct

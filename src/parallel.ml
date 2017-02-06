@@ -1,5 +1,5 @@
 open Core
-open Async.Std
+open Async
 
 module Worker_type_id = Utils.Worker_type_id
 module Worker_id      = Utils.Worker_id

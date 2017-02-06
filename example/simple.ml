@@ -1,5 +1,5 @@
 open Core
-open Async.Std
+open Async
 
 (* A bare bones use case of the [Rpc_parallel] library. This demonstrates how to
    define a simple worker type that implements some functions. The master then spawns a

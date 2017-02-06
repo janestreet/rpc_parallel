@@ -1,5 +1,5 @@
 open Core
-open Async.Std
+open Async
 
 (* An example demonstrating how workers can themselves act as masters and spawn more
    workers. We have two layers of workers, where the first layer spawns the workers of the
