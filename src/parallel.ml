@@ -1,5 +1,6 @@
 open Core
 open Async
+open Parallel_intf
 
 module Worker_type_id = Utils.Worker_type_id
 module Worker_id      = Utils.Worker_id
@@ -292,230 +293,18 @@ module Heartbeater = struct
     | `Spawned t -> f t
 end
 
-(* Well this sucks that I need to copy all the module types into here. Factoring out
-   everything into a parallel_intf.ml file didn't work because of dependencies with the
-   module types and [Heartbeater]/[Function]. *)
-module type Worker = sig
+module type Worker = Worker
+  with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
 
-  type t [@@deriving bin_io, sexp_of]
+module type Functions = Functions
+  with type _heartbeater := Heartbeater.t
 
-  type worker = t
+module type Creator = Creator
+  with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
 
-  type 'a functions
-
-  val functions : t functions
-
-  type worker_state_init_arg
-  type connection_state_init_arg
-
-  module Id : Identifiable
-  val id : t -> Id.t
-
-  val serve
-    :  ?max_message_size  : int
-    -> ?handshake_timeout : Time.Span.t
-    -> ?heartbeat_config  : Rpc.Connection.Heartbeat_config.t
-    -> worker_state_init_arg
-    -> worker Deferred.t
-
-  module Connection : sig
-    type t [@@deriving sexp_of]
-
-    val run
-      :  t
-      -> f : (worker, 'query, 'response) Function.t
-      -> arg : 'query
-      -> 'response Or_error.t Deferred.t
-
-    val run_exn
-      :  t
-      -> f : (worker, 'query, 'response) Function.t
-      -> arg : 'query
-      -> 'response Deferred.t
-
-    val client : worker -> connection_state_init_arg -> t Or_error.t Deferred.t
-    val client_exn : worker -> connection_state_init_arg -> t Deferred.t
-
-    val with_client
-      :  worker
-      -> connection_state_init_arg
-      -> f: (t -> 'a Deferred.t)
-      -> 'a Or_error.t Deferred.t
-
-    val close : t -> unit Deferred.t
-    val close_finished : t -> unit Deferred.t
-    val close_reason : t -> on_close: [`started | `finished] -> Info.t Deferred.t
-    val is_closed : t -> bool
-  end
-
-  type 'a with_spawn_args
-    =  ?where : Executable_location.t
-    -> ?name : string
-    -> ?env : (string * string) list
-    -> ?connection_timeout:Time.Span.t
-    -> ?cd : string
-    -> on_failure : (Error.t -> unit)
-    -> 'a
-
-  val spawn
-    : (?umask : int
-       -> redirect_stdout : Fd_redirection.t
-       -> redirect_stderr : Fd_redirection.t
-       -> worker_state_init_arg
-       -> t Or_error.t Deferred.t) with_spawn_args
-
-  val spawn_and_connect
-    : (?umask : int
-       -> redirect_stdout : Fd_redirection.t
-       -> redirect_stderr : Fd_redirection.t
-       -> connection_state_init_arg : connection_state_init_arg
-       -> worker_state_init_arg
-       -> (t * Connection.t) Or_error.t Deferred.t) with_spawn_args
-
-  val spawn_in_foreground
-    : (worker_state_init_arg
-       -> (t * Process.t) Or_error.t Deferred.t) with_spawn_args
-
-  val spawn_exn
-    : (?umask : int
-       -> redirect_stdout : Fd_redirection.t
-       -> redirect_stderr : Fd_redirection.t
-       -> worker_state_init_arg
-       -> t Deferred.t) with_spawn_args
-
-  val spawn_and_connect_exn
-    : (?umask : int
-       -> redirect_stdout : Fd_redirection.t
-       -> redirect_stderr : Fd_redirection.t
-       -> connection_state_init_arg : connection_state_init_arg
-       -> worker_state_init_arg
-       -> (t * Connection.t) Deferred.t) with_spawn_args
-
-  val spawn_in_foreground_exn
-    : (worker_state_init_arg
-       -> (t * Process.t) Deferred.t) with_spawn_args
-end
-
-module type Functions = sig
-  type worker
-
-  type worker_state_init_arg
-  type worker_state
-
-  type connection_state_init_arg
-  type connection_state
-
-  type 'worker functions
-  val functions : worker functions
-
-  val init_worker_state
-    :  parent_heartbeater : [ `Spawned of Heartbeater.t | `Served ]
-    -> worker_state_init_arg
-    -> worker_state Deferred.t
-
-  val init_connection_state
-    :  connection   : Rpc.Connection.t
-    -> worker_state : worker_state
-    -> connection_state_init_arg
-    -> connection_state Deferred.t
-end
-
-module type Creator = sig
-  type worker
-
-  type worker_state
-  type connection_state
-
-  val create_rpc
-    :  ?name : string
-    -> f
-       : (worker_state : worker_state
-          -> conn_state : connection_state
-          -> 'query
-          -> 'response Deferred.t)
-    -> bin_input : 'query Bin_prot.Type_class.t
-    -> bin_output : 'response Bin_prot.Type_class.t
-    -> unit
-    -> (worker, 'query, 'response) Function.t
-
-  val create_pipe
-    :  ?name : string
-    -> f
-       : (worker_state  : worker_state
-          -> conn_state : connection_state
-          -> 'query
-          -> 'response Pipe.Reader.t Deferred.t)
-    -> bin_input : 'query Bin_prot.Type_class.t
-    -> bin_output : 'response Bin_prot.Type_class.t
-    -> unit
-    -> (worker, 'query, 'response Pipe.Reader.t) Function.t
-
-  val create_one_way
-    :  ?name : string
-    -> f
-       : (worker_state  : worker_state
-          -> conn_state : connection_state
-          -> 'query
-          ->  unit)
-    -> bin_input : 'query Bin_prot.Type_class.t
-    -> unit
-    -> (worker, 'query, unit) Function.t
-
-  val of_async_rpc
-    :  f
-       : (worker_state  : worker_state
-          -> conn_state : connection_state
-          -> 'query
-          -> 'response Deferred.t)
-    -> ('query, 'response) Rpc.Rpc.t
-    -> (worker, 'query, 'response) Function.t
-
-  val of_async_pipe_rpc
-    :  f
-       : (worker_state  : worker_state
-          -> conn_state : connection_state
-          -> 'query
-          -> 'response Pipe.Reader.t Deferred.t)
-    -> ('query, 'response, Error.t) Rpc.Pipe_rpc.t
-    -> (worker, 'query, 'response Pipe.Reader.t) Function.t
-
-  val of_async_one_way_rpc
-    :  f
-       : (worker_state  : worker_state
-          -> conn_state : connection_state
-          -> 'query
-          -> unit)
-    -> 'query Rpc.One_way.t
-    -> (worker, 'query, unit) Function.t
-end
-
-
-module type Worker_spec = sig
-
-  type 'worker functions
-
-  module Worker_state : sig
-    type t
-    type init_arg [@@deriving bin_io]
-  end
-
-  module Connection_state : sig
-    type t
-    type init_arg [@@deriving bin_io]
-  end
-
-  module Functions
-      (C : Creator
-       with type worker_state = Worker_state.t
-        and type connection_state = Connection_state.t)
-    : Functions
-      with type worker := C.worker
-       and type 'a functions := 'a functions
-       and type worker_state := Worker_state.t
-       and type worker_state_init_arg := Worker_state.init_arg
-       and type connection_state := Connection_state.t
-       and type connection_state_init_arg := Connection_state.init_arg
-end
+module type Worker_spec = Worker_spec
+  with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
+   and type _heartbeater           := Heartbeater.t
 
 let start_server ~max_message_size ~handshake_timeout ~heartbeat_config
       ~where_to_listen ~implementations ~initial_connection_state =
