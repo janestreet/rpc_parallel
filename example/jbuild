@@ -1,18 +1,24 @@
-(executables
- ((names (simple
-          serve
-          spawn_in_foreground
-          async_log
-          alternative_init
-          number_stats
-          add_numbers
-          stream_workers
-          worker_binprot
-          side_arg
-          workers_as_masters))
-  (libraries (async
-              rpc_parallel
-              core
-              jane
-              sexp_app
-              sexplib))))
+(executables (
+  (names (
+    add_numbers
+    alternative_init
+    async_log
+    number_stats
+    reverse_pipe
+    serve
+    side_arg
+    simple
+    spawn_in_foreground
+    stream_workers
+    worker_binprot
+    workers_as_masters
+    ))
+  (libraries (
+    async
+    core
+    jane
+    rpc_parallel
+    sexp_app
+    sexplib
+    ))
+  ))

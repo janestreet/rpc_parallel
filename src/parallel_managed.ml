@@ -103,6 +103,7 @@ module Make (S : Parallel.Worker_spec) = struct
          >>> fun () ->
          Hashtbl.remove workers id);
         Ok conn
+  ;;
 
   let spawn ?where ?name ?env
         ?connection_timeout ?cd ?umask ~redirect_stdout ~redirect_stderr
@@ -126,6 +127,7 @@ module Make (S : Parallel.Worker_spec) = struct
        in
        on_failure error);
     { unmanaged = worker; connection_state_init_arg; id }
+  ;;
 
   let spawn_exn ?where ?name ?env
         ?connection_timeout ?cd ?umask ~redirect_stdout ~redirect_stderr
@@ -134,12 +136,14 @@ module Make (S : Parallel.Worker_spec) = struct
       ?connection_timeout ?cd ?umask ~redirect_stdout ~redirect_stderr
       worker_state_init_arg connection_init_arg ~on_failure
     >>| Or_error.ok_exn
+  ;;
 
   let kill t =
     get_connection t
     >>=? fun conn ->
     Hashtbl.remove workers t.id;
     Unmanaged.Connection.run conn ~f:Parallel.Function.shutdown ~arg:()
+  ;;
 
   let kill_exn t = kill t >>| Or_error.ok_exn
 
@@ -147,8 +151,10 @@ module Make (S : Parallel.Worker_spec) = struct
     get_connection t
     >>=? fun conn ->
     Unmanaged.Connection.run conn ~f ~arg
+  ;;
 
   let run_exn t ~f ~arg =
     run t ~f ~arg
     >>| Or_error.ok_exn
+  ;;
 end
