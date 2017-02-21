@@ -1091,19 +1091,18 @@ module Make (S : Worker_spec) = struct
     Rpc.Pipe_rpc.implement Async_log_rpc.rpc (fun _conn_state () ->
       let r, w = Pipe.create () in
       let new_output = Log.Output.create (fun msgs ->
-        Queue.iter msgs ~f:(fun msg -> Pipe.write_without_pushback w msg)
-        |> return)
+        if not (Pipe.is_closed w) then
+          Queue.iter msgs ~f:(fun msg -> Pipe.write_without_pushback w msg);
+        return ())
       in
       Log.Global.set_output (new_output::Log.Global.get_output ());
-      (* Remove this new output upon the pipe closing. Must be careful to flush the log
-         before closing the writer. *)
+      (* Remove this new output upon the pipe closing. *)
       upon (Pipe.closed w) (fun () ->
         let new_outputs =
           List.filter (Log.Global.get_output ()) ~f:(fun output ->
             not (phys_equal output new_output))
         in
-        Log.Global.set_output new_outputs;
-        upon (Log.Global.flushed ()) (fun () -> Pipe.close w));
+        Log.Global.set_output new_outputs);
       return (Ok r))
   ;;
 
