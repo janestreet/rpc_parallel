@@ -5,3 +5,5 @@
               core
               jane
               sexplib))))
+
+(jbuild_version jane_street)

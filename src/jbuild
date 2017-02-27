@@ -3,3 +3,5 @@
   (libraries (core
               async
               sexplib))))
+
+(jbuild_version jane_street)
