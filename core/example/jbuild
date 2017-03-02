@@ -4,6 +4,7 @@
               rpc_parallel_core_deprecated
               core
               jane
-              sexplib))))
+              sexplib))
+  (preprocess (pps (ppx_jane)))))
 
 (jbuild_version jane_street)

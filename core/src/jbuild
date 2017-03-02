@@ -3,6 +3,7 @@
   (public_name rpc_parallel.core)
   (libraries (core
               async
-              sexplib))))
+              sexplib))
+  (preprocess (pps (ppx_jane)))))
 
 (jbuild_version jane_street)
