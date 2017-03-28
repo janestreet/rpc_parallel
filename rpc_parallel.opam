@@ -3,7 +3,7 @@ maintainer: "opensource@janestreet.com"
 authors: ["Jane Street Group, LLC <opensource@janestreet.com>"]
 homepage: "https://github.com/janestreet/rpc_parallel"
 bug-reports: "https://github.com/janestreet/rpc_parallel/issues"
-dev-repo: "https://github.com/janestreet/rpc_parallel.git"
+dev-repo: "git+https://github.com/janestreet/rpc_parallel.git"
 license: "Apache-2.0"
 build: [
   ["jbuilder" "build" "--only-packages" "rpc_parallel" "--root" "." "-j" jobs "@install"]
