@@ -38,6 +38,7 @@ module Config = struct
     { local           : int
     ; remote          : (packed_remote * int) list
     ; cd              : string option
+    ; heartbeater     : Parallel.Heartbeater.t
     ; redirect_stderr : [ `Dev_null | `File_append of string ]
     ; redirect_stdout : [ `Dev_null | `File_append of string ]
     }
@@ -45,7 +46,9 @@ module Config = struct
   let default_cores () =
     (ok_exn Linux_ext.cores) ()
 
-  let create ?(local = 0) ?(remote = []) ?cd ~redirect_stderr ~redirect_stdout () =
+  let create ?(local = 0) ?(remote = []) ?cd
+        ?(heartbeater = Parallel.Heartbeater.Shutdown_worker_on_disconnect)
+        ~redirect_stderr ~redirect_stdout () =
     let (local, remote) =
       if local = 0 && (List.is_empty remote) then
         (default_cores (), remote)
@@ -53,7 +56,7 @@ module Config = struct
         (local, remote)
     in
     { local; remote = List.map remote ~f:(fun (remote, n) -> (Packed_remote remote, n));
-      cd; redirect_stderr; redirect_stdout }
+      cd; heartbeater; redirect_stderr; redirect_stdout }
 end
 
 (* Wrappers for generic worker *)
@@ -104,11 +107,7 @@ module Make_rpc_parallel_worker(S : Rpc_parallel_worker_spec) = struct
 
         let functions = { execute }
 
-        let init_worker_state ~parent_heartbeater arg =
-          Parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
-            parent_heartbeater
-          >>= fun ( `Connected | `No_parent ) ->
-          S.init arg
+        let init_worker_state = S.init
 
         let init_connection_state ~connection:_ ~worker_state:_ () = return ()
       end
@@ -122,12 +121,14 @@ module Make_rpc_parallel_worker(S : Rpc_parallel_worker_spec) = struct
   type run_input_type = S.Run_input.t
   type run_output_type = S.Run_output.t
 
-  let spawn_exn where param ?cd ~redirect_stderr ~redirect_stdout =
-    Parallel_worker.spawn_and_connect_exn ~where ?cd ~redirect_stderr
+  let spawn_exn where param ?cd ~heartbeater ~redirect_stderr ~redirect_stdout =
+    Parallel_worker.spawn_and_connect_exn ~where ?cd ~heartbeater ~redirect_stderr
       ~redirect_stdout param ~connection_state_init_arg:() ~on_failure:Error.raise
     >>| fun (_worker, conn) -> conn
 
-  let spawn_config_exn {Config.local; remote; cd; redirect_stderr; redirect_stdout} param =
+  let spawn_config_exn
+        { Config.local; remote; cd; heartbeater; redirect_stderr; redirect_stdout }
+        param =
     if local < 0 then
       failwiths "config.local must be nonnegative" local Int.sexp_of_t;
     (match List.find remote ~f:(fun (_remote, n) -> n < 0) with
@@ -141,6 +142,7 @@ module Make_rpc_parallel_worker(S : Rpc_parallel_worker_spec) = struct
     let spawn_n where n =
       Deferred.List.init n ~f:(fun _i ->
         spawn_exn where param ?cd
+          ~heartbeater
           ~redirect_stderr:(redirect_stderr :> Fd_redirection.t)
           ~redirect_stdout:(redirect_stdout :> Fd_redirection.t))
     in

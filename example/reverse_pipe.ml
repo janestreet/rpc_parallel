@@ -34,12 +34,7 @@ module Shard = struct
           ()
       ;;
 
-      let init_worker_state ~parent_heartbeater id =
-        let%map ( `Connected | `No_parent ) =
-          Rpc_parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
-            parent_heartbeater
-        in
-        id
+      let init_worker_state = return
       ;;
 
       let init_connection_state ~connection:_ ~worker_state:_ () = Deferred.unit

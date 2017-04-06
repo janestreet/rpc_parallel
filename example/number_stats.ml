@@ -1,4 +1,4 @@
-open Jane.Std
+open Jane
 open Async
 
 module Generate_random_map_function =

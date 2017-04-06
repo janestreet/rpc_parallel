@@ -32,10 +32,7 @@ module Secondary_worker = struct
 
       let functions = {ping}
 
-      let init_worker_state ~parent_heartbeater () =
-        Rpc_parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
-          parent_heartbeater
-        >>| fun ( `Connected | `No_parent ) -> ()
+      let init_worker_state () = Deferred.unit
 
       let init_connection_state ~connection:_ ~worker_state:_ = return
     end
@@ -97,10 +94,9 @@ module Primary_worker = struct
 
       let functions = {run; ping}
 
-      let init_worker_state ~parent_heartbeater () =
-        Rpc_parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
-          parent_heartbeater
-        >>| fun ( `Connected | `No_parent ) -> Bag.clear workers
+      let init_worker_state () =
+        Bag.clear workers;
+        Deferred.unit
 
       let init_connection_state ~connection:_ ~worker_state:_ = return
     end

@@ -21,10 +21,7 @@ module Worker = struct
           and type connection_state := Connection_state.t) = struct
       let functions = ()
 
-      let init_worker_state ~parent_heartbeater () =
-        Rpc_parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
-          parent_heartbeater
-        >>| fun ( `Connected | `No_parent ) -> ()
+      let init_worker_state () = Deferred.unit
 
       let init_connection_state ~connection:_ ~worker_state:_ = return
     end

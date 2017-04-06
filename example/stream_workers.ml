@@ -30,13 +30,11 @@ module Stream_worker = struct
 
       let init_connection_state ~connection:_ ~worker_state:_ = return
 
-      let init_worker_state ~parent_heartbeater num_elts =
-        Rpc_parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
-          parent_heartbeater
-        >>| fun ( `Connected | `No_parent ) ->
-        { Worker_state.
-          num_elts = num_elts
-        ; workers = [] }
+      let init_worker_state num_elts =
+        return
+          { Worker_state.num_elts
+          ; workers = []
+          }
 
       let subscribe_impl ~worker_state ~conn_state:() () =
         let r, w = Pipe.create () in
@@ -124,10 +122,7 @@ module Worker = struct
 
       let functions = { process_elts }
 
-      let init_worker_state ~parent_heartbeater () =
-        Rpc_parallel.Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn)
-          parent_heartbeater
-        >>| fun ( `Connected | `No_parent ) -> ()
+      let init_worker_state () = Deferred.unit
 
       let init_connection_state ~connection:_ ~worker_state:_ = return
     end

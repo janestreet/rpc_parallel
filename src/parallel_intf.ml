@@ -45,38 +45,30 @@ module type Function = sig
   val close_server : (_, unit, unit) t
 end
 
-(** A [Heartbeater.t] is an Rpc server only used for heartbeats. The only thing you can do
-    with a [Heartbeater.t] is connect to it and get notified when the connection
-    closed. *)
 module type Heartbeater = sig
-  type t [@@deriving bin_io]
+  type t =
+    | No_heartbeater
+    | Shutdown_worker_on_disconnect
 
-  (** A helper function to be used on the [~parent_heartbeater] argument of the
-      [init_worker_state] function. The suggested use is:
+  (** The below functions have been deprecated in favor of using the [heartbeater]
+      argument to the [spawn] family of functions. *)
 
-      Heartbeater.(if_spawned connect_and_shutdown_on_disconnect_exn) parent_heartbeater
+  val if_spawned : [ `Will_raise ] -> unit
+  [@@deprecated
+    "[since 2017-03] Use [heartbeat] argument to [spawn] "]
 
-      [if_spawned f parent_heartbeater] will run [f] on the heartbeater if this worker was
-      created with [spawn]. If the worker was created with [Connection.serve] (in
-      process), nothing occurs and [`No_parent] is returned. *)
-  val if_spawned
-    :  ( t -> ([> `No_parent ] as 'a) Deferred.t )
-    -> [ `Spawned of t | `Served ]
-    -> 'a Deferred.t
+  val connect_and_shutdown_on_disconnect_exn : [ `Will_raise ] -> unit
+  [@@deprecated
+    "[since 2017-03] Use [heartbeat] argument to [spawn] "]
 
-  (** Connect to the given [Heartbeater.t] (host and port) and call
-      [Shutdown.shutdown] upon [Rpc.Connection.close_finished], raising an exception if
-      unable to connect. The returned [Deferred.t] is determined once the initial
-      connection has been established. *)
-  val connect_and_shutdown_on_disconnect_exn : t -> [> `Connected ] Deferred.t
-
-  val connect_and_wait_for_disconnect_exn
-    :  t
-    -> [> `Connected of [ `Disconnected ] Deferred.t ] Deferred.t
+  val connect_and_wait_for_disconnect_exn : [ `Will_raise ] -> unit
+  [@@deprecated
+    "[since 2017-03] Use [heartbeat] argument to [spawn] "]
 end
 
 module type Worker = sig
   type ('worker, 'query, 'response) _function
+  type _heartbeater
 
   (** A [Worker.t] type is defined [with bin_io] so it is possible to create functions
       that take a worker as an argument. *)
@@ -144,8 +136,8 @@ module type Worker = sig
     val is_closed : t -> bool
   end
 
-  (** The various [spawn] functions create a new worker process that
-      implements the functions specified in the [Worker_spec].
+  (** The various [spawn] functions create a new worker process that implements the
+      functions specified in the [Worker_spec].
 
       [name] will be attached to certain error messages and is useful for debugging.
 
@@ -153,11 +145,15 @@ module type Worker = sig
 
       [connection_timeout] serves two purposes. [spawn] returns an error if the master
       hasn't gotten a register rpc from the spawned worker within [connection_timeout] or
-      if a worker hasn't gotten its init_arg from the master within [connection_timeout]
-      of sending the register rpc. This may need be to increased if the init arg is really
+      if a worker hasn't gotten its init_arg from the master within [connection_timeout] of
+      sending the register rpc. This may need be to increased if the init arg is really
       large (serialization and deserialization takes more than [connection_timeout]).
 
       [cd] changes the current working directory of a spawned worker process.
+
+      If [heartbeater] is [Shutdown_worker_on_disconnect], the worker will establish a
+      connection back to the master; if this connection is ever severed, the worker will
+      shut itself down. The other option is simply [No_heartbeater].
 
       [on_failure exn] will be called in the spawning process upon the worker process
       raising a background exception. All exceptions raised before functions return will be
@@ -173,6 +169,7 @@ module type Worker = sig
     -> ?env : (string * string) list
     -> ?connection_timeout:Time.Span.t  (** default 10 sec *)
     -> ?cd : string  (** default / *)
+    -> ?heartbeater : _heartbeater  (** default Shutdown_worker_on_disconnect *)
     -> on_failure : (Error.t -> unit)
     -> 'a
 
@@ -227,8 +224,6 @@ module type Worker = sig
 end
 
 module type Functions = sig
-  type _heartbeater
-
   type worker
 
   type worker_state_init_arg
@@ -240,16 +235,9 @@ module type Functions = sig
   type 'worker functions
   val functions : worker functions
 
-  (** [init_worker_state] is called with the [init_arg] passed to [spawn] or [serve]
-
-      If [spawn] was called, it is highly recommeded to call
-      [connect_and_shutdown_on_disconnect_exn] on the supplied heartbeater of the spawner.
-
-      The [Cleanup.connect_and_shutdown_on_disconnect_if_spawned_exn] function does just
-      this for you. *)
+  (** [init_worker_state] is called with the [init_arg] passed to [spawn] or [serve] *)
   val init_worker_state
-    :  parent_heartbeater : [ `Spawned of _heartbeater | `Served ]
-    -> worker_state_init_arg
+    :  worker_state_init_arg
     -> worker_state Deferred.t
 
   (** [init_connection_state] is called with the [init_arg] passed to [Connection.client]
@@ -373,7 +361,6 @@ end
 (** Specification for the creation of a worker type *)
 module type Worker_spec = sig
   type ('worker, 'query, 'response) _function
-  type _heartbeater
 
   (** A type to encapsulate all the functions that can be run on this worker. Using a
       record type here is often the most convenient and readable. *)
@@ -405,7 +392,6 @@ module type Worker_spec = sig
        and type worker_state_init_arg     := Worker_state.init_arg
        and type connection_state          := Connection_state.t
        and type connection_state_init_arg := Connection_state.init_arg
-       and type _heartbeater              := _heartbeater
 end
 
 module type Parallel = sig
@@ -414,16 +400,15 @@ module type Parallel = sig
 
   module type Worker = Worker
     with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
+     and type _heartbeater := Heartbeater.t
 
   module type Functions = Functions
-    with type _heartbeater := Heartbeater.t
 
   module type Creator = Creator
     with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
 
   module type Worker_spec = Worker_spec
     with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
-     and type _heartbeater           := Heartbeater.t
 
   (** module Worker = Make(T)
 

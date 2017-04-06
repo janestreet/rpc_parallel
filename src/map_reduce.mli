@@ -14,6 +14,7 @@ module Config : sig
     :  ?local : int
     -> ?remote : (_ Remote_executable.t * int) list
     -> ?cd : string  (** default / *)
+    -> ?heartbeater : Parallel.Heartbeater.t
     -> redirect_stderr : [ `Dev_null | `File_append of string ]
     -> redirect_stdout : [ `Dev_null | `File_append of string ]
     -> unit
