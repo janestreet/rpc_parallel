@@ -433,8 +433,6 @@ end = struct
      >>> fun `Disconnected ->
      Log.Global.error
        "Rpc_parallel: Heartbeater with master lost connection... Shutting down.";
-     Log.Global.flushed ()
-     >>> fun () ->
      Shutdown.shutdown 254);
     return `Connected
   ;;
@@ -1117,8 +1115,6 @@ module Make (S : Worker_spec) = struct
     Rpc.One_way.implement Shutdown_rpc.rpc
       (fun _conn_state () ->
          Log.Global.info "Rpc_parallel: Got shutdown rpc... Shutting down.";
-         Log.Global.flushed ()
-         >>> fun () ->
          Shutdown.shutdown 0)
   ;;
 
@@ -1210,8 +1206,6 @@ let worker_main ~worker_env =
             { id; name = config.name; error = Error.of_exn exn })
       >>> fun _ ->
       Log.Global.error !"Rpc_parallel: %{Exn} ... Shutting down." exn;
-      Log.Global.flushed ()
-      >>> fun () ->
       Shutdown.shutdown 254)
   in
   (* Ensure we do not leak processes. Make sure we have initialized successfully, meaning
@@ -1224,8 +1218,6 @@ let worker_main ~worker_env =
       Log.Global.error
         "Rpc_parallel: Timeout getting Init_worker_state rpc from master... \
          Shutting down.";
-      Log.Global.flushed ()
-      >>> fun () ->
       Shutdown.shutdown 254
     | Some `Init_started initialize_result ->
       initialize_result
