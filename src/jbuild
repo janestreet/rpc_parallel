@@ -1,5 +1,6 @@
 (library
  ((name rpc_parallel)
+  (public_name rpc_parallel)
   (libraries (core
               async
               sexplib))
