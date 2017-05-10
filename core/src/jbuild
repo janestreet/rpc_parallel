@@ -1,6 +1,5 @@
 (library
  ((name rpc_parallel_core_deprecated)
-  (public_name rpc_parallel.core)
   (libraries (core
               async
               sexplib))
