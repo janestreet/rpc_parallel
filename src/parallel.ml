@@ -154,7 +154,7 @@ module Function = struct
       Rpc.Pipe_rpc.implement protocol
         (fun ((_conn : Rpc.Connection.t), internal_conn_state) arg ->
            let { Utils.Internal_connection_state.conn_state; worker_state; _ } =
-             Set_once.get_exn internal_conn_state in
+             Set_once.get_exn internal_conn_state [%here] in
            Utils.try_within ~monitor (fun () -> f ~worker_state ~conn_state arg))
     ;;
 
@@ -177,7 +177,7 @@ module Function = struct
       Rpc.Rpc.implement protocol
         (fun ((_conn : Rpc.Connection.t), internal_conn_state) arg ->
            let { Utils.Internal_connection_state.conn_state; worker_state; _ } =
-             Set_once.get_exn internal_conn_state
+             Set_once.get_exn internal_conn_state [%here]
            in
            (* We want to raise any exceptions from [f arg] to the current monitor (handled
               by Rpc) so the caller can see it. Additional exceptions will be handled by the
@@ -209,7 +209,7 @@ module Function = struct
       Rpc.Rpc.implement t.worker_rpc
         (fun (conn, internal_conn_state) (arg, id) ->
            let { Utils.Internal_connection_state.conn_state; worker_state; _ } =
-             Set_once.get_exn internal_conn_state
+             Set_once.get_exn internal_conn_state [%here]
            in
            Utils.try_within_exn ~monitor (fun () ->
              Rpc.Pipe_rpc.dispatch t.master_rpc conn id
@@ -265,7 +265,7 @@ module Function = struct
       Rpc.One_way.implement protocol
         (fun ((_conn : Rpc.Connection.t), internal_conn_state) arg ->
            let { Utils.Internal_connection_state.conn_state; worker_state; _ } =
-             Set_once.get_exn internal_conn_state in
+             Set_once.get_exn internal_conn_state [%here] in
            don't_wait_for
              (* Even though [f] returns [unit], we want to use [try_within_exn] so if it
                 starts any background jobs we won't miss the exceptions *)
@@ -583,7 +583,7 @@ let init_master_state ~rpc_max_message_size ~rpc_handshake_timeout ~rpc_heartbea
       ; initialized = Set_once.create ()
       }
     in
-    Set_once.set_exn global_state {as_master; as_worker};
+    Set_once.set_exn global_state [%here] {as_master; as_worker};
 ;;
 
 module Make (S : Worker_spec) = struct
@@ -1092,7 +1092,7 @@ module Make (S : Worker_spec) = struct
                 in
                 User_functions.init_worker_state arg)
          in
-         Set_once.set_exn (get_worker_state_exn ()).initialized
+         Set_once.set_exn (get_worker_state_exn ()).initialized [%here]
            (`Init_started (init_finished >>|? const `Initialized));
          init_finished
          >>| function
@@ -1107,7 +1107,7 @@ module Make (S : Worker_spec) = struct
          Utils.try_within_exn ~monitor
            (fun () -> User_functions.init_connection_state ~connection ~worker_state init_arg)
          >>| fun conn_state ->
-         Set_once.set_exn internal_conn_state
+         Set_once.set_exn internal_conn_state [%here]
            { Utils.Internal_connection_state.worker_id; conn_state;  worker_state })
   ;;
 
@@ -1121,7 +1121,7 @@ module Make (S : Worker_spec) = struct
   let close_server_impl =
     Rpc.One_way.implement Close_server_rpc.rpc (fun (_conn, conn_state) () ->
       let {Utils.Internal_connection_state.worker_id; _} =
-        Set_once.get_exn conn_state in
+        Set_once.get_exn conn_state [%here] in
       let global_state = get_worker_state_exn () in
       match Hashtbl.find global_state.my_worker_servers worker_id with
       | None -> ()

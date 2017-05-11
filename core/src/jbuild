@@ -1,8 +1,0 @@
-(library
- ((name rpc_parallel_core_deprecated)
-  (libraries (core
-              async
-              sexplib))
-  (preprocess (pps (ppx_jane ppx_driver.runner)))))
-
-(jbuild_version 1)
