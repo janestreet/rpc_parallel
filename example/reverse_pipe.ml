@@ -49,14 +49,14 @@ let main () =
   let shards = 10 in
   let%bind connections =
     Array.init shards ~f:(fun id ->
-      Shard.spawn_and_connect_exn
+      Shard.spawn_exn
+        ~shutdown_on:Disconnect
         ~redirect_stdout:`Dev_null
         ~redirect_stderr:`Dev_null
-        ~connection_state_init_arg:()
         ~on_failure:Error.raise
+        ~connection_state_init_arg:()
         id)
     |> Deferred.Array.all
-    >>| Array.map ~f:snd
   in
   let readers =
     let readers, writers =
@@ -81,8 +81,7 @@ let main () =
     |> Deferred.Array.all
     >>| printf !"%{sexp: string list array}\n"
   in
-  Array.map connections ~f:(fun connection ->
-    Shard.Connection.run_exn connection ~f:Rpc_parallel.Function.shutdown ~arg:())
+  Array.map connections ~f:Shard.Connection.close
   |> Deferred.Array.all_unit
 ;;
 

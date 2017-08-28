@@ -127,18 +127,6 @@ module Async_log_rpc = struct
   ;;
 end
 
-module Heartbeater = struct
-  type t =
-    | No_heartbeater
-    | Shutdown_worker_on_disconnect
-
-  let if_spawned `Will_raise = failwith "[if_spawned] is deprecated"
-  let connect_and_shutdown_on_disconnect_exn `Will_raise =
-    failwith "[connect_and_shutdown_on_disconnect_exn] is deprecated"
-  let connect_and_wait_for_disconnect_exn `Will_raise =
-    failwith "[connect_and_wait_for_disconnect_exn] is deprecated"
-end
-
 module Function = struct
   module Rpc_id = Unique_id.Int ()
 
@@ -380,7 +368,6 @@ module Function = struct
     >>| Or_error.map ~f:response_f
   ;;
 
-  let shutdown     = T (Fn.id, One_way Shutdown_rpc.rpc, Fn.id)
   let async_log    = T (Fn.id, Piped (Async_log_rpc.rpc, Type_equal.T), Fn.id)
   let close_server = T (Fn.id, One_way Close_server_rpc.rpc, Fn.id)
 end
@@ -419,11 +406,11 @@ end = struct
     let host, port = Host_and_port.tuple host_and_port in
     Rpc.Connection.client ~host ~port ?handshake_timeout ?heartbeat_config ()
     >>| function
-      | Error e -> raise e
-      | Ok conn ->
-        `Connected (Rpc.Connection.close_finished conn
-                    >>| fun () ->
-                    `Disconnected)
+    | Error e -> raise e
+    | Ok conn ->
+      `Connected (Rpc.Connection.close_finished conn
+                  >>| fun () ->
+                  `Disconnected)
   ;;
 
   let connect_and_shutdown_on_disconnect_exn heartbeater =
@@ -440,7 +427,6 @@ end
 
 module type Worker = Worker
   with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
-   and type _heartbeater := Heartbeater.t
 
 module type Functions = Functions
 
@@ -612,6 +598,8 @@ module Make (S : Worker_spec) = struct
       type_  : Worker_type_id.t
     (* Persistent states associated with instances of this worker server *)
     ; states : S.Worker_state.t Worker_id.Table.t
+    (* To facilitate cleanup in the [Shutdown_on.Disconnect] case *)
+    ; mutable client_has_connected : bool
     (* Build up a list of all implementations for this worker type *)
     ; mutable implementations :
         (S.Worker_state.t, S.Connection_state.t) Utils.Internal_connection_state.t
@@ -622,6 +610,7 @@ module Make (S : Worker_spec) = struct
   let worker_state =
     { type_                  = Worker_type_id.create ()
     ; states                 = Worker_id.Table.create ~size:1 ()
+    ; client_has_connected   = false
     ; implementations        = []
     ; master_implementations = []
     }
@@ -637,10 +626,11 @@ module Make (S : Worker_spec) = struct
   module Init_worker_state_rpc = struct
     type query =
       (* The heartbeater of the process that called [spawn] *)
-      { master : Heartbeater_master.t option
+      { master                            : Heartbeater_master.t option
       (* The process that got spawned *)
-      ; worker : Worker_id.t
-      ; arg    : S.Worker_state.init_arg
+      ; worker                            : Worker_id.t
+      ; arg                               : S.Worker_state.init_arg
+      ; initial_client_connection_timeout : Time.Span.t option
       } [@@deriving bin_io]
 
     let rpc =
@@ -655,8 +645,9 @@ module Make (S : Worker_spec) = struct
 
   module Init_connection_state_rpc = struct
     type query =
-      { worker_id : Worker_id.t
-      ; arg       : S.Connection_state.init_arg
+      { worker_id                     : Worker_id.t
+      ; worker_shutdown_on_disconnect : bool
+      ; arg                           : S.Connection_state.init_arg
       } [@@deriving bin_io]
 
     let rpc =
@@ -784,14 +775,18 @@ module Make (S : Worker_spec) = struct
   ;;
 
   module Connection = struct
-    type t = Rpc.Connection.t [@@deriving sexp_of]
+    type t =
+      { connection : Rpc.Connection.t
+      ; worker_id  : Id.t
+      } [@@deriving fields, sexp_of]
 
-    let close t        = Rpc.Connection.close t
-    let close_finished = Rpc.Connection.close_finished
-    let close_reason   = Rpc.Connection.close_reason
-    let is_closed      = Rpc.Connection.is_closed
+    let close           t = Rpc.Connection.close          t.connection
+    let close_finished  t = Rpc.Connection.close_finished t.connection
+    let close_reason    t = Rpc.Connection.close_reason   t.connection
+    let is_closed       t = Rpc.Connection.is_closed      t.connection
 
-    let client { host_and_port; rpc_settings; id; _} init_arg =
+    let client_aux ~worker_shutdown_on_disconnect
+          { host_and_port; rpc_settings; id = worker_id; _} init_arg =
       let {Rpc_settings.max_message_size; handshake_timeout; heartbeat_config} =
         rpc_settings in
       Rpc.Connection.client
@@ -804,16 +799,22 @@ module Make (S : Worker_spec) = struct
         ()
       >>= function
       | Error exn -> return (Error (Error.of_exn exn))
-      | Ok conn ->
-        Rpc.Rpc.dispatch Init_connection_state_rpc.rpc conn
-          { worker_id = id; arg = init_arg }
+      | Ok connection ->
+        Rpc.Rpc.dispatch Init_connection_state_rpc.rpc connection
+          { worker_id; worker_shutdown_on_disconnect; arg = init_arg }
         >>= function
         | Error e ->
-          Rpc.Connection.close conn
+          Rpc.Connection.close connection
           >>| fun () ->
           Error e
         | Ok () ->
-          Deferred.Or_error.return conn
+          Deferred.Or_error.return { connection; worker_id }
+    ;;
+
+    let client = client_aux ~worker_shutdown_on_disconnect:false
+
+    let client_with_worker_shutdown_on_disconnect =
+      client_aux ~worker_shutdown_on_disconnect:true
     ;;
 
     let client_exn worker init_arg = client worker init_arg >>| Or_error.ok_exn
@@ -828,8 +829,35 @@ module Make (S : Worker_spec) = struct
       Result.map_error result ~f:(fun exn -> Error.of_exn exn)
     ;;
 
-    let run t ~f ~arg = Function.run f t ~arg
+    let run t ~f ~arg = Function.run f t.connection ~arg
     let run_exn t ~f ~arg = run t ~f ~arg >>| Or_error.ok_exn
+  end
+
+  module Shutdown_on (M : T1) = struct
+    type _ t =
+      | Heartbeater_timeout : worker M.t Deferred.t t
+      | Disconnect :
+          (connection_state_init_arg:S.Connection_state.init_arg->
+           Connection.t M.t Deferred.t) t
+      | Called_shutdown_function : worker M.t Deferred.t t
+
+    let args
+      :  type a
+      .  a t -> [`Client_will_immediately_connect of bool] * [`Setup_master_heartbeater of bool]
+      = function
+        | Heartbeater_timeout ->
+          `Client_will_immediately_connect false,
+          `Setup_master_heartbeater        true
+        | Disconnect ->
+          (* No heartbeater needed because we call
+             [Connection.client_with_worker_shutdown_on_disconnect] and the worker shuts
+             itself down if it times out waiting for a connection from the master. *)
+          `Client_will_immediately_connect true,
+          `Setup_master_heartbeater        false
+        | Called_shutdown_function ->
+          `Client_will_immediately_connect false,
+          `Setup_master_heartbeater        false
+    ;;
   end
 
   type 'a with_spawn_args
@@ -838,10 +866,20 @@ module Make (S : Worker_spec) = struct
     -> ?env : (string * string) list
     -> ?connection_timeout:Time.Span.t
     -> ?cd : string
-    -> ?heartbeater : Heartbeater.t
     -> on_failure : (Error.t -> unit)
     -> 'a
 
+  (* This timeout serves three purposes.
+
+     [spawn] returns an error if:
+     (1) the master hasn't gotten a register rpc from the spawned worker within
+     [connection_timeout] of sending the register rpc.
+     (2) a worker hasn't gotten its [init_arg] from the master within [connection_timeout]
+     of sending the register rpc
+
+     Additionally, if [~shutdown_on:Disconnect] was used:
+     (3) a worker will shut itself down if it doesn't get a connection from the master
+     after spawn succeeded. *)
   let connection_timeout_default = sec 10.
 
   let spawn_process ~where ~env ~cd ~name ~connection_timeout ~daemonize_args =
@@ -911,19 +949,25 @@ module Make (S : Worker_spec) = struct
       ~port:(Host_and_port.port host_and_port) f
   ;;
 
+  let shutdown worker =
+    with_client worker ~f:(fun conn ->
+      Rpc.One_way.dispatch Shutdown_rpc.rpc conn () |> return)
+    >>| Or_error.of_exn_result
+    >>| Or_error.join
+  ;;
+
   let with_shutdown_on_error worker ~f =
     f ()
     >>= function
     | Ok _ as ret -> return ret
     | Error _ as ret ->
-      with_client worker ~f:(fun conn ->
-        Rpc.One_way.dispatch Shutdown_rpc.rpc conn () |> return)
-      >>= fun _ ->
+      shutdown worker
+      >>= fun (_ : unit Or_error.t) ->
       return ret
   ;;
 
   let wait_for_connection_and_initialize ~name ~connection_timeout ~on_failure ~id
-        ~heartbeater init_arg =
+        ~client_will_immediately_connect ~setup_master_heartbeater init_arg =
     let connection_timeout =
       Option.value connection_timeout ~default:connection_timeout_default
     in
@@ -945,19 +989,17 @@ module Make (S : Worker_spec) = struct
       with_shutdown_on_error worker ~f:(fun () ->
         with_client worker ~f:(fun conn ->
           let heartbeater =
-            match heartbeater with
-            | Some Heartbeater.No_heartbeater -> None
-            | None
-            | Some Shutdown_worker_on_disconnect ->
-              Some
-                (Heartbeater_master.create
-                   ~host_and_port:master_server
-                   ~rpc_settings:global_state.app_rpc_settings)
+            Option.some_if setup_master_heartbeater
+              (Heartbeater_master.create
+                 ~host_and_port:master_server
+                 ~rpc_settings:global_state.app_rpc_settings)
           in
           Rpc.Rpc.dispatch Init_worker_state_rpc.rpc conn
             { master = heartbeater
             ; worker = id
             ; arg    = init_arg
+            ; initial_client_connection_timeout =
+                Option.some_if client_will_immediately_connect connection_timeout
             })
         >>| function
         | Error exn ->
@@ -970,29 +1012,69 @@ module Make (S : Worker_spec) = struct
           Ok worker)
   ;;
 
-  let spawn_in_foreground ~where ~name ~env ~connection_timeout ~cd ~on_failure
-        ~heartbeater init_arg =
+  module Spawn_in_foreground_result = struct
+    type 'a t = ('a * Process.t) Or_error.t
+  end
+
+  module Spawn_in_foreground_shutdown_on = Shutdown_on (Spawn_in_foreground_result)
+
+  let spawn_in_foreground (type a) ?where ?name ?env ?connection_timeout ?cd ~on_failure
+        ~(shutdown_on : a Spawn_in_foreground_shutdown_on.t) worker_state_init_arg : a =
+    let open Spawn_in_foreground_shutdown_on in
     let daemonize_args = `Don't_daemonize in
-    spawn_process ~where ~env ~cd ~name ~connection_timeout ~daemonize_args
-    >>= function
-    | Error e -> return (Error e)
-    | Ok (id, process) ->
-      wait_for_connection_and_initialize ~name ~connection_timeout
-        ~on_failure ~id ~heartbeater init_arg
-      >>| Or_error.map ~f:(fun worker -> worker, process)
+    let (`Client_will_immediately_connect client_will_immediately_connect,
+         `Setup_master_heartbeater setup_master_heartbeater
+        ) = args shutdown_on
+    in
+    let spawn_worker ~client_will_immediately_connect ~setup_master_heartbeater =
+      spawn_process ~where ~env ~cd ~name ~connection_timeout ~daemonize_args
+      >>= function
+      | Error e -> return (Error e)
+      | Ok (id, process) ->
+        wait_for_connection_and_initialize ~name ~connection_timeout
+          ~on_failure ~id ~client_will_immediately_connect ~setup_master_heartbeater
+          worker_state_init_arg
+        >>| Or_error.map ~f:(fun worker -> worker, process)
+    in
+    match shutdown_on with
+    | Heartbeater_timeout ->
+      spawn_worker ~client_will_immediately_connect ~setup_master_heartbeater
+    | Disconnect -> fun ~connection_state_init_arg ->
+      spawn_worker ~client_will_immediately_connect ~setup_master_heartbeater
+      >>=? fun (worker, process) ->
+      (* If [Connection_state.init] raises, [client_internal] will close the Rpc
+         connection, causing the worker to shutdown. *)
+      Connection.client_with_worker_shutdown_on_disconnect worker
+        connection_state_init_arg
+      >>|? fun conn ->
+      (conn, process)
+    | Called_shutdown_function ->
+      spawn_worker ~client_will_immediately_connect ~setup_master_heartbeater
   ;;
 
-  let spawn_in_foreground_exn ?where ?name ?env ?connection_timeout ?cd ?heartbeater
-        ~on_failure init_arg =
-    spawn_in_foreground ~where ~name ~env ~connection_timeout ~cd ~on_failure
-      ~heartbeater init_arg
-    >>| Or_error.ok_exn
-  ;;
+  module Spawn_in_foreground_exn_result = struct
+    type 'a t = 'a * Process.t
+  end
 
-  let spawn_in_foreground ?where ?name ?env ?connection_timeout ?cd ?heartbeater
-        ~on_failure init_arg =
-    spawn_in_foreground ~where ~name ~env ~connection_timeout ~cd ~on_failure
-      ~heartbeater init_arg
+  module Spawn_in_foreground_exn_shutdown_on = Shutdown_on (Spawn_in_foreground_exn_result)
+
+  let spawn_in_foreground_exn (type a)
+        ?where ?name ?env ?connection_timeout ?cd ~on_failure
+        ~(shutdown_on: a Spawn_in_foreground_exn_shutdown_on.t) init_arg : a =
+    let open Spawn_in_foreground_exn_shutdown_on in
+    match shutdown_on with
+    | Disconnect -> fun ~connection_state_init_arg ->
+      spawn_in_foreground ?where ?name ?env ?connection_timeout ?cd
+        ~on_failure ~shutdown_on:Disconnect init_arg ~connection_state_init_arg
+      >>| ok_exn
+    | Heartbeater_timeout ->
+      spawn_in_foreground ?where ?name ?env ?connection_timeout ?cd
+        ~on_failure ~shutdown_on:Heartbeater_timeout init_arg
+      >>| ok_exn
+    | Called_shutdown_function ->
+      spawn_in_foreground ?where ?name ?env ?connection_timeout ?cd
+        ~on_failure ~shutdown_on:Called_shutdown_function init_arg
+      >>| ok_exn
   ;;
 
   let wait_for_daemonization_and_collect_stderr name process =
@@ -1016,99 +1098,152 @@ module Make (S : Worker_spec) = struct
       Error (Error.of_string error_string)
   ;;
 
-  let spawn ~where ~name ~env ~connection_timeout ~cd ~on_failure ~umask
-        ~redirect_stdout ~redirect_stderr ~heartbeater init_arg =
+  module Spawn_shutdown_on = Shutdown_on (Or_error)
+
+  let spawn (type a)
+        ?where ?name ?env ?connection_timeout ?cd ~on_failure ?umask
+        ~(shutdown_on : a Spawn_shutdown_on.t)
+        ~redirect_stdout ~redirect_stderr worker_state_init_arg : a =
     let daemonize_args =
       `Daemonize { Daemonize_args.umask; redirect_stderr; redirect_stdout }
     in
-    spawn_process ~where ~env ~cd ~name ~connection_timeout ~daemonize_args
-    >>= function
-    | Error e -> return (Error e)
-    | Ok (id, process) ->
-      let id_or_name = Option.value ~default:(Worker_id.to_string id) name in
-      wait_for_daemonization_and_collect_stderr id_or_name process
+    let (`Client_will_immediately_connect client_will_immediately_connect,
+         `Setup_master_heartbeater setup_master_heartbeater
+        ) = Spawn_shutdown_on.args shutdown_on
+    in
+    let spawn_worker ~client_will_immediately_connect ~setup_master_heartbeater =
+      spawn_process ~where ~env ~cd ~name ~connection_timeout ~daemonize_args
       >>= function
       | Error e -> return (Error e)
-      | Ok () ->
-        wait_for_connection_and_initialize ~name ~connection_timeout
-          ~on_failure ~id ~heartbeater init_arg
+      | Ok (id, process) ->
+        let id_or_name = Option.value ~default:(Worker_id.to_string id) name in
+        wait_for_daemonization_and_collect_stderr id_or_name process
+        >>= function
+        | Error e -> return (Error e)
+        | Ok () ->
+          wait_for_connection_and_initialize ~name ~connection_timeout
+            ~on_failure ~id ~client_will_immediately_connect ~setup_master_heartbeater
+            worker_state_init_arg
+    in
+    let open Spawn_shutdown_on in
+    match shutdown_on with
+    | Heartbeater_timeout ->
+      spawn_worker ~client_will_immediately_connect ~setup_master_heartbeater
+    | Disconnect -> fun ~connection_state_init_arg ->
+      spawn_worker ~client_will_immediately_connect ~setup_master_heartbeater
+      >>=? fun worker ->
+      (* If [Connection_state.init] raises, [client_internal] will close the Rpc
+         connection, causing the worker to shutdown. *)
+      Connection.client_with_worker_shutdown_on_disconnect worker
+        connection_state_init_arg
+    | Called_shutdown_function ->
+      spawn_worker ~client_will_immediately_connect ~setup_master_heartbeater
   ;;
 
-  let spawn_exn ?where ?name ?env ?connection_timeout ?cd ?heartbeater
-        ~on_failure ?umask ~redirect_stdout ~redirect_stderr init_arg =
-    spawn ~where ~name ~env ~connection_timeout ~cd ~umask ~redirect_stdout
-      ~redirect_stderr ~heartbeater init_arg ~on_failure
-    >>| Or_error.ok_exn
+  module Spawn_exn_shutdown_on = Shutdown_on (Monad.Ident)
+
+  let spawn_exn (type a)
+        ?where ?name ?env ?connection_timeout ?cd ~on_failure ?umask
+        ~(shutdown_on: a Spawn_exn_shutdown_on.t)
+        ~redirect_stdout ~redirect_stderr init_arg : a =
+    let open Spawn_exn_shutdown_on in
+    match shutdown_on with
+    | Disconnect -> fun ~connection_state_init_arg ->
+      spawn ?where ?name ?env ?connection_timeout ?cd ~on_failure ?umask
+        ~shutdown_on:Disconnect ~redirect_stdout ~redirect_stderr init_arg
+        ~connection_state_init_arg
+      >>| ok_exn
+    | Heartbeater_timeout ->
+      spawn ?where ?name ?env ?connection_timeout ?cd ~on_failure ?umask
+        ~shutdown_on:Heartbeater_timeout ~redirect_stdout ~redirect_stderr init_arg
+      >>| ok_exn
+    | Called_shutdown_function ->
+      spawn ?where ?name ?env ?connection_timeout ?cd ~on_failure ?umask
+        ~shutdown_on:Called_shutdown_function ~redirect_stdout ~redirect_stderr init_arg
+      >>| ok_exn
   ;;
 
-  let spawn_and_connect ~where ~name ~env ~connection_timeout ~cd ~on_failure ~umask
-        ~redirect_stdout ~redirect_stderr ~connection_state_init_arg ~heartbeater
-        worker_state_init_arg =
-    spawn ~where ~name ~env ~connection_timeout ~cd ~umask ~redirect_stdout
-      ~redirect_stderr ~on_failure ~heartbeater worker_state_init_arg
-    >>=? fun worker ->
-    with_shutdown_on_error worker ~f:(fun () ->
-      Connection.client worker connection_state_init_arg
-      >>| Or_error.map ~f:(fun conn -> worker, conn))
-  ;;
+  module Deprecated = struct
+    let spawn_and_connect ?where ?name ?env ?connection_timeout ?cd ~on_failure ?umask
+          ~redirect_stdout ~redirect_stderr ~connection_state_init_arg
+          worker_state_init_arg =
+      spawn ?where ?name ?env ?connection_timeout ?cd ?umask ~redirect_stdout
+        ~redirect_stderr ~on_failure ~shutdown_on:Heartbeater_timeout worker_state_init_arg
+      >>=? fun worker ->
+      with_shutdown_on_error worker ~f:(fun () ->
+        Connection.client worker connection_state_init_arg)
+      >>| Or_error.map ~f:(fun conn -> worker, conn)
+    ;;
 
-  let spawn_and_connect_exn ?where ?name ?env ?connection_timeout ?cd ?heartbeater
-        ~on_failure ?umask ~redirect_stdout ~redirect_stderr ~connection_state_init_arg
-        worker_state_init_arg =
-    spawn_and_connect ~where ~name ~env ~connection_timeout ~cd ~umask ~redirect_stdout
-      ~redirect_stderr ~on_failure ~connection_state_init_arg ~heartbeater
-      worker_state_init_arg
-    >>| Or_error.ok_exn
-  ;;
-
-  let spawn_and_connect ?where ?name ?env ?connection_timeout ?cd ?heartbeater
-        ~on_failure ?umask ~redirect_stdout ~redirect_stderr ~connection_state_init_arg
-        worker_state_init_arg =
-    spawn_and_connect ~where ~name ~env ~connection_timeout ~cd ~on_failure ~umask
-      ~heartbeater ~redirect_stdout ~redirect_stderr ~connection_state_init_arg
-      worker_state_init_arg
-  ;;
-
-  let spawn ?where ?name ?env ?connection_timeout ?cd ?heartbeater
-        ~on_failure ?umask ~redirect_stdout ~redirect_stderr init_arg =
-    spawn ~where ~name ~env ~connection_timeout ~cd ~on_failure ~umask ~heartbeater
-      ~redirect_stdout ~redirect_stderr init_arg
-  ;;
+    let spawn_and_connect_exn ?where ?name ?env ?connection_timeout ?cd ~on_failure ?umask
+          ~redirect_stdout ~redirect_stderr ~connection_state_init_arg
+          worker_state_init_arg =
+      spawn_and_connect ?where ?name ?env ?connection_timeout ?cd ~on_failure ?umask
+        ~redirect_stdout ~redirect_stderr ~connection_state_init_arg
+        worker_state_init_arg
+      >>| ok_exn
+    ;;
+  end
 
   let init_worker_state_impl =
     Rpc.Rpc.implement Init_worker_state_rpc.rpc
-      (fun _conn_state { Init_worker_state_rpc.master; worker; arg } ->
-         let init_finished =
-           Utils.try_within ~monitor
-             (fun () ->
-                let%bind () =
-                  match master with
-                  | None -> Deferred.unit
-                  | Some master ->
-                    let%map `Connected =
-                      Heartbeater_master.connect_and_shutdown_on_disconnect_exn master
-                    in
-                    ()
-                in
-                User_functions.init_worker_state arg)
-         in
-         Set_once.set_exn (get_worker_state_exn ()).initialized [%here]
-           (`Init_started (init_finished >>|? const `Initialized));
-         init_finished
-         >>| function
-         | Error e -> Error.raise e
-         | Ok state -> Hashtbl.add_exn worker_state.states ~key:worker ~data:state)
+      (fun _conn_state
+        { Init_worker_state_rpc.master
+        ; worker
+        ; arg
+        ; initial_client_connection_timeout
+        } ->
+        let init_finished =
+          Utils.try_within ~monitor
+            (fun () ->
+               let%bind () =
+                 match master with
+                 | None -> Deferred.unit
+                 | Some master ->
+                   let%map `Connected =
+                     Heartbeater_master.connect_and_shutdown_on_disconnect_exn master
+                   in
+                   ()
+               in
+               User_functions.init_worker_state arg)
+        in
+        Set_once.set_exn (get_worker_state_exn ()).initialized [%here]
+          (`Init_started (init_finished >>|? const `Initialized));
+        init_finished
+        >>| function
+        | Error e -> Error.raise e
+        | Ok state ->
+          (match initial_client_connection_timeout with
+           | None -> ()
+           | Some timeout ->
+             Clock.after timeout
+             >>> fun () ->
+             if not worker_state.client_has_connected
+             then (
+               Log.Global.error
+                 "Rpc_parallel: worker timed out waiting for client connection... \
+                  Shutting down";
+               Shutdown.shutdown 254));
+          Hashtbl.add_exn worker_state.states ~key:worker ~data:state)
   ;;
 
   let init_connection_state_impl =
     Rpc.Rpc.implement Init_connection_state_rpc.rpc
-      (fun (connection, internal_conn_state) { worker_id; arg = init_arg } ->
-         let worker_state = Hashtbl.find_exn worker_state.states worker_id in
-         Utils.try_within_exn ~monitor
-           (fun () -> User_functions.init_connection_state ~connection ~worker_state init_arg)
-         >>| fun conn_state ->
-         Set_once.set_exn internal_conn_state [%here]
-           { Utils.Internal_connection_state.worker_id; conn_state;  worker_state })
+      (fun (connection, internal_conn_state)
+        { worker_id; worker_shutdown_on_disconnect; arg = init_arg } ->
+        worker_state.client_has_connected <- true;
+        let worker_state = Hashtbl.find_exn worker_state.states worker_id in
+        (if worker_shutdown_on_disconnect then
+           Rpc.Connection.close_finished connection
+           >>> fun () ->
+           Log.Global.info
+             "Rpc_parallel: initial client connection closed... Shutting down.";
+           Shutdown.shutdown 0);
+        Utils.try_within_exn ~monitor
+          (fun () -> User_functions.init_connection_state ~connection ~worker_state init_arg)
+        >>| fun conn_state ->
+        Set_once.set_exn internal_conn_state [%here]
+          { Utils.Internal_connection_state.worker_id; conn_state;  worker_state })
   ;;
 
   let shutdown_impl =

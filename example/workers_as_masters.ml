@@ -67,8 +67,10 @@ module Primary_worker = struct
           and type connection_state := Connection_state.t) = struct
       let run_impl ~worker_state:() ~conn_state:() num_workers =
         Deferred.List.init ~how:`Parallel num_workers ~f:(fun _i ->
-          Secondary_worker.spawn_exn ~redirect_stdout:`Dev_null
-            ~redirect_stderr:`Dev_null () ~on_failure:Error.raise
+          Secondary_worker.spawn_exn
+            ~shutdown_on:Heartbeater_timeout
+            ~redirect_stdout:`Dev_null ~redirect_stderr:`Dev_null
+            ~on_failure:Error.raise ()
           >>| fun secondary_worker ->
           ignore(Bag.add workers (next_worker_name (), secondary_worker));
         )
@@ -116,10 +118,12 @@ let command =
     )
     (fun primary secondary () ->
        Deferred.Or_error.List.init ~how:`Parallel primary ~f:(fun worker_id ->
-         Primary_worker.spawn ~redirect_stdout:`Dev_null
-           ~redirect_stderr:`Dev_null () ~on_failure:Error.raise
-         >>=? fun primary_worker ->
-         Primary_worker.Connection.client primary_worker ()
+         Primary_worker.spawn
+           ~shutdown_on:Disconnect
+           ~redirect_stdout:`Dev_null ~redirect_stderr:`Dev_null
+           ~on_failure:Error.raise
+           ~connection_state_init_arg:()
+           ()
          >>=? fun conn ->
          Primary_worker.Connection.run conn
            ~f:Primary_worker.functions.run ~arg:secondary

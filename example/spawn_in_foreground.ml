@@ -36,16 +36,15 @@ module Worker = struct
 end
 
 let main () =
-  Worker.spawn_in_foreground ~on_failure:Error.raise ()
-  >>=? fun (worker, process) ->
-  Worker.Connection.client worker ()
-  >>=? fun conn ->
+  Worker.spawn_in_foreground ~shutdown_on:Disconnect ~connection_state_init_arg:()
+    ~on_failure:Error.raise ()
+  >>=? fun (conn, process) ->
   Worker.Connection.run conn ~f:Worker.functions.print ~arg:"HELLO"
   >>=? fun () ->
   Worker.Connection.run conn ~f:Worker.functions.print ~arg:"HELLO2"
   >>=? fun () ->
-  Worker.Connection.run conn ~f:Rpc_parallel.Function.shutdown ~arg:()
-  >>=? fun () ->
+  Worker.Connection.close conn
+  >>= fun () ->
   Process.wait process
   >>= fun (_ : Unix.Exit_or_signal.t) ->
   let worker_stderr = Reader.lines (Process.stderr process) in

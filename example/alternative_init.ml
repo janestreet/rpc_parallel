@@ -52,10 +52,11 @@ let main_command =
       in
       fun () ->
         Rpc_parallel.Expert.start_master_server_exn ~worker_command_args:["worker"] ();
-        Worker.spawn_and_connect_exn ~on_failure:Error.raise
-          ~redirect_stdout:`Dev_null ~redirect_stderr:`Dev_null
-          ~connection_state_init_arg:() ()
-        >>| fun (_worker, _connection) ->
+        Worker.spawn_exn ~on_failure:Error.raise
+          ~shutdown_on:Disconnect
+          ~connection_state_init_arg:()
+          ~redirect_stdout:`Dev_null ~redirect_stderr:`Dev_null ()
+        >>| fun (_connection : Worker.Connection.t) ->
         printf "Success.\n"
     ]
 

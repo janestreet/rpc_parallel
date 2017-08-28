@@ -93,18 +93,23 @@ let command =
       empty
     )
     (fun () ->
-       Worker.spawn_and_connect
+       Worker.spawn
+         ~shutdown_on:Heartbeater_timeout
          ~redirect_stdout:`Dev_null
          ~redirect_stderr:`Dev_null
-         ~connection_state_init_arg:()
-         () ~on_failure:Error.raise
-       >>=? fun (worker, worker_conn) ->
-       Dispatcher.spawn_and_connect
+         ~on_failure:Error.raise
+         ()
+       >>=? fun worker ->
+       Worker.Connection.client worker ()
+       >>=? fun worker_conn ->
+       Dispatcher.spawn
+         ~shutdown_on:Disconnect
          ~redirect_stdout:`Dev_null
          ~redirect_stderr:`Dev_null
+         ~on_failure:Error.raise
          ~connection_state_init_arg:()
-         () ~on_failure:Error.raise
-       >>=? fun (_dispatcher, dispatcher_conn) ->
+         ()
+       >>=? fun dispatcher_conn ->
        let repeat job n =
          Deferred.List.iter (List.range 0 n) ~f:(fun _i -> job ())
        in

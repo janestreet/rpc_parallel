@@ -146,6 +146,7 @@ let command =
     (fun num_workers num_elements () ->
        (* Spawn a stream worker *)
        Stream_worker.spawn
+         ~shutdown_on:Heartbeater_timeout
          ~redirect_stdout:`Dev_null
          ~redirect_stderr:`Dev_null
          num_elements
@@ -154,12 +155,12 @@ let command =
        (* Spawn workers and tell them about the stream worker  *)
        Deferred.Or_error.List.init num_workers ~f:(fun i ->
          Worker.spawn
+           ~shutdown_on:Disconnect
+           ~connection_state_init_arg:()
            ~redirect_stdout:`Dev_null
            ~redirect_stderr:`Dev_null
            ()
            ~on_failure:(handle_error (sprintf "worker %d" i))
-         >>=? fun worker ->
-         Worker.Connection.client worker ()
          >>=? fun worker_conn ->
          Worker.Connection.run worker_conn
            ~f:Worker.functions.process_elts ~arg:stream_worker)

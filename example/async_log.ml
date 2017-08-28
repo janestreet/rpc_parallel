@@ -47,6 +47,7 @@ let expect_log_entry readers =
 let main () =
   let%bind worker =
     Worker.spawn_exn ~on_failure:Error.raise
+      ~shutdown_on:Heartbeater_timeout
       ~redirect_stdout:`Dev_null ~redirect_stderr:`Dev_null ()
   in
   let%bind conn = Worker.Connection.client_exn worker () in

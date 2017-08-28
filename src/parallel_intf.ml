@@ -21,9 +21,6 @@ module type Function = sig
 
   (** Common functions that are implemented by all workers *)
 
-  (** This implementation simply calls [Shutdown.shutdown 0] *)
-  val shutdown  : (_, unit, unit) t
-
   (** This implementation will add another [Log.Output] for [Log.Global] that transfers
       log messages to the returned pipe. You can subscribe to a worker's log more than
       once and from different processes, as each call simply adds a new [Log.Output].
@@ -45,30 +42,8 @@ module type Function = sig
   val close_server : (_, unit, unit) t
 end
 
-module type Heartbeater = sig
-  type t =
-    | No_heartbeater
-    | Shutdown_worker_on_disconnect
-
-  (** The below functions have been deprecated in favor of using the [heartbeater]
-      argument to the [spawn] family of functions. *)
-
-  val if_spawned : [ `Will_raise ] -> unit
-  [@@deprecated
-    "[since 2017-03] Use [heartbeat] argument to [spawn] "]
-
-  val connect_and_shutdown_on_disconnect_exn : [ `Will_raise ] -> unit
-  [@@deprecated
-    "[since 2017-03] Use [heartbeat] argument to [spawn] "]
-
-  val connect_and_wait_for_disconnect_exn : [ `Will_raise ] -> unit
-  [@@deprecated
-    "[since 2017-03] Use [heartbeat] argument to [spawn] "]
-end
-
 module type Worker = sig
   type ('worker, 'query, 'response) _function
-  type _heartbeater
 
   (** A [Worker.t] type is defined [with bin_io] so it is possible to create functions
       that take a worker as an argument. *)
@@ -99,6 +74,9 @@ module type Worker = sig
 
   module Connection : sig
     type t [@@deriving sexp_of]
+
+    (** The [id] of the connected worker *)
+    val worker_id : t -> Id.t
 
     (** Run functions implemented by this worker *)
     val run
@@ -136,6 +114,23 @@ module type Worker = sig
     val is_closed : t -> bool
   end
 
+  module Shutdown_on (M : T1) : sig
+    type _ t =
+      | Heartbeater_timeout : worker M.t Deferred.t t
+      (** A "heartbeater" connection is established between the worker and its master. The
+          worker shuts itself down when [Rpc.Connection.close_finished] on this connection,
+          which is likely when the master process exits. *)
+      | Disconnect :
+          (connection_state_init_arg:connection_state_init_arg ->
+           Connection.t M.t Deferred.t) t
+      (** An initial connection to the worker is established. The worker shuts itself down
+          when [Rpc.Connection.close_finished] on this connection. *)
+      | Called_shutdown_function : worker M.t Deferred.t t
+      (** WARNING! Worker's spawned with this variant do not shutdown when the master
+          process exits. The worker only shuts itself down on an explicit shutdown
+          request. *)
+  end
+
   (** The various [spawn] functions create a new worker process that implements the
       functions specified in the [Worker_spec].
 
@@ -143,22 +138,19 @@ module type Worker = sig
 
       [env] extends the environment of the spawned worker process.
 
-      [connection_timeout] serves two purposes. [spawn] returns an error if the master
-      hasn't gotten a register rpc from the spawned worker within [connection_timeout] or
-      if a worker hasn't gotten its init_arg from the master within [connection_timeout] of
-      sending the register rpc. This may need be to increased if the init arg is really
-      large (serialization and deserialization takes more than [connection_timeout]).
+      [connection_timeout] is used for various internal timeouts. This may need be to
+      increased if the init arg is really large (serialization and deserialization
+      takes more than [connection_timeout]).
 
       [cd] changes the current working directory of a spawned worker process.
 
-      If [heartbeater] is [Shutdown_worker_on_disconnect], the worker will establish a
-      connection back to the master; if this connection is ever severed, the worker will
-      shut itself down. The other option is simply [No_heartbeater].
+      [shutdown_on] specifies when a worker should shut itself down.
 
       [on_failure exn] will be called in the spawning process upon the worker process
       raising a background exception. All exceptions raised before functions return will be
       returned to the caller. [on_failure] will be called in [Monitor.current ()] at the
-      time of this spawn call.
+      time of this spawn call. The worker initiates shutdown upon sending the exception
+      to the master process.
 
       [worker_state_init_arg] (below) will be passed to [init_worker_state] of the given
       [Worker_spec] module. This initializes a persistent worker state for all connections
@@ -169,7 +161,6 @@ module type Worker = sig
     -> ?env : (string * string) list
     -> ?connection_timeout:Time.Span.t  (** default 10 sec *)
     -> ?cd : string  (** default / *)
-    -> ?heartbeater : _heartbeater  (** default Shutdown_worker_on_disconnect *)
     -> on_failure : (Error.t -> unit)
     -> 'a
 
@@ -182,45 +173,69 @@ module type Worker = sig
       process. *)
   val spawn
     : (?umask : int  (** defaults to use existing umask *)
+       -> shutdown_on : 'a Shutdown_on(Or_error).t
        -> redirect_stdout : Fd_redirection.t
        -> redirect_stderr : Fd_redirection.t
        -> worker_state_init_arg
-       -> t Or_error.t Deferred.t) with_spawn_args
+       -> 'a) with_spawn_args
 
-  (** Similar to [spawn] but make an initial connection to the spawned worker process. *)
-  val spawn_and_connect
+  val spawn_exn
     : (?umask : int  (** defaults to use existing umask *)
+       -> shutdown_on : 'a Shutdown_on(Monad.Ident).t
        -> redirect_stdout : Fd_redirection.t
        -> redirect_stderr : Fd_redirection.t
-       -> connection_state_init_arg : connection_state_init_arg
        -> worker_state_init_arg
-       -> (t * Connection.t) Or_error.t Deferred.t) with_spawn_args
+       -> 'a) with_spawn_args
+
+  module Spawn_in_foreground_result : sig
+    type 'a t = ('a * Process.t) Or_error.t
+  end
 
   (** Similar to [spawn] but the worker process does not daemonize. If the process was
       spawned on a remote host, the ssh [Process.t] is returned. *)
   val spawn_in_foreground
-    : (worker_state_init_arg
-       -> (t * Process.t) Or_error.t Deferred.t) with_spawn_args
+    :  (shutdown_on : 'a Shutdown_on(Spawn_in_foreground_result).t
+        -> worker_state_init_arg
+        -> 'a) with_spawn_args
 
-  (** Matching spawn functions that raise on an error *)
-  val spawn_exn
-    : (?umask : int
-       -> redirect_stdout : Fd_redirection.t
-       -> redirect_stderr : Fd_redirection.t
-       -> worker_state_init_arg
-       -> t Deferred.t) with_spawn_args
-
-  val spawn_and_connect_exn
-    : (?umask : int
-       -> redirect_stdout : Fd_redirection.t
-       -> redirect_stderr : Fd_redirection.t
-       -> connection_state_init_arg : connection_state_init_arg
-       -> worker_state_init_arg
-       -> (t * Connection.t) Deferred.t) with_spawn_args
+  module Spawn_in_foreground_exn_result : sig
+    type 'a t = 'a * Process.t
+  end
 
   val spawn_in_foreground_exn
-    : (worker_state_init_arg
-       -> (t * Process.t) Deferred.t) with_spawn_args
+    :  (shutdown_on : 'a Shutdown_on(Spawn_in_foreground_exn_result).t
+        -> worker_state_init_arg
+        -> 'a) with_spawn_args
+
+  (** [shutdown] attempts to connect to a worker. Upon success, [Shutdown.shutdown 0] is
+      run in the worker. If you want strong guarantees that a worker did shutdown, consider
+      using [spawn_in_foreground] and inspecting the [Process.t]. *)
+  val shutdown : t -> unit Or_error.t Deferred.t
+
+  module Deprecated : sig
+    (** This is nearly identical to calling [spawn ~shutdown_on:Heartbeater_timeout] and
+        then [Connection.client]. The only difference is that this function handles
+        shutting down the worker when [Connection.client] returns an error.
+
+        Uses of [spawn_and_connect] that disregard [t] can likely be replaced with [spawn
+        ~shutdown_on:Disconnect]. If [t] is used for reconnecting, then you can use [spawn]
+        followed by [Connection.client]. *)
+    val spawn_and_connect
+      : (?umask : int
+         -> redirect_stdout : Fd_redirection.t
+         -> redirect_stderr : Fd_redirection.t
+         -> connection_state_init_arg : connection_state_init_arg
+         -> worker_state_init_arg
+         -> (t * Connection.t) Or_error.t Deferred.t) with_spawn_args
+
+    val spawn_and_connect_exn
+      : (?umask : int
+         -> redirect_stdout : Fd_redirection.t
+         -> redirect_stderr : Fd_redirection.t
+         -> connection_state_init_arg : connection_state_init_arg
+         -> worker_state_init_arg
+         -> (t * Connection.t) Deferred.t) with_spawn_args
+  end
 end
 
 module type Functions = sig
@@ -395,12 +410,10 @@ module type Worker_spec = sig
 end
 
 module type Parallel = sig
-  module Function    : Function
-  module Heartbeater : Heartbeater
+  module Function : Function
 
   module type Worker = Worker
     with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
-     and type _heartbeater := Heartbeater.t
 
   module type Functions = Functions
 

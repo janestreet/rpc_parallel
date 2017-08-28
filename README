@@ -27,34 +27,6 @@ running as a worker. These implementations are gathered on the application of th
 regardless of master and worker code paths. This is necessary for the masters and
 workers to agree on certain generated ids.
 
-**Cleanup**:
-
-It is *extremely* important to always be thinking about cleanup, as resources can
-easily be eaten up on machines if processes don't cleanup after themselves. When a
-worker is spawned, there is nothing by default in place to kill this spawned process
-if the master process dies. There are a lot of mechanisms exposed to facilitate
-cleanup, please think carefully and program defensively. There are 3 main ways to
-facilitate cleanup, and they are not necessarily mutually exclusive:
-
-1) Use the [parent_heartbeater] argument to [init_worker_state] in order to set up shutdown
-on losing connection to this server. The [connect_and_shutdown_on_disconnect_exn]
-does just this, and should commonly be used.
-
-2) Add a function to your worker that shuts it down. There is a built-in [shutdown]
-function for you to include to make this easier.
-
-3) Use the [connection] argument to [init_connection_state] to register a callback for
-[close_finished]. This should be used if you expect only one connection to the worker
-for its entire life, but it is not as safe as [connect_and_shutdown_on_disconnect] as
-the worker will be left stranded if no connection is ever made to it.
-
-Some (obvious but worth reinforcing) things to consider:
-- A spawned worker is just sitting there in another process doing nothing unless some
-  cleanup is setup in [init_worker_state]
-
-- If your worker expects a [shutdown] rpc call, it is still left stranded if it never
-  gets this call for whatever reason.
-
 **Monitoring your workers**:
 
 Uncaught exceptions in workers will always result in the worker shutting down.

@@ -105,13 +105,26 @@ module Make (S : Parallel.Worker_spec) = struct
         Ok conn
   ;;
 
+  let with_shutdown_on_error worker ~f =
+    f ()
+    >>= function
+    | Ok _ as ret -> return ret
+    | Error _ as ret ->
+      Unmanaged.shutdown worker
+      >>= fun (_ : unit Or_error.t) ->
+      return ret
+  ;;
+
   let spawn ?where ?name ?env
         ?connection_timeout ?cd ?umask ~redirect_stdout ~redirect_stderr
         worker_state_init_arg connection_state_init_arg ~on_failure =
-    Unmanaged.spawn_and_connect ?where ?env ?name
-      ?connection_timeout ?cd ?umask ~redirect_stdout ~redirect_stderr
-      ~connection_state_init_arg worker_state_init_arg ~on_failure
-    >>|? fun (worker, connection) ->
+    Unmanaged.spawn ?where ?env ?name
+      ?connection_timeout ?cd ?umask ~shutdown_on:Heartbeater_timeout
+      ~redirect_stdout ~redirect_stderr worker_state_init_arg ~on_failure
+    >>=? fun worker ->
+    with_shutdown_on_error worker ~f:(fun () ->
+      Unmanaged.Connection.client worker connection_state_init_arg)
+    >>|? fun connection ->
     let id = Id.create () in
     Hashtbl.add_exn workers ~key:id ~data:(`Connected connection);
     (Unmanaged.Connection.close_finished connection
@@ -139,10 +152,8 @@ module Make (S : Parallel.Worker_spec) = struct
   ;;
 
   let kill t =
-    get_connection t
-    >>=? fun conn ->
     Hashtbl.remove workers t.id;
-    Unmanaged.Connection.run conn ~f:Parallel.Function.shutdown ~arg:()
+    Unmanaged.shutdown t.unmanaged
   ;;
 
   let kill_exn t = kill t >>| Or_error.ok_exn
