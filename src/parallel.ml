@@ -146,6 +146,14 @@ module Function = struct
            Utils.try_within ~monitor (fun () -> f ~worker_state ~conn_state arg))
     ;;
 
+    let make_direct_impl ~monitor ~f protocol =
+      Rpc.Pipe_rpc.implement_direct protocol
+        (fun ((_conn : Rpc.Connection.t), internal_conn_state) arg writer ->
+           let { Utils.Internal_connection_state.conn_state; worker_state; _ } =
+             Set_once.get_exn internal_conn_state [%here] in
+           Utils.try_within ~monitor (fun () -> f ~worker_state ~conn_state arg writer))
+    ;;
+
     let make_proto ~name ~bin_input ~bin_output =
       let name = maybe_generate_name ~prefix:"rpc_parallel_piped" ~name in
       Rpc.Pipe_rpc.create
@@ -280,6 +288,13 @@ module Function = struct
       :  ('worker, 'query, 'response) Function_piped.t
          * ('r, 'response Pipe.Reader.t) Type_equal.t
       -> ('worker, 'query, 'r) t_internal
+    | Directly_piped
+      :  ('worker, 'query, 'response) Function_piped.t
+      -> ( 'worker
+         , 'query
+           * ('response Rpc.Pipe_rpc.Pipe_message.t -> Rpc.Pipe_rpc.Pipe_response.t)
+         , Rpc.Pipe_rpc.Id.t
+         ) t_internal
     | One_way
       :  ('worker, 'query) Function_one_way.t
       -> ('worker, 'query, unit) t_internal
@@ -295,6 +310,13 @@ module Function = struct
          * ('response_internal -> 'response)
       -> ('worker, 'query, 'response) t
 
+  module Direct_pipe = struct
+    type nonrec ('worker, 'query, 'response) t =
+      ('worker,
+       'query * ('response Rpc.Pipe_rpc.Pipe_message.t -> Rpc.Pipe_rpc.Pipe_response.t),
+       Rpc.Pipe_rpc.Id.t) t
+  end
+
   let map (T (q, i, r)) ~f = T (q, i, Fn.compose f r)
 
   let contra_map (T (q, i, r)) ~f = T (Fn.compose q f, i, r)
@@ -309,6 +331,12 @@ module Function = struct
     let proto = Function_piped.make_proto ~name ~bin_input ~bin_output in
     let impl = Function_piped.make_impl ~monitor ~f proto in
     T (Fn.id, Piped (proto, Type_equal.T), Fn.id), impl
+  ;;
+
+  let create_direct_pipe ~monitor ~name ~f ~bin_input ~bin_output =
+    let proto = Function_piped.make_proto ~name ~bin_input ~bin_output in
+    let impl = Function_piped.make_direct_impl ~monitor ~f proto in
+    T (Fn.id, Directly_piped proto, Fn.id), impl
   ;;
 
   let create_one_way ~monitor ~name ~f ~bin_input =
@@ -336,6 +364,11 @@ module Function = struct
     T (Fn.id, Piped (proto, Type_equal.T), Fn.id), impl
   ;;
 
+  let of_async_direct_pipe_rpc ~monitor ~f proto =
+    let impl = Function_piped.make_direct_impl ~monitor ~f proto in
+    T (Fn.id, Directly_piped proto, Fn.id), impl
+  ;;
+
   let of_async_one_way_rpc ~monitor ~f proto =
     let impl = Function_one_way.make_impl ~monitor ~f proto in
     T (Fn.id, One_way proto, Fn.id), impl
@@ -361,6 +394,10 @@ module Function = struct
       >>| fun result ->
       Hashtbl.remove master_in_progress key;
       result
+    | Directly_piped proto ->
+      let arg, f = arg in
+      Rpc.Pipe_rpc.dispatch_iter proto connection arg ~f
+      >>| Or_error.join
   ;;
 
   let run (T (query_f, t_internal, response_f)) connection ~arg =
@@ -432,9 +469,11 @@ module type Functions = Functions
 
 module type Creator = Creator
   with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
+   and type ('w, 'q, 'r) _direct   := ('w, 'q, 'r) Function.Direct_pipe.t
 
 module type Worker_spec = Worker_spec
   with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
+   and type ('w, 'q, 'r) _direct   := ('w, 'q, 'r) Function.Direct_pipe.t
 
 let start_server ~max_message_size ~handshake_timeout ~heartbeat_config
       ~where_to_listen ~implementations ~initial_connection_state =
@@ -700,6 +739,11 @@ module Make (S : Worker_spec) = struct
         Function.create_pipe ~monitor ~name ~f ~bin_input ~bin_output)
     ;;
 
+    let create_direct_pipe ?name ~f ~bin_input ~bin_output () =
+      with_add_impl (fun () ->
+        Function.create_direct_pipe ~monitor ~name ~f ~bin_input ~bin_output)
+    ;;
+
     let create_one_way ?name ~f ~bin_input () =
       with_add_impl (fun () -> Function.create_one_way ~monitor ~name ~f ~bin_input)
     ;;
@@ -721,6 +765,10 @@ module Make (S : Worker_spec) = struct
 
     let of_async_pipe_rpc ~f proto =
       with_add_impl (fun () -> Function.of_async_pipe_rpc ~monitor ~f proto)
+    ;;
+
+    let of_async_direct_pipe_rpc ~f proto =
+      with_add_impl (fun () -> Function.of_async_direct_pipe_rpc ~monitor ~f proto)
     ;;
 
     let of_async_one_way_rpc ~f proto =

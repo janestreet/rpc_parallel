@@ -5,6 +5,7 @@
     async_log
     number_stats
     reverse_pipe
+    rpc_direct_pipe
     serve
     side_arg
     simple

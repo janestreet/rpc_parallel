@@ -9,6 +9,14 @@ open! Async
 module type Function = sig
   type ('worker, 'query, 'response) t
 
+  module Direct_pipe : sig
+    type nonrec ('worker, 'query, 'response) t =
+      ( 'worker
+      , 'query * ('response Rpc.Pipe_rpc.Pipe_message.t -> Rpc.Pipe_rpc.Pipe_response.t)
+      , Rpc.Pipe_rpc.Id.t
+      ) t
+  end
+
   val map
     :  ('worker, 'query, 'a) t
     -> f:('a -> 'b)
@@ -268,6 +276,7 @@ end
 
 module type Creator = sig
   type ('worker, 'query, 'response) _function
+  type ('worker, 'query, 'response) _direct
 
   type worker
 
@@ -306,6 +315,21 @@ module type Creator = sig
     -> bin_output : 'response Bin_prot.Type_class.t
     -> unit
     -> (worker, 'query, 'response Pipe.Reader.t) _function
+
+  (** [create_direct_pipe ?name ~f ~bin_input ~bin_output ()] will create an
+      [Rpc.Pipe_rpc.t] with [name] if specified. *)
+  val create_direct_pipe
+    :  ?name : string
+    -> f
+       : (worker_state  : worker_state
+          -> conn_state : connection_state
+          -> 'query
+          -> 'response Rpc.Pipe_rpc.Direct_stream_writer.t
+          -> unit Deferred.t)
+    -> bin_input : 'query Bin_prot.Type_class.t
+    -> bin_output : 'response Bin_prot.Type_class.t
+    -> unit
+    -> (worker, 'query, 'response) _direct
 
   (** [create_one_way ?name ~f ~bin_msg ()] will create an [Rpc.One_way.t] with [name] if
       specified and use [f] as an implementation. *)
@@ -361,6 +385,18 @@ module type Creator = sig
     -> ('query, 'response, Error.t) Rpc.Pipe_rpc.t
     -> (worker, 'query, 'response Pipe.Reader.t) _function
 
+  (** [of_async_direct_pipe_rpc ~f rpc] is the analog to [create_direct_pipe] but instead
+      of creating a Pipe rpc protocol, it uses the supplied one. *)
+  val of_async_direct_pipe_rpc
+    :  f
+       : (worker_state  : worker_state
+          -> conn_state : connection_state
+          -> 'query
+          -> 'response Rpc.Pipe_rpc.Direct_stream_writer.t
+          -> unit Deferred.t)
+    -> ('query, 'response, Error.t) Rpc.Pipe_rpc.t
+    -> (worker, 'query, 'response) _direct
+
   (** [of_async_one_way_rpc ~f rpc] is the analog to [create_one_way] but instead of
       creating a One_way rpc protocol, it uses the supplied one *)
   val of_async_one_way_rpc
@@ -376,6 +412,7 @@ end
 (** Specification for the creation of a worker type *)
 module type Worker_spec = sig
   type ('worker, 'query, 'response) _function
+  type ('worker, 'query, 'response) _direct
 
   (** A type to encapsulate all the functions that can be run on this worker. Using a
       record type here is often the most convenient and readable. *)
@@ -399,7 +436,8 @@ module type Worker_spec = sig
       (C : Creator
        with type worker_state            = Worker_state.t
         and type connection_state        = Connection_state.t
-        and type ('w, 'q, 'r) _function := ('w, 'q, 'r) _function)
+        and type ('w, 'q, 'r) _function := ('w, 'q, 'r) _function
+        and type ('w, 'q, 'r) _direct   := ('w, 'q, 'r) _direct)
     : Functions
       with type worker                    := C.worker
        and type 'a functions              := 'a functions
@@ -419,9 +457,11 @@ module type Parallel = sig
 
   module type Creator = Creator
     with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
+     and type ('w, 'q, 'r) _direct   := ('w, 'q, 'r) Function.Direct_pipe.t
 
   module type Worker_spec = Worker_spec
     with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
+     and type ('w, 'q, 'r) _direct   := ('w, 'q, 'r) Function.Direct_pipe.t
 
   (** module Worker = Make(T)
 
