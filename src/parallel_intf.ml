@@ -498,11 +498,12 @@ module type Parallel = sig
     val get : unit -> t option
   end
 
-  (** If you want more direct control over your executable, you can use the [Expert] module
-      instead of [start_app]. If you use [Expert], you are responsible for starting the
-      master and worker rpc servers. [worker_command_args] will be the arguments sent to
-      each spawned worker. Running your executable with these args must follow a code path
-      that calls [worker_init_before_async_exn] and then [start_worker_server_exn]. *)
+  (** If you want more direct control over your executable, you can use the [Expert]
+      module instead of [start_app]. If you use [Expert], you are responsible for starting
+      the master and worker rpc servers. [worker_command_args] will be the arguments sent
+      to each spawned worker. Running your executable with these args must follow a code
+      path that calls [worker_init_before_async_exn] and then [start_worker_server_exn].
+      An easy way to do this is to use [worker_command]. *)
   module Expert : sig
     (** [start_master_server_exn] must be called in the single master process. It is
         necessary to be able to spawn workers. Raises if the process was spawned. *)
@@ -514,12 +515,28 @@ module type Parallel = sig
       -> unit
       -> unit
 
+    (** You have two options for implementing the worker process, a simple one and a
+        deprecated one.
+
+        Simple option: just make sure [worker_command] is somewhere in the command
+        hierarchy of the same executable in which [start_master_server_exn] is called,
+        with a subcommand path equal to [worker_command_args]. It is possible for multiple
+        calls to [start_master_server_exn] to share the same [worker_command_args].
+
+        Deprecated option: implement something at least as complicated yourself using
+        [worker_init_before_async_exn] and [start_worker_server_exn]. This option may go
+        away in the future. *)
+
+    val worker_command : Command.t
+
+
     module Worker_env : sig
       type t
     end
 
-    (** [worker_init_before_async_exn] must be called in a spawned worker process before the
-        async scheduler has started. You must not read from stdin before this function call.
+    (** [worker_init_before_async_exn] must be called in a spawned worker process before
+        the async scheduler has started. You must not read from stdin before this function
+        call.
 
         This has the side effect of calling [chdir]. *)
     val worker_init_before_async_exn : unit -> Worker_env.t
@@ -529,10 +546,10 @@ module type Parallel = sig
         process. Raises if the process was not spawned.
 
         This has the side effect of scheduling a job that completes the daemonization of
-        this process (if the process should daemonize). This includes redirecting stdout and
-        stderr according to [redirect_stdout] and [redirect_stderr]. All writes to stdout
-        before this job runs are blackholed. All writes to stderr before this job runs are
-        redirected to the spawning process's stderr. *)
+        this process (if the process should daemonize). This includes redirecting stdout
+        and stderr according to [redirect_stdout] and [redirect_stderr]. All writes to
+        stdout before this job runs are blackholed. All writes to stderr before this job
+        runs are redirected to the spawning process's stderr. *)
     val start_worker_server_exn : Worker_env.t -> unit
   end
 end

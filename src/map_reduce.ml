@@ -305,8 +305,13 @@ let map_unordered (type param) (type a) (type b)
   >>= fun workers ->
   let input_with_index_reader = append_index input_reader in
   let (output_reader, output_writer) = Pipe.create () in
+  let consumer =
+    Pipe.add_consumer
+      input_with_index_reader
+      ~downstream_flushed:(fun () -> Pipe.downstream_flushed output_writer)
+  in
   let rec map_loop worker =
-    Pipe.read input_with_index_reader
+    Pipe.read ~consumer input_with_index_reader
     >>= function
     | `Eof -> Map_function.Worker.shutdown_exn worker
     | `Ok (input, index) ->

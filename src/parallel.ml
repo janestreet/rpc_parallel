@@ -1503,6 +1503,18 @@ module Expert = struct
       init_master_state ~rpc_max_message_size ~rpc_handshake_timeout ~rpc_heartbeat_config
         ~worker_command_args:(`User_supplied worker_command_args)
   ;;
+
+  let worker_command =
+    let open Command.Let_syntax in
+    Command.async' ~summary:"internal use only"
+      [%map_open
+        let () = return () in
+        let worker_env = worker_init_before_async_exn () in
+        fun () ->
+          start_worker_server_exn worker_env;
+          Deferred.never ()
+      ]
+  ;;
 end
 
 module State = struct
