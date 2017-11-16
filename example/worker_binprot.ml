@@ -87,7 +87,7 @@ module Dispatcher = struct
 end
 
 let command =
-  Command.async_or_error ~summary:
+  Command.async_spec_or_error ~summary:
     "Example of a worker taking in another worker as an argument to one of its functions"
     Command.Spec.(
       empty

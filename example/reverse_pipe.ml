@@ -87,6 +87,6 @@ let main () =
 
 let () =
   Rpc_parallel.start_app
-    (Command.async' ~summary:"Demonstrate using Rpc_parallel with reverse pipes"
+    (Command.async ~summary:"Demonstrate using Rpc_parallel with reverse pipes"
        (Command.Param.return main))
 ;;

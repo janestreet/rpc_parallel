@@ -60,7 +60,7 @@ let main () =
   Deferred.Or_error.ok_unit
 
 let command =
-  Command.async_or_error ~summary:"Example of spawn_in_foreground"
+  Command.async_spec_or_error ~summary:"Example of spawn_in_foreground"
     Command.Spec.empty
     main
 

@@ -40,7 +40,7 @@ module Compute_stats_map_reduce_function =
   end)
 
 let command =
-  Command.async ~summary:"Compute summary statistics in parallel"
+  Command.async_spec ~summary:"Compute summary statistics in parallel"
     Command.Spec.(
       empty
       +> flag "nblocks" (optional_with_default 10000 int)

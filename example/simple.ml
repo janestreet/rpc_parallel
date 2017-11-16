@@ -71,7 +71,7 @@ let main max log_dir () =
 
 let command =
   (* Make sure to always use [Command.async] *)
-  Command.async_or_error ~summary:"Simple use of Async Rpc_parallel V2"
+  Command.async_spec_or_error ~summary:"Simple use of Async Rpc_parallel V2"
     Command.Spec.(
       empty
       +> flag "max" (required int) ~doc:""

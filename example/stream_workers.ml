@@ -135,7 +135,7 @@ let handle_error worker err =
   failwiths (sprintf "error in %s" worker) err Error.sexp_of_t
 
 let command =
-  Command.async_or_error ~summary:"foo"
+  Command.async_spec_or_error ~summary:"foo"
     Command.Spec.(
       empty
       +> flag "-num-workers" (optional_with_default 4 int)

@@ -63,7 +63,7 @@ let main () =
   printf "Success.\n"
 
 let command =
-  Command.async ~summary:"Use of the in process [serve] functionality"
+  Command.async_spec ~summary:"Use of the in process [serve] functionality"
     Command.Spec.empty
     main
 

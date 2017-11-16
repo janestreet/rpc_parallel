@@ -1506,7 +1506,7 @@ module Expert = struct
 
   let worker_command =
     let open Command.Let_syntax in
-    Command.async' ~summary:"internal use only"
+    Command.async ~summary:"internal use only"
       [%map_open
         let () = return () in
         let worker_env = worker_init_before_async_exn () in

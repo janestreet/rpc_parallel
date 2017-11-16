@@ -31,7 +31,7 @@ end
 
 let worker_command =
   let open Command.Let_syntax in
-  Command.Staged.async'
+  Command.Staged.async
     ~summary:"for internal use"
     [%map_open
       let () = return ()
@@ -45,7 +45,7 @@ let worker_command =
 
 let main_command =
   let open Command.Let_syntax in
-  Command.async'
+  Command.async
     ~summary:"start the master and spawn a worker"
     [%map_open
       let () = return ()

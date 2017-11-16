@@ -21,7 +21,7 @@ module Side_arg_map_function = Rpc_parallel.Map_reduce.Make_map_function_with_in
 end)
 
 let command =
-  Command.async ~summary:"Pass a side arg"
+  Command.async_spec ~summary:"Pass a side arg"
     Command.Spec.(
       empty
       +> flag "ntimes" (optional_with_default 100 int) ~doc:" Number of things to map"

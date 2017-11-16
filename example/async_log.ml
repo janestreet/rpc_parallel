@@ -67,7 +67,7 @@ let main () =
 ;;
 
 let command =
-  Command.async' ~summary:"Using the built in log redirection function"
+  Command.async ~summary:"Using the built in log redirection function"
     (Command.Param.return main)
 ;;
 

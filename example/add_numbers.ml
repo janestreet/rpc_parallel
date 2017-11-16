@@ -20,7 +20,7 @@ module Add_numbers_map_function = Rpc_parallel.Map_reduce.Make_map_function(stru
 end)
 
 let command =
-  Command.async ~summary:"Add numbers in parallel"
+  Command.async_spec ~summary:"Add numbers in parallel"
     Command.Spec.(
       empty
       +> flag "max" (required int) ~doc:" Number to add up to"
