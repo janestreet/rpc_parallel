@@ -61,7 +61,7 @@ end
 
 module Make (S : Parallel.Worker_spec) = struct
   module Unmanaged = Parallel.Make (S)
-  module Id = Uuid
+  module Id = Utils.Worker_id
 
   type nonrec t =
     { unmanaged : Unmanaged.t

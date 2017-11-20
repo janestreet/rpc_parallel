@@ -440,8 +440,8 @@ end = struct
 
   let connect_and_wait_for_disconnect_exn { host_and_port; rpc_settings } =
     let {Rpc_settings.handshake_timeout; heartbeat_config; _} = rpc_settings in
-    let host, port = Host_and_port.tuple host_and_port in
-    Rpc.Connection.client ~host ~port ?handshake_timeout ?heartbeat_config ()
+    Rpc.Connection.client (Tcp.Where_to_connect.of_host_and_port host_and_port)
+      ?handshake_timeout ?heartbeat_config
     >>| function
     | Error e -> raise e
     | Ok conn ->
@@ -588,7 +588,7 @@ let init_master_state ~rpc_max_message_size ~rpc_handshake_timeout ~rpc_heartbea
         ~max_message_size:rpc_max_message_size
         ~handshake_timeout:rpc_handshake_timeout
         ~heartbeat_config:rpc_heartbeat_config
-        ~where_to_listen:Tcp.on_port_chosen_by_os
+        ~where_to_listen:Tcp.Where_to_listen.of_port_chosen_by_os
         ~implementations:master_implementations
         ~initial_connection_state:(fun _ _ -> ())
       >>| fun server ->
@@ -613,7 +613,7 @@ let init_master_state ~rpc_max_message_size ~rpc_handshake_timeout ~rpc_heartbea
 
 module Make (S : Worker_spec) = struct
 
-  module Id = Uuid
+  module Id = Utils.Worker_id
 
   type t =
     { host_and_port : Host_and_port.t
@@ -803,7 +803,7 @@ module Make (S : Worker_spec) = struct
         ~max_message_size
         ~handshake_timeout
         ~heartbeat_config
-        ~where_to_listen:Tcp.on_port_chosen_by_os
+        ~where_to_listen:Tcp.Where_to_listen.of_port_chosen_by_os
       >>= fun server ->
       let id = Worker_id.create () in
       let host = Unix.gethostname () in
@@ -842,9 +842,7 @@ module Make (S : Worker_spec) = struct
         ?handshake_timeout
         ?heartbeat_config
         ~implementations:master_implementations
-        ~host:(Host_and_port.host host_and_port)
-        ~port:(Host_and_port.port host_and_port)
-        ()
+        (Tcp.Where_to_connect.of_host_and_port host_and_port)
       >>= function
       | Error exn -> return (Error (Error.of_exn exn))
       | Ok connection ->
@@ -993,8 +991,8 @@ module Make (S : Worker_spec) = struct
       ?handshake_timeout
       ?heartbeat_config
       ~implementations:master_implementations
-      ~host:(Host_and_port.host host_and_port)
-      ~port:(Host_and_port.port host_and_port) f
+      (Tcp.Where_to_connect.of_host_and_port host_and_port)
+      f
   ;;
 
   let shutdown worker =
@@ -1361,9 +1359,8 @@ let worker_main ~worker_env =
       ?max_message_size
       ?handshake_timeout
       ?heartbeat_config
-      ~host:(Host_and_port.host config.master)
-      ~port:(Host_and_port.port config.master) (fun conn ->
-        Rpc.Rpc.dispatch Register_rpc.rpc conn (id, my_host_and_port))
+      (Tcp.Where_to_connect.of_host_and_port config.master)
+      (fun conn -> Rpc.Rpc.dispatch Register_rpc.rpc conn (id, my_host_and_port))
     >>| function
     | Error exn -> failwiths "Worker failed to register" exn [%sexp_of: Exn.t]
     | Ok (Error e) -> failwiths "Worker failed to register" e [%sexp_of: Error.t]
@@ -1383,10 +1380,10 @@ let worker_main ~worker_env =
         ?max_message_size
         ?handshake_timeout
         ?heartbeat_config
-        ~host:(Host_and_port.host config.master)
-        ~port:(Host_and_port.port config.master) (fun conn ->
-          Rpc.Rpc.dispatch Handle_exn_rpc.rpc conn
-            { id; name = config.name; error = Error.of_exn exn })
+        (Tcp.Where_to_connect.of_host_and_port config.master)
+        (fun conn ->
+           Rpc.Rpc.dispatch Handle_exn_rpc.rpc conn
+             { id; name = config.name; error = Error.of_exn exn })
       >>> fun _ ->
       Log.Global.error !"Rpc_parallel: %{Exn} ... Shutting down." exn;
       Shutdown.shutdown 254)
@@ -1421,7 +1418,7 @@ let worker_main ~worker_env =
       ~max_message_size
       ~handshake_timeout
       ~heartbeat_config
-      ~where_to_listen:Tcp.on_port_chosen_by_os
+      ~where_to_listen:Tcp.Where_to_listen.of_port_chosen_by_os
     >>> fun server ->
     let host = Unix.gethostname () in
     let port = Tcp.Server.listening_on server in

@@ -1,7 +1,17 @@
 open Core
 open Async
 
-module Worker_id = Uuid
+module Worker_id = struct
+  let create = Uuid.create
+  (* If we do not use the stable sexp serialization, when running
+     inline tests, we will create UUIDs that fail tests *)
+  module T = Uuid.Stable.V1
+  include T
+  include Comparable.Make_binable(T)
+  include Hashable.Make_binable  (T)
+  include Sexpable.To_stringable (T)
+  let pp fmt t = String.pp fmt (Sexp.to_string ([%sexp_of: t] t))
+end
 module Worker_type_id = Unique_id.Int ()
 
 module Internal_connection_state = struct

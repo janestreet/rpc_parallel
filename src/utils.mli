@@ -2,7 +2,11 @@ open Core
 open Async
 
 
-module Worker_id = Uuid
+module Worker_id : sig
+  include module type of Uuid.Stable.V1
+  val create : unit -> t
+  include Identifiable.S with type t := t
+end
 module Worker_type_id : Unique_id
 
 (* The internal connection state we keep with every connection to a worker.
