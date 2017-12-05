@@ -462,7 +462,7 @@ let map_reduce (type param) (type a) (type accum)
          Map_reduce_function.Worker.run_exn worker (`Combine (left_acc, acc))
          >>= fun new_acc ->
          let new_key = H.create_exn (H.lbound left_key) (H.ubound key) in
-         acc_map := H.Map.add !acc_map ~key:new_key ~data:new_acc;
+         acc_map := H.Map.set !acc_map ~key:new_key ~data:new_acc;
          (* Continue searching in the same direction. (See above comment.) *)
          combine_loop worker new_key new_acc `Left
        | _ ->
@@ -478,7 +478,7 @@ let map_reduce (type param) (type a) (type accum)
          Map_reduce_function.Worker.run_exn worker (`Combine (acc, right_acc))
          >>= fun new_acc ->
          let new_key = H.create_exn (H.lbound key) (H.ubound right_key) in
-         acc_map := H.Map.add !acc_map ~key:new_key ~data:new_acc;
+         acc_map := H.Map.set !acc_map ~key:new_key ~data:new_acc;
          combine_loop worker new_key new_acc `Right
        | _ ->
          match dir' with
@@ -499,13 +499,13 @@ let map_reduce (type param) (type a) (type accum)
          Map_reduce_function.Worker.run_exn worker (`Map_right_combine (left_acc, input))
          >>= fun acc ->
          let key = H.create_exn (H.lbound left_key) (H.ubound key) in
-         acc_map := H.Map.add !acc_map ~key ~data:acc;
+         acc_map := H.Map.set !acc_map ~key ~data:acc;
          combine_loop worker key acc `Left
        | _ ->
          (* map a_index -> acc_{index, index + 1} *)
          Map_reduce_function.Worker.run_exn worker (`Map input)
          >>= fun acc ->
-         acc_map := H.Map.add !acc_map ~key ~data:acc;
+         acc_map := H.Map.set !acc_map ~key ~data:acc;
          combine_loop worker key acc `Left)
       >>= fun () ->
       map_and_combine_loop worker
