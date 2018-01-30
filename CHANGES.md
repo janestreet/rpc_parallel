@@ -1,3 +1,9 @@
+## v0.10
+
+- Changed the API to make the shutdown behavior of workers more explicit
+
+## v0.9
+
 ## 113.43.00
 
 - Take away `@@deriving bin_io` for managed workers.
