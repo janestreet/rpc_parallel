@@ -3,7 +3,7 @@ open Async
 
 
 module Worker_id : sig
-  include module type of Uuid.Stable.V1
+  type t [@@deriving bin_io, sexp]
   val create : unit -> t
   include Identifiable.S with type t := t
 end

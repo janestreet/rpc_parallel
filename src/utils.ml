@@ -6,7 +6,7 @@ module Worker_id = struct
   (* If we do not use the stable sexp serialization, when running
      inline tests, we will create UUIDs that fail tests *)
   module T = Uuid.Stable.V1
-  include T
+  type t = T.t [@@deriving sexp, bin_io]
   include Comparable.Make_binable(T)
   include Hashable.Make_binable  (T)
   include Sexpable.To_stringable (T)
