@@ -12,17 +12,9 @@
     spawn_in_foreground
     stream_workers
     worker_binprot
-    workers_as_masters
-    ))
-  (libraries (
-    async
-    core
-    jane
-    rpc_parallel
-    sexp_app
-    sexplib
-    ))
-  (preprocess (pps (ppx_jane ppx_driver.runner)))
-  ))
+    workers_as_masters))
+  (libraries (async core jane rpc_parallel sexp_app sexplib))
+  (preprocess (pps (ppx_jane ppx_driver.runner)))))
+
 
 (jbuild_version 1)
