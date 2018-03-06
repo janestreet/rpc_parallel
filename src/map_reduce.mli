@@ -99,9 +99,9 @@ val map
   :  Config.t
   -> 'a Pipe.Reader.t
   -> m : (module Map_function
-             with type Param.t = 'param
-              and type Input.t = 'a
-              and type Output.t = 'b)
+           with type Param.t = 'param
+            and type Input.t = 'a
+            and type Output.t = 'b)
   -> param : 'param
   -> 'b Pipe.Reader.t Deferred.t
 

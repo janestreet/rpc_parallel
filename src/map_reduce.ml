@@ -186,14 +186,14 @@ module Make_map_function_with_init(S : Map_function_with_init_spec) = struct
   module Output = S.Output
 
   module Worker = Make_rpc_parallel_worker(struct
-    type state_type = S.state_type
-    module Param = Param
-    module Run_input = Input
-    module Run_output = Output
+      type state_type = S.state_type
+      module Param = Param
+      module Run_input = Input
+      module Run_output = Output
 
-    let init = S.init
-    let execute = S.map
-  end)
+      let init = S.init
+      let execute = S.map
+    end)
 end
 
 module type Map_function_spec = sig
@@ -226,10 +226,10 @@ module type Map_reduce_function = sig
   module Worker : Worker
     with type param_type = Param.t
     with type run_input_type =
-      [ `Map of Input.t
-      | `Combine of Accum.t * Accum.t
-      | `Map_right_combine of Accum.t * Input.t (* combine accum (map input) *)
-      ]
+           [ `Map of Input.t
+           | `Combine of Accum.t * Accum.t
+           | `Map_right_combine of Accum.t * Input.t (* combine accum (map input) *)
+           ]
     with type run_output_type = Accum.t
 end
 
@@ -251,25 +251,25 @@ struct
   module Input = S.Input
 
   module Worker = Make_rpc_parallel_worker(struct
-    type state_type = S.state_type
-    module Param = Param
-    module Run_input = struct
-      type t =
-        [ `Map of Input.t
-        | `Combine of Accum.t * Accum.t
-        | `Map_right_combine of Accum.t * Input.t
-        ]
-      [@@deriving bin_io]
-    end
-    module Run_output = Accum
+      type state_type = S.state_type
+      module Param = Param
+      module Run_input = struct
+        type t =
+          [ `Map of Input.t
+          | `Combine of Accum.t * Accum.t
+          | `Map_right_combine of Accum.t * Input.t
+          ]
+        [@@deriving bin_io]
+      end
+      module Run_output = Accum
 
-    let init = S.init
-    let execute state = function
-      | `Map input -> S.map state input
-      | `Combine (accum1, accum2) -> S.combine state accum1 accum2
-      | `Map_right_combine (accum1, input) ->
-        S.map state input >>= fun accum2 -> S.combine state accum1 accum2
-  end)
+      let init = S.init
+      let execute state = function
+        | `Map input -> S.map state input
+        | `Combine (accum1, accum2) -> S.combine state accum1 accum2
+        | `Map_right_combine (accum1, input) ->
+          S.map state input >>= fun accum2 -> S.combine state accum1 accum2
+    end)
 end
 
 module type Map_reduce_function_spec = sig

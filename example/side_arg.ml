@@ -2,23 +2,23 @@ open Core
 open Async
 
 module Side_arg_map_function = Rpc_parallel.Map_reduce.Make_map_function_with_init(struct
-  type state_type = string
-  module Param = struct
-    type t = string [@@deriving bin_io]
-  end
-  module Input = struct
-    type t = unit [@@deriving bin_io]
-  end
-  module Output = struct
-    type t = string [@@deriving bin_io]
-  end
+    type state_type = string
+    module Param = struct
+      type t = string [@@deriving bin_io]
+    end
+    module Input = struct
+      type t = unit [@@deriving bin_io]
+    end
+    module Output = struct
+      type t = string [@@deriving bin_io]
+    end
 
-  let init param =
-    Random.self_init ();
-    return (sprintf "[%i] %s" (Random.bits ()) param)
-  let map state () =
-    return state
-end)
+    let init param =
+      Random.self_init ();
+      return (sprintf "[%i] %s" (Random.bits ()) param)
+    let map state () =
+      return state
+  end)
 
 let command =
   Command.async_spec ~summary:"Pass a side arg"
