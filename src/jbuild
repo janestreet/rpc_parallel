@@ -3,6 +3,6 @@
   (public_name rpc_parallel)
   (flags (:standard -safe-string))
   (libraries (core async sexplib))
-  (preprocess (pps (ppx_jane ppx_driver.runner)))))
+  (preprocess (pps (ppx_jane ppxlib.runner)))))
 
 (jbuild_version 1)
