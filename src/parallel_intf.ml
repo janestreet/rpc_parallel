@@ -361,6 +361,27 @@ module type Creator = sig
     -> unit
     -> (worker, 'query * 'update Pipe.Reader.t, 'response) _function
 
+  (** [create_reverse_pipe ?name ~f ~bin_query ~bin_update ~bin_response ()] generates a
+      function allowing you to send a [query] and a direct stream of [update]s to a
+      worker. The worker will send back a [response]. It is up to you whether to send a
+      [response] before or after finishing with the pipe; Rpc_parallel doesn't care. *)
+  val create_reverse_direct_pipe
+    :  ?name:string
+    -> f:(worker_state  : worker_state
+          -> conn_state : connection_state
+          -> 'query
+          -> 'update Pipe.Reader.t
+          -> 'response Deferred.t)
+    -> bin_query    : 'query    Bin_prot.Type_class.t
+    -> bin_update   : 'update   Bin_prot.Type_class.t
+    -> bin_response : 'response Bin_prot.Type_class.t
+    -> unit
+    -> ( worker
+       , 'query
+         * ('update Rpc.Pipe_rpc.Direct_stream_writer.t -> unit Or_error.t Deferred.t)
+       , 'response
+       ) _function
+
   (** [of_async_rpc ~f rpc] is the analog to [create_rpc] but instead of creating an Rpc
       protocol, it uses the supplied one *)
   val of_async_rpc

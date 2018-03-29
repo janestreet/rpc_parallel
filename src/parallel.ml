@@ -195,10 +195,10 @@ module Function = struct
   module Function_reverse_piped = struct
     module Id = Unique_id.Int ()
 
-    type ('worker, 'query, 'update, 'response) t =
+    type ('worker, 'query, 'update, 'response, 'in_progress) t =
       { worker_rpc : ('query * Id.t, 'response) Rpc.Rpc.t
       ; master_rpc : (Id.t, 'update, Error.t) Rpc.Pipe_rpc.t
-      ; master_in_progress : 'update Pipe.Reader.t Id.Table.t
+      ; master_in_progress : 'in_progress Id.Table.t
       }
 
     let make_worker_impl ~monitor ~f t =
@@ -216,15 +216,30 @@ module Function = struct
              | Error error -> Error.raise error))
     ;;
 
-    let make_master_impl t =
-      Rpc.Pipe_rpc.implement t.master_rpc (fun () id ->
+    let make_master t ~implement ~ok ~error =
+      implement t.master_rpc (fun () id ->
         match Hashtbl.find_and_remove t.master_in_progress id with
+        | Some in_progress -> ok in_progress
         | None ->
-          Deferred.Or_error.error_s
-            [%message "Bug in Rpc_parallel: reverse pipe master implementation not found"
-                        (id : Id.t)
-                        (Rpc.Pipe_rpc.name t.master_rpc : string)]
-        | Some pipe_reader -> Deferred.Or_error.return pipe_reader)
+          [%message "Bug in Rpc_parallel: reverse pipe master implementation not found"
+                      (id : Id.t)
+                      (Rpc.Pipe_rpc.name t.master_rpc : string)]
+          |> Deferred.Or_error.error_s
+          |> error)
+    ;;
+
+    let make_master_impl t =
+      make_master t
+        ~implement:Rpc.Pipe_rpc.implement
+        ~ok:Deferred.Or_error.return
+        ~error:ident
+    ;;
+
+    let make_master_impl_direct t =
+      make_master t
+        ~implement:Rpc.Pipe_rpc.implement_direct
+        ~ok:ident
+        ~error:const
     ;;
 
     let make_proto ~name ~bin_query ~bin_update ~bin_response =
@@ -299,8 +314,8 @@ module Function = struct
       :  ('worker, 'query) Function_one_way.t
       -> ('worker, 'query, unit) t_internal
     | Reverse_piped
-      :  ('worker, 'query, 'update, 'response) Function_reverse_piped.t
-         * ('q, 'query * 'update Pipe.Reader.t) Type_equal.t
+      :  ('worker, 'query, 'update, 'response, 'in_progress) Function_reverse_piped.t
+         * ('q, 'query * 'in_progress) Type_equal.t
       -> ('worker, 'q, 'response) t_internal
 
   type ('worker, 'query, 'response) t =
@@ -345,13 +360,23 @@ module Function = struct
     T (Fn.id, One_way proto, Fn.id), impl
   ;;
 
-  let create_reverse_pipe ~monitor ~name ~f ~bin_query ~bin_update ~bin_response =
+  let reverse_pipe ~make_master_impl ~monitor ~name ~f ~bin_query ~bin_update ~bin_response =
     let proto =
       Function_reverse_piped.make_proto ~name ~bin_query ~bin_update ~bin_response
     in
     let worker_impl = Function_reverse_piped.make_worker_impl ~monitor ~f proto in
-    let master_impl = Function_reverse_piped.make_master_impl proto in
+    let master_impl = make_master_impl proto in
     T (Fn.id, Reverse_piped (proto, Type_equal.T), Fn.id), `Worker worker_impl, `Master master_impl
+  ;;
+
+  let create_reverse_pipe ~monitor ~name ~f ~bin_query ~bin_update ~bin_response =
+    reverse_pipe ~make_master_impl:Function_reverse_piped.make_master_impl
+      ~monitor ~name ~f ~bin_query ~bin_update ~bin_response
+  ;;
+
+  let create_reverse_direct_pipe ~monitor ~name ~f ~bin_query ~bin_update ~bin_response =
+    reverse_pipe ~make_master_impl:Function_reverse_piped.make_master_impl_direct
+      ~monitor ~name ~f ~bin_query ~bin_update ~bin_response
   ;;
 
   let of_async_rpc ~monitor ~f proto =
@@ -748,15 +773,24 @@ module Make (S : Worker_spec) = struct
       with_add_impl (fun () -> Function.create_one_way ~monitor ~name ~f ~bin_input)
     ;;
 
-    let create_reverse_pipe ?name ~f ~bin_query ~bin_update ~bin_response () =
+    let reverse_pipe ~create_function ?name ~f ~bin_query ~bin_update ~bin_response () =
       let func, `Worker worker_impl, `Master master_impl =
-        Function.create_reverse_pipe ~monitor ~name ~f ~bin_query ~bin_update
-          ~bin_response
+        create_function ~monitor ~name ~f ~bin_query ~bin_update ~bin_response
       in
       worker_state.implementations <- worker_impl :: worker_state.implementations;
       worker_state.master_implementations <-
         master_impl :: worker_state.master_implementations;
       func
+    ;;
+
+    let create_reverse_pipe ?name ~f ~bin_query ~bin_update ~bin_response () =
+      reverse_pipe ~create_function:Function.create_reverse_pipe
+        ?name ~f ~bin_query ~bin_update ~bin_response ()
+    ;;
+
+    let create_reverse_direct_pipe ?name ~f ~bin_query ~bin_update ~bin_response () =
+      reverse_pipe ~create_function:Function.create_reverse_direct_pipe
+        ?name ~f ~bin_query ~bin_update ~bin_response ()
     ;;
 
     let of_async_rpc ~f proto =

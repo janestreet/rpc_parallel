@@ -1,3 +1,7 @@
+## git version
+
+- Added `create_reverse_direct_pipe` to `Parallel_intf`.
+
 ## v0.10
 
 - Changed the API to make the shutdown behavior of workers more explicit

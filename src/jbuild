@@ -1,7 +1,6 @@
 (library (
   (name        rpc_parallel)
   (public_name rpc_parallel)
-  (flags (:standard -safe-string))
   (libraries (core async sexplib))
   (preprocess (pps (ppx_jane ppxlib.runner)))))
 

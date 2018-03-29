@@ -4,6 +4,7 @@
     alternative_init
     async_log
     number_stats
+    reverse_direct_pipe
     reverse_pipe
     rpc_direct_pipe
     serve
