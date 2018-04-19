@@ -6,30 +6,28 @@ module Shard = struct
     type 'worker functions =
       ( 'worker
       , int * (int Rpc.Pipe_rpc.Direct_stream_writer.t -> unit Or_error.t Deferred.t)
-      , string list
-      ) Rpc_parallel.Function.t
+      , string list )
+        Rpc_parallel.Function.t
 
     module Worker_state = struct
-      type t        = int
-      type init_arg = int
-      [@@deriving bin_io]
+      type t = int
+
+      type init_arg = int [@@deriving bin_io]
     end
 
     module Connection_state = struct
-      type t        = unit
-      type init_arg = unit
-      [@@deriving bin_io]
+      type t = unit
+
+      type init_arg = unit [@@deriving bin_io]
     end
 
     module Functions
         (Creator : Rpc_parallel.Creator
          with type worker_state = Worker_state.t
-          and type connection_state = Connection_state.t) = struct
-
+          and type connection_state = Connection_state.t) =
+    struct
       let functions =
-        Creator.create_reverse_direct_pipe
-          ~bin_query:Int.bin_t
-          ~bin_update:Int.bin_t
+        Creator.create_reverse_direct_pipe ~bin_query:Int.bin_t ~bin_update:Int.bin_t
           ~bin_response:(List.bin_t String.bin_t)
           ~f:(fun ~worker_state:id ~conn_state:() prefix numbers ->
             Pipe.fold_without_pushback numbers ~init:[] ~f:(fun acc number ->
@@ -38,12 +36,11 @@ module Shard = struct
       ;;
 
       let init_worker_state = return
-      ;;
 
       let init_connection_state ~connection:_ ~worker_state:_ () = Deferred.unit
-      ;;
     end
   end
+
   include T
   include Rpc_parallel.Make (T)
 end
@@ -52,13 +49,9 @@ let main () =
   let shards = 10 in
   let%bind connections =
     Array.init shards ~f:(fun id ->
-      Shard.spawn_exn
-        ~shutdown_on:Disconnect
-        ~redirect_stdout:`Dev_null
-        ~redirect_stderr:`Dev_null
-        ~on_failure:Error.raise
-        ~connection_state_init_arg:()
-        id)
+      Shard.spawn_exn ~shutdown_on:Disconnect ~redirect_stdout:`Dev_null
+        ~redirect_stderr:`Dev_null ~on_failure:Error.raise
+        ~connection_state_init_arg:() id)
     |> Deferred.Array.all
   in
   let readers =
@@ -68,8 +61,7 @@ let main () =
     let write_everything =
       let%map () =
         Sequence.init 1_000 ~f:Fn.id
-        |> Sequence.delayed_fold
-             ~init:()
+        |> Sequence.delayed_fold ~init:()
              ~f:(fun () i ~k -> Pipe.write writers.(i % shards) i >>= k)
              ~finish:return
       in
@@ -83,11 +75,12 @@ let main () =
       let write_fun direct_writer =
         (* This defeats the point of using a direct writer, of course, but the diff
            between this file and reverse_pipe.ml is small as a result. *)
-        Pipe.iter readers.(i) ~f:(fun n ->
-          match Rpc.Pipe_rpc.Direct_stream_writer.write direct_writer n with
-          | `Closed -> return ()
-          | `Flushed flushed -> flushed)
-        >>| fun () ->
+        let%map () =
+          Pipe.iter readers.(i) ~f:(fun n ->
+            match Rpc.Pipe_rpc.Direct_stream_writer.write direct_writer n with
+            | `Closed -> return ()
+            | `Flushed flushed -> flushed)
+        in
         Rpc.Pipe_rpc.Direct_stream_writer.close direct_writer;
         Ok ()
       in
@@ -95,8 +88,7 @@ let main () =
     |> Deferred.Array.all
     >>| printf !"%{sexp: string list array}\n"
   in
-  Array.map connections ~f:Shard.Connection.close
-  |> Deferred.Array.all_unit
+  Array.map connections ~f:Shard.Connection.close |> Deferred.Array.all_unit
 ;;
 
 let () =
