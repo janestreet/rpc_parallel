@@ -18,8 +18,8 @@ module type Worker = sig
 
   val id : t -> Id.t
 
-  val spawn :
-    ?where:Executable_location.t
+  val spawn
+    :  ?where:Executable_location.t
     -> ?name:string
     -> ?env:(string * string) list
     -> ?connection_timeout:Time.Span.t
@@ -32,8 +32,8 @@ module type Worker = sig
     -> on_failure:(Error.t -> unit)
     -> t Or_error.t Deferred.t
 
-  val spawn_exn :
-    ?where:Executable_location.t
+  val spawn_exn
+    :  ?where:Executable_location.t
     -> ?name:string
     -> ?env:(string * string) list
     -> ?connection_timeout:Time.Span.t
@@ -46,14 +46,14 @@ module type Worker = sig
     -> on_failure:(Error.t -> unit)
     -> t Deferred.t
 
-  val run :
-    t
+  val run
+    :  t
     -> f:(unmanaged_t, 'query, 'response) Parallel.Function.t
     -> arg:'query
     -> 'response Or_error.t Deferred.t
 
-  val run_exn :
-    t
+  val run_exn
+    :  t
     -> f:(unmanaged_t, 'query, 'response) Parallel.Function.t
     -> arg:'query
     -> 'response Deferred.t
@@ -113,9 +113,18 @@ module Make (S : Parallel.Worker_spec) = struct
 
   let spawn ?where ?name ?env ?connection_timeout ?cd ?umask ~redirect_stdout
         ~redirect_stderr worker_state_init_arg connection_state_init_arg ~on_failure =
-    Unmanaged.spawn ?where ?env ?name ?connection_timeout ?cd ?umask
-      ~shutdown_on:Heartbeater_timeout ~redirect_stdout ~redirect_stderr
-      worker_state_init_arg ~on_failure
+    Unmanaged.spawn
+      ?where
+      ?env
+      ?name
+      ?connection_timeout
+      ?cd
+      ?umask
+      ~shutdown_on:Heartbeater_timeout
+      ~redirect_stdout
+      ~redirect_stderr
+      worker_state_init_arg
+      ~on_failure
     >>=? fun worker ->
     with_shutdown_on_error worker ~f:(fun () ->
       Unmanaged.Connection.client worker connection_state_init_arg)
@@ -136,8 +145,18 @@ module Make (S : Parallel.Worker_spec) = struct
 
   let spawn_exn ?where ?name ?env ?connection_timeout ?cd ?umask ~redirect_stdout
         ~redirect_stderr worker_state_init_arg connection_init_arg ~on_failure =
-    spawn ?where ?name ?env ?connection_timeout ?cd ?umask ~redirect_stdout
-      ~redirect_stderr worker_state_init_arg connection_init_arg ~on_failure
+    spawn
+      ?where
+      ?name
+      ?env
+      ?connection_timeout
+      ?cd
+      ?umask
+      ~redirect_stdout
+      ~redirect_stderr
+      worker_state_init_arg
+      connection_init_arg
+      ~on_failure
     >>| Or_error.ok_exn
   ;;
 

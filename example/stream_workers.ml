@@ -92,8 +92,10 @@ end
 module Worker = struct
   module T = struct
     type 'worker functions =
-      { process_elts :
-          ('worker, Stream_worker.t, int Pipe.Reader.t) Rpc_parallel.Function.t
+      { process_elts : ( 'worker
+                       , Stream_worker.t
+                       , int Pipe.Reader.t )
+                         Rpc_parallel.Function.t
       }
 
     module Worker_state = struct
@@ -117,7 +119,9 @@ module Worker = struct
         let check_r, check_w = Pipe.create () in
         let%bind conn = Stream_worker.Connection.client_exn stream_worker () in
         let%bind reader =
-          Stream_worker.Connection.run_exn conn ~f:Stream_worker.functions.subscribe
+          Stream_worker.Connection.run_exn
+            conn
+            ~f:Stream_worker.functions.subscribe
             ~arg:()
         in
         (Pipe.iter reader ~f:(fun i -> Pipe.write check_w i)
@@ -126,8 +130,11 @@ module Worker = struct
       ;;
 
       let process_elts =
-        C.create_pipe ~f:process_elts_impl ~bin_input:Stream_worker.bin_t
-          ~bin_output:Int.bin_t ()
+        C.create_pipe
+          ~f:process_elts_impl
+          ~bin_input:Stream_worker.bin_t
+          ~bin_output:Int.bin_t
+          ()
       ;;
 
       let functions = { process_elts }
@@ -155,17 +162,26 @@ let command =
            ~doc:" number of elements to process")
     (fun num_workers num_elements () ->
        (* Spawn a stream worker *)
-       Stream_worker.spawn ~shutdown_on:Heartbeater_timeout ~redirect_stdout:`Dev_null
-         ~redirect_stderr:`Dev_null num_elements
+       Stream_worker.spawn
+         ~shutdown_on:Heartbeater_timeout
+         ~redirect_stdout:`Dev_null
+         ~redirect_stderr:`Dev_null
+         num_elements
          ~on_failure:(handle_error "stream worker")
        >>=? fun stream_worker ->
        (* Spawn workers and tell them about the stream worker  *)
        Deferred.Or_error.List.init num_workers ~f:(fun i ->
-         Worker.spawn ~shutdown_on:Disconnect ~connection_state_init_arg:()
-           ~redirect_stdout:`Dev_null ~redirect_stderr:`Dev_null ()
+         Worker.spawn
+           ~shutdown_on:Disconnect
+           ~connection_state_init_arg:()
+           ~redirect_stdout:`Dev_null
+           ~redirect_stderr:`Dev_null
+           ()
            ~on_failure:(handle_error (sprintf "worker %d" i))
          >>=? fun worker_conn ->
-         Worker.Connection.run worker_conn ~f:Worker.functions.process_elts
+         Worker.Connection.run
+           worker_conn
+           ~f:Worker.functions.process_elts
            ~arg:stream_worker)
        >>=? fun workers ->
        (* Start the stream *)

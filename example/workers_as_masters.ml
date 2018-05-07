@@ -76,9 +76,12 @@ module Primary_worker = struct
       let run_impl ~worker_state:() ~conn_state:() num_workers =
         Deferred.List.init ~how:`Parallel num_workers ~f:(fun _i ->
           let%map secondary_worker =
-            Secondary_worker.spawn_exn ~shutdown_on:Heartbeater_timeout
-              ~redirect_stdout:`Dev_null ~redirect_stderr:`Dev_null
-              ~on_failure:Error.raise ()
+            Secondary_worker.spawn_exn
+              ~shutdown_on:Heartbeater_timeout
+              ~redirect_stdout:`Dev_null
+              ~redirect_stderr:`Dev_null
+              ~on_failure:Error.raise
+              ()
           in
           ignore (Bag.add workers (next_worker_name (), secondary_worker)))
         >>| ignore
@@ -92,7 +95,9 @@ module Primary_worker = struct
           | Error e -> failwiths "failed connecting to worker" e [%sexp_of: Error.t]
           | Ok conn ->
             match%map
-              Secondary_worker.Connection.run conn ~arg:()
+              Secondary_worker.Connection.run
+                conn
+                ~arg:()
                 ~f:Secondary_worker.functions.ping
             with
             | Error e -> sprintf "%s: failed (%s)" name (Error.to_string_hum e)
@@ -120,15 +125,23 @@ let command =
     Command.Spec.(
       empty
       +> flag "primary" (required int) ~doc:" Number of primary workers to spawn"
-      +> flag "secondary" (required int)
+      +> flag
+           "secondary"
+           (required int)
            ~doc:" Number of secondary workers each primary worker should spawn")
     (fun primary secondary () ->
        Deferred.Or_error.List.init ~how:`Parallel primary ~f:(fun worker_id ->
-         Primary_worker.spawn ~shutdown_on:Disconnect ~redirect_stdout:`Dev_null
-           ~redirect_stderr:`Dev_null ~on_failure:Error.raise
-           ~connection_state_init_arg:() ()
+         Primary_worker.spawn
+           ~shutdown_on:Disconnect
+           ~redirect_stdout:`Dev_null
+           ~redirect_stderr:`Dev_null
+           ~on_failure:Error.raise
+           ~connection_state_init_arg:()
+           ()
          >>=? fun conn ->
-         Primary_worker.Connection.run conn ~f:Primary_worker.functions.run
+         Primary_worker.Connection.run
+           conn
+           ~f:Primary_worker.functions.run
            ~arg:secondary
          >>=? fun () ->
          Primary_worker.Connection.run conn ~f:Primary_worker.functions.ping ~arg:()

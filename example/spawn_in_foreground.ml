@@ -42,8 +42,11 @@ module Worker = struct
 end
 
 let main () =
-  Worker.spawn_in_foreground ~shutdown_on:Disconnect ~connection_state_init_arg:()
-    ~on_failure:Error.raise ()
+  Worker.spawn_in_foreground
+    ~shutdown_on:Disconnect
+    ~connection_state_init_arg:()
+    ~on_failure:Error.raise
+    ()
   >>=? fun (conn, process) ->
   Worker.Connection.run conn ~f:Worker.functions.print ~arg:"HELLO"
   >>=? fun () ->
@@ -67,8 +70,10 @@ let main () =
 ;;
 
 let command =
-  Command.async_spec_or_error ~summary:"Example of spawn_in_foreground"
-    Command.Spec.empty main
+  Command.async_spec_or_error
+    ~summary:"Example of spawn_in_foreground"
+    Command.Spec.empty
+    main
 ;;
 
 let () = Rpc_parallel.start_app command

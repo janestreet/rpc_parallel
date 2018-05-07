@@ -52,15 +52,20 @@ let main_command =
        let open Deferred.Let_syntax in
        Rpc_parallel.Expert.start_master_server_exn ~worker_command_args:[ "worker" ] ();
        let%map (_connection : Worker.Connection.t) =
-         Worker.spawn_exn ~on_failure:Error.raise ~shutdown_on:Disconnect
-           ~connection_state_init_arg:() ~redirect_stdout:`Dev_null
-           ~redirect_stderr:`Dev_null ()
+         Worker.spawn_exn
+           ~on_failure:Error.raise
+           ~shutdown_on:Disconnect
+           ~connection_state_init_arg:()
+           ~redirect_stdout:`Dev_null
+           ~redirect_stderr:`Dev_null
+           ()
        in
        printf "Success.\n")
 ;;
 
 let command =
-  Command.group ~summary:"Using Rpc_parallel.Expert"
+  Command.group
+    ~summary:"Using Rpc_parallel.Expert"
     [ "worker", worker_command; "main", main_command ]
 ;;
 

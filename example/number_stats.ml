@@ -65,14 +65,21 @@ let command =
              | Some remote_path ->
                Rpc_parallel.Map_reduce.Config.create
                  ~remote:
-                   [ Rpc_parallel.Remote_executable.existing_on_host
-                       ~executable_path:remote_path remote_host
-                   , nworkers
-                   ] ~redirect_stderr:`Dev_null ~redirect_stdout:`Dev_null ()
+                   [ ( Rpc_parallel.Remote_executable.existing_on_host
+                         ~executable_path:remote_path
+                         remote_host
+                     , nworkers )
+                   ]
+                 ~redirect_stderr:`Dev_null
+                 ~redirect_stdout:`Dev_null
+                 ()
              | _ -> failwith "No remote path specified" )
          | _ ->
-           Rpc_parallel.Map_reduce.Config.create ~local:nworkers
-             ~redirect_stderr:`Dev_null ~redirect_stdout:`Dev_null ()
+           Rpc_parallel.Map_reduce.Config.create
+             ~local:nworkers
+             ~redirect_stderr:`Dev_null
+             ~redirect_stdout:`Dev_null
+             ()
        in
        let%bind blocks =
          Rpc_parallel.Map_reduce.map_unordered config

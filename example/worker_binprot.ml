@@ -101,13 +101,21 @@ let command =
        functions"
     Command.Spec.(empty)
     (fun () ->
-       Worker.spawn ~shutdown_on:Heartbeater_timeout ~redirect_stdout:`Dev_null
-         ~redirect_stderr:`Dev_null ~on_failure:Error.raise ()
+       Worker.spawn
+         ~shutdown_on:Heartbeater_timeout
+         ~redirect_stdout:`Dev_null
+         ~redirect_stderr:`Dev_null
+         ~on_failure:Error.raise
+         ()
        >>=? fun worker ->
        Worker.Connection.client worker ()
        >>=? fun worker_conn ->
-       Dispatcher.spawn ~shutdown_on:Disconnect ~redirect_stdout:`Dev_null
-         ~redirect_stderr:`Dev_null ~on_failure:Error.raise ~connection_state_init_arg:()
+       Dispatcher.spawn
+         ~shutdown_on:Disconnect
+         ~redirect_stdout:`Dev_null
+         ~redirect_stderr:`Dev_null
+         ~on_failure:Error.raise
+         ~connection_state_init_arg:()
          ()
        >>=? fun dispatcher_conn ->
        let repeat job n = Deferred.List.iter (List.range 0 n) ~f:(fun _i -> job ()) in
@@ -116,8 +124,10 @@ let command =
            [ repeat
                (fun () ->
                   let%bind count =
-                    Dispatcher.Connection.run_exn dispatcher_conn
-                      ~f:Dispatcher.functions.dispatch ~arg:worker
+                    Dispatcher.Connection.run_exn
+                      dispatcher_conn
+                      ~f:Dispatcher.functions.dispatch
+                      ~arg:worker
                   in
                   Core.Printf.printf "worker pinged from dispatcher: %d\n%!" count;
                   return ())

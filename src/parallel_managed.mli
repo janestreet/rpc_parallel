@@ -18,7 +18,6 @@ module type Worker = sig
 
   type 'a functions
 
-
   (** Accessor for the functions implemented by this worker type *)
   val functions : unmanaged_t functions
 
@@ -31,8 +30,8 @@ module type Worker = sig
   val id : t -> Id.t
 
 
-  val spawn :
-    ?where:Executable_location.t
+  val spawn
+    :  ?where:Executable_location.t
     -> ?name:string
     -> ?env:(string * string) list
     -> ?connection_timeout:Time.Span.t
@@ -45,8 +44,8 @@ module type Worker = sig
     -> on_failure:(Error.t -> unit)
     -> t Or_error.t Deferred.t
 
-  val spawn_exn :
-    ?where:Executable_location.t
+  val spawn_exn
+    :  ?where:Executable_location.t
     -> ?name:string
     -> ?env:(string * string) list
     -> ?connection_timeout:Time.Span.t
@@ -59,22 +58,20 @@ module type Worker = sig
     -> on_failure:(Error.t -> unit)
     -> t Deferred.t
 
-
   (** [run t] and [run_exn t] will connect to [t] if there is not already a connection,
       but if there is currently a connection that has gone stale, they will fail with an
       error. Trying again will attempt a reconnection. *)
-  val run :
-    t
+  val run
+    :  t
     -> f:(unmanaged_t, 'query, 'response) Parallel.Function.t
     -> arg:'query
     -> 'response Or_error.t Deferred.t
 
-  val run_exn :
-    t
+  val run_exn
+    :  t
     -> f:(unmanaged_t, 'query, 'response) Parallel.Function.t
     -> arg:'query
     -> 'response Deferred.t
-
 
   (** Using these functions will not result in [on_failure] reporting a closed
       connection, unlike running the [shutdown] function. *)

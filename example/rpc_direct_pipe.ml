@@ -58,8 +58,14 @@ let main max log_dir () =
     | None -> `Dev_null, `Dev_null
     | Some _ -> `File_append "sum.out", `File_append "sum.err"
   in
-  Sum_worker.spawn ~on_failure:Error.raise ?cd:log_dir ~shutdown_on:Disconnect
-    ~redirect_stdout ~redirect_stderr ~connection_state_init_arg:() ()
+  Sum_worker.spawn
+    ~on_failure:Error.raise
+    ?cd:log_dir
+    ~shutdown_on:Disconnect
+    ~redirect_stdout
+    ~redirect_stderr
+    ~connection_state_init_arg:()
+    ()
   >>=? fun conn ->
   let on_write = function
     | Rpc.Pipe_rpc.Pipe_message.Closed _ -> Rpc.Pipe_rpc.Pipe_response.Continue

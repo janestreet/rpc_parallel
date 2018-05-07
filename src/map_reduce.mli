@@ -7,12 +7,11 @@ open! Async
 module Config : sig
   type t
 
-
   (** Default is to create the same number of local workers as the cores in local
       machine. All spawned workers will their redirect stdout and stderr to the same
       file. *)
-  val create :
-    ?local:int
+  val create
+    :  ?local:int
     -> ?remote:(_ Remote_executable.t * int) list
     -> ?cd:string (** default / *)
     -> redirect_stderr:[`Dev_null | `File_append of string]
@@ -95,13 +94,12 @@ module Make_map_function (S : Map_function_spec) :
    and type Input.t = S.Input.t
    and type Output.t = S.Output.t
 
-
 (** The [map_unordered] operation takes ['a Pipe.Reader.t] along with a [Map_function] and
     sends the ['a] values to workers for mapping. Each pair in the resulting [('b * int)
     Pipe.Reader.t] contains the mapped value and the index of the value in the input
     pipe. *)
-val map_unordered :
-  Config.t
+val map_unordered
+  :  Config.t
   -> 'a Pipe.Reader.t
   -> m:(module
          Map_function with type Param.t = 'param and type Input.t = 'a and type Output.t = 
@@ -109,12 +107,11 @@ val map_unordered :
   -> param:'param
   -> ('b * int) Pipe.Reader.t Deferred.t
 
-
 (** The [map] operation is similar to [map_unordered], but the result is a ['b
     Pipe.Reader.t] where the mapped values are guaranteed to be in the same order as the
     input values. *)
-val map :
-  Config.t
+val map
+  :  Config.t
   -> 'a Pipe.Reader.t
   -> m:(module
          Map_function with type Param.t = 'param and type Input.t = 'a and type Output.t = 
@@ -122,14 +119,13 @@ val map :
   -> param:'param
   -> 'b Pipe.Reader.t Deferred.t
 
-
 (** The [find_map] operation takes ['a Pipe.Reader.t] along with a [Map_function] that
     returns ['b option] values. As soon as [map] returns [Some value], all workers are
     stopped and [Some value] is returned. If [map] never returns [Some value] then [None]
     is returned. If more than one worker returns [Some value], one value is chosen
     arbitrarily and returned. *)
-val find_map :
-  Config.t
+val find_map
+  :  Config.t
   -> 'a Pipe.Reader.t
   -> m:(module
          Map_function with type Param.t = 'param and type Input.t = 'a and type Output.t = 
@@ -196,22 +192,20 @@ module Make_map_reduce_function (S : Map_reduce_function_spec) :
    and type Accum.t = S.Accum.t
    and type Input.t = S.Input.t
 
-
 (** The [map_reduce_commutative] operation takes ['a Pipe.Reader.t] along with a
     [Map_reduce_function] and applies the [map] function to ['a] values (in an unspecified
     order), resulting in ['accum] values. The [combine] function is then called to combine
     the ['accum] values (in an unspecified order) into a single ['accum]
     value. Commutative map-reduce assumes that [combine] is associative and
     commutative. *)
-val map_reduce_commutative :
-  Config.t
+val map_reduce_commutative
+  :  Config.t
   -> 'a Pipe.Reader.t
   -> m:(module
          Map_reduce_function with type Param.t = 'param and type Accum.t = 'accum and type 
          Input.t = 'a)
   -> param:'param
   -> 'accum option Deferred.t
-
 
 (** The [map_reduce] operation makes strong guarantees about the order in which the values
     are processed by [combine]. For a list a_0, a_1, a_2, ..., a_n of ['a] values, the
@@ -221,8 +215,8 @@ val map_reduce_commutative :
     functions are called repeatedly until the entire list is reduced to a single
     [acc_{0,n+1}] value. Noncommutative map-reduce assumes that [combine] is
     associative. *)
-val map_reduce :
-  Config.t
+val map_reduce
+  :  Config.t
   -> 'a Pipe.Reader.t
   -> m:(module
          Map_reduce_function with type Param.t = 'param and type Accum.t = 'accum and type 

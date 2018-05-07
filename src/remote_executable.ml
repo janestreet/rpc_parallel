@@ -63,7 +63,8 @@ let run exec ~env ~args =
   if md5 <> remote_md5
   then
     Deferred.Or_error.errorf
-      "The remote executable %s:%s does not match the local executable" exec.host
+      "The remote executable %s:%s does not match the local executable"
+      exec.host
       exec.path
   else
     Process.create ~prog:"ssh"

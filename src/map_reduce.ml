@@ -151,8 +151,15 @@ module Make_rpc_parallel_worker (S : Rpc_parallel_worker_spec) = struct
   type run_output_type = S.Run_output.t
 
   let spawn_exn where param ?cd ~redirect_stderr ~redirect_stdout =
-    Parallel_worker.spawn_exn ~where ?cd ~shutdown_on:Disconnect ~redirect_stderr
-      ~redirect_stdout param ~on_failure:Error.raise ~connection_state_init_arg:()
+    Parallel_worker.spawn_exn
+      ~where
+      ?cd
+      ~shutdown_on:Disconnect
+      ~redirect_stderr
+      ~redirect_stdout
+      param
+      ~on_failure:Error.raise
+      ~connection_state_init_arg:()
   ;;
 
   let spawn_config_exn { Config.local; remote; cd; redirect_stderr; redirect_stdout }
@@ -352,7 +359,7 @@ module Make_map_reduce_function (S : Map_reduce_function_spec) =
     let combine () = S.combine
   end)
 
-let map_unordered (type param) (type a) (type b) config input_reader ~m ~(param : param) =
+let map_unordered (type param a b) config input_reader ~m ~(param : param) =
   let module Map_function =
     ( val ( m
             : (module
@@ -414,7 +421,7 @@ let map config input_reader ~m ~param =
   return new_reader
 ;;
 
-let find_map (type param) (type a) (type b) config input_reader ~m ~(param : param) =
+let find_map (type param a b) config input_reader ~m ~(param : param) =
   let module Map_function =
     ( val ( m
             : (module
@@ -441,8 +448,7 @@ let find_map (type param) (type a) (type b) config input_reader ~m ~(param : par
   !found_value
 ;;
 
-let map_reduce_commutative (type param) (type a) (type accum) config input_reader ~m
-      ~(param : param) =
+let map_reduce_commutative (type param a accum) config input_reader ~m ~(param : param) =
   let module Map_reduce_function =
     ( val ( m
             : (module
@@ -483,7 +489,7 @@ let map_reduce_commutative (type param) (type a) (type accum) config input_reade
   !combined_acc
 ;;
 
-let map_reduce (type param) (type a) (type accum) config input_reader ~m ~(param : param) =
+let map_reduce (type param a accum) config input_reader ~m ~(param : param) =
   let module Map_reduce_function =
     ( val ( m
             : (module
@@ -545,7 +551,8 @@ let map_reduce (type param) (type a) (type accum) config input_reader ~m ~(param
              -> acc_{left_lbound, index + 1} *)
           acc_map := H.Map.remove !acc_map left_key;
           let%bind acc =
-            Map_reduce_function.Worker.run_exn worker
+            Map_reduce_function.Worker.run_exn
+              worker
               (`Map_right_combine (left_acc, input))
           in
           let key = H.create_exn (H.lbound left_key) (H.ubound key) in

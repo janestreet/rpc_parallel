@@ -64,16 +64,15 @@ end
 (* All global state that is needed for a process to act as a master *)
 type master_state =
   { (* The [Host_and_port.t] corresponding to one's own master Rpc server. *)
-    my_server :
-      Host_and_port.t Deferred.t lazy_t
+    my_server : Host_and_port.t Deferred.t
+                  lazy_t
   (* The rpc settings used universally for all rpc connections *)
-  ; app_rpc_settings :
-      Rpc_settings.t (* Used to facilitate timeout of connecting to a spawned worker *)
-  ; pending :
-      Host_and_port.t Ivar.t Worker_id.Table.t
+  ; app_rpc_settings : Rpc_settings.t
+  (* Used to facilitate timeout of connecting to a spawned worker *)
+  ; pending : Host_and_port.t Ivar.t
+                Worker_id.Table.t
   (* Arguments used when spawning a new worker. *)
-  ; worker_command_args :
-      Worker_command_args.t
+  ; worker_command_args : Worker_command_args.t
   (* Callbacks for spawned worker exceptions along with the monitor that was current
      when [spawn] was called *)
   ; on_failures : ((Error.t -> unit) * Monitor.t) Worker_id.Table.t
@@ -82,8 +81,8 @@ type master_state =
 (* All global state that is not specific to worker types is collected here *)
 type worker_state =
   { (* Currently running worker servers in this process *)
-    my_worker_servers :
-      (Socket.Address.Inet.t, int) Tcp.Server.t Worker_id.Table.t
+    my_worker_servers : (Socket.Address.Inet.t, int) Tcp.Server.t
+                          Worker_id.Table.t
   (* To facilitate process creation cleanup.*)
   ; initialized : [`Init_started of [`Initialized] Or_error.t Deferred.t] Set_once.t
   }
@@ -120,15 +119,18 @@ end
 
 module Async_log_rpc = struct
   let rpc =
-    Rpc.Pipe_rpc.create ~name:"async_log_rpc" ~version:0 ~bin_query:Unit.bin_t
-      ~bin_response:Log.Message.Stable.V2.bin_t ~bin_error:Error.bin_t ()
+    Rpc.Pipe_rpc.create
+      ~name:"async_log_rpc"
+      ~version:0
+      ~bin_query:Unit.bin_t
+      ~bin_response:Log.Message.Stable.V2.bin_t
+      ~bin_error:Error.bin_t
+      ()
   ;;
 end
 
 module Function = struct
-  module Rpc_id = Unique_id.Int (struct
-
-    end)
+  module Rpc_id = Unique_id.Int ()
 
   let maybe_generate_name ~prefix ~name =
     match name with
@@ -159,8 +161,13 @@ module Function = struct
 
     let make_proto ~name ~bin_input ~bin_output =
       let name = maybe_generate_name ~prefix:"rpc_parallel_piped" ~name in
-      Rpc.Pipe_rpc.create ~name ~version:0 ~bin_query:bin_input ~bin_response:bin_output
-        ~bin_error:Error.bin_t ()
+      Rpc.Pipe_rpc.create
+        ~name
+        ~version:0
+        ~bin_query:bin_input
+        ~bin_response:bin_output
+        ~bin_error:Error.bin_t
+        ()
     ;;
   end
 
@@ -186,9 +193,7 @@ module Function = struct
   end
 
   module Function_reverse_piped = struct
-    module Id = Unique_id.Int (struct
-
-      end)
+    module Id = Unique_id.Int ()
 
     type ('worker, 'query, 'update, 'response, 'in_progress) t =
       { worker_rpc : ('query * Id.t, 'response) Rpc.Rpc.t
@@ -222,7 +227,10 @@ module Function = struct
     ;;
 
     let make_master_impl t =
-      make_master t ~implement:Rpc.Pipe_rpc.implement ~ok:Deferred.Or_error.return
+      make_master
+        t
+        ~implement:Rpc.Pipe_rpc.implement
+        ~ok:Deferred.Or_error.return
         ~error:ident
     ;;
 
@@ -236,12 +244,20 @@ module Function = struct
         let module With_id = struct
           type 'a t = 'a * Id.t [@@deriving bin_io]
         end in
-        Rpc.Rpc.create ~name ~version:0 ~bin_query:(With_id.bin_t bin_query)
+        Rpc.Rpc.create
+          ~name
+          ~version:0
+          ~bin_query:(With_id.bin_t bin_query)
           ~bin_response
       in
       let master_rpc =
-        Rpc.Pipe_rpc.create ~name ~version:0 ~bin_query:Id.bin_t ~bin_response:bin_update
-          ~bin_error:Error.bin_t ()
+        Rpc.Pipe_rpc.create
+          ~name
+          ~version:0
+          ~bin_query:Id.bin_t
+          ~bin_response:bin_update
+          ~bin_error:Error.bin_t
+          ()
       in
       let master_in_progress = Id.Table.create () in
       { worker_rpc; master_rpc; master_in_progress }
@@ -345,19 +361,31 @@ module Function = struct
     in
     let worker_impl = Function_reverse_piped.make_worker_impl ~monitor ~f proto in
     let master_impl = make_master_impl proto in
-    T (Fn.id, Reverse_piped (proto, Type_equal.T), Fn.id)
-  , `Worker worker_impl
-  , `Master master_impl
+    ( T (Fn.id, Reverse_piped (proto, Type_equal.T), Fn.id)
+    , `Worker worker_impl
+    , `Master master_impl )
   ;;
 
   let create_reverse_pipe ~monitor ~name ~f ~bin_query ~bin_update ~bin_response =
-    reverse_pipe ~make_master_impl:Function_reverse_piped.make_master_impl ~monitor ~name
-      ~f ~bin_query ~bin_update ~bin_response
+    reverse_pipe
+      ~make_master_impl:Function_reverse_piped.make_master_impl
+      ~monitor
+      ~name
+      ~f
+      ~bin_query
+      ~bin_update
+      ~bin_response
   ;;
 
   let create_reverse_direct_pipe ~monitor ~name ~f ~bin_query ~bin_update ~bin_response =
-    reverse_pipe ~make_master_impl:Function_reverse_piped.make_master_impl_direct
-      ~monitor ~name ~f ~bin_query ~bin_update ~bin_response
+    reverse_pipe
+      ~make_master_impl:Function_reverse_piped.make_master_impl_direct
+      ~monitor
+      ~name
+      ~f
+      ~bin_query
+      ~bin_update
+      ~bin_response
   ;;
 
   let of_async_rpc ~monitor ~f proto =
@@ -380,9 +408,8 @@ module Function = struct
     T (Fn.id, One_way proto, Fn.id), impl
   ;;
 
-  let run_internal (type query) (type response)
-        (t_internal : (_, query, response) t_internal) connection ~(arg : query)
-    : response Or_error.t Deferred.t =
+  let run_internal (type query response) (t_internal : (_, query, response) t_internal)
+        connection ~(arg : query) : response Or_error.t Deferred.t =
     match t_internal with
     | Plain proto -> Rpc.Rpc.dispatch proto connection arg
     | Piped (proto, Type_equal.T) ->
@@ -482,8 +509,14 @@ let start_server ~max_message_size ~handshake_timeout ~heartbeat_config ~where_t
   let implementations =
     Rpc.Implementations.create_exn ~implementations ~on_unknown_rpc:`Close_connection
   in
-  Rpc.Connection.serve ~implementations ~initial_connection_state ?max_message_size
-    ?handshake_timeout ?heartbeat_config ~where_to_listen ()
+  Rpc.Connection.serve
+    ~implementations
+    ~initial_connection_state
+    ?max_message_size
+    ?handshake_timeout
+    ?heartbeat_config
+    ~where_to_listen
+    ()
 ;;
 
 module Worker_config = struct
@@ -541,7 +574,10 @@ module Handle_exn_rpc = struct
   [@@deriving bin_io]
 
   let rpc =
-    Rpc.Rpc.create ~name:"handle_worker_exn_rpc" ~version:0 ~bin_query:bin_t
+    Rpc.Rpc.create
+      ~name:"handle_worker_exn_rpc"
+      ~version:0
+      ~bin_query:bin_t
       ~bin_response:Unit.bin_t
   ;;
 
@@ -572,8 +608,10 @@ let init_master_state ~rpc_max_message_size ~rpc_handshake_timeout ~rpc_heartbea
   | Some _state -> failwith "Master state must not be set up twice"
   | None ->
     let app_rpc_settings =
-      Rpc_settings.create ~max_message_size:rpc_max_message_size
-        ~handshake_timeout:rpc_handshake_timeout ~heartbeat_config:rpc_heartbeat_config
+      Rpc_settings.create
+        ~max_message_size:rpc_max_message_size
+        ~handshake_timeout:rpc_handshake_timeout
+        ~heartbeat_config:rpc_heartbeat_config
     in
     (* Use [size:1] so there is minimal top-level overhead linking with Rpc_parallel *)
     let pending = Worker_id.Table.create ~size:1 () in
@@ -583,7 +621,8 @@ let init_master_state ~rpc_max_message_size ~rpc_handshake_timeout ~rpc_heartbea
     let my_server =
       lazy
         (let%map server =
-           start_server ~max_message_size:rpc_max_message_size
+           start_server
+             ~max_message_size:rpc_max_message_size
              ~handshake_timeout:rpc_handshake_timeout
              ~heartbeat_config:rpc_heartbeat_config
              ~where_to_listen:Tcp.Where_to_listen.of_port_chosen_by_os
@@ -621,18 +660,18 @@ module Make (S : Worker_spec) = struct
     { (* A unique identifier for each application of the [Make] functor.
          Because we are running the same executable and this is supposed to run at the
          top level, the master and the workers agree on these ids *)
-      type_ :
-        Worker_type_id.t
+      type_ : Worker_type_id.t
     (* Persistent states associated with instances of this worker server *)
-    ; states :
-        S.Worker_state.t Worker_id.Table.t
+    ; states : S.Worker_state.t
+                 Worker_id.Table.t
     (* To facilitate cleanup in the [Shutdown_on.Disconnect] case *)
-    ; mutable client_has_connected :
-        bool (* Build up a list of all implementations for this worker type *)
-    ; mutable implementations :
-        (S.Worker_state.t, S.Connection_state.t) Utils.Internal_connection_state.t
-          Rpc.Implementation.t
-          list
+    ; mutable client_has_connected : bool
+    (* Build up a list of all implementations for this worker type *)
+    ; mutable implementations : ( S.Worker_state.t
+                                , S.Connection_state.t )
+                                  Utils.Internal_connection_state.t
+                                  Rpc.Implementation.t
+                                  list
     ; mutable master_implementations : unit Rpc.Implementation.t list
     }
 
@@ -694,8 +733,11 @@ module Make (S : Worker_spec) = struct
     >>=? fun env ->
     match where with
     | Executable_location.Local ->
-      Process.create ~prog:(Utils.our_binary ()) ~args:worker_command_args
-        ~env:(`Extend env) ()
+      Process.create
+        ~prog:(Utils.our_binary ())
+        ~args:worker_command_args
+        ~env:(`Extend env)
+        ()
       >>|? fun p ->
       Writer.write_sexp (Process.stdin p) input;
       p
@@ -749,13 +791,25 @@ module Make (S : Worker_spec) = struct
     ;;
 
     let create_reverse_pipe ?name ~f ~bin_query ~bin_update ~bin_response () =
-      reverse_pipe ~create_function:Function.create_reverse_pipe ?name ~f ~bin_query
-        ~bin_update ~bin_response ()
+      reverse_pipe
+        ~create_function:Function.create_reverse_pipe
+        ?name
+        ~f
+        ~bin_query
+        ~bin_update
+        ~bin_response
+        ()
     ;;
 
     let create_reverse_direct_pipe ?name ~f ~bin_query ~bin_update ~bin_response () =
-      reverse_pipe ~create_function:Function.create_reverse_direct_pipe ?name ~f
-        ~bin_query ~bin_update ~bin_response ()
+      reverse_pipe
+        ~create_function:Function.create_reverse_direct_pipe
+        ?name
+        ~f
+        ~bin_query
+        ~bin_update
+        ~bin_response
+        ()
     ;;
 
     let of_async_rpc ~f proto =
@@ -799,7 +853,9 @@ module Make (S : Worker_spec) = struct
         start_server ~implementations:worker_implementations
           ~initial_connection_state:(fun _address connection ->
             connection, Set_once.create ())
-          ~max_message_size ~handshake_timeout ~heartbeat_config
+          ~max_message_size
+          ~handshake_timeout
+          ~heartbeat_config
           ~where_to_listen:Tcp.Where_to_listen.of_port_chosen_by_os
       in
       let id = Worker_id.create () in
@@ -836,14 +892,19 @@ module Make (S : Worker_spec) = struct
         rpc_settings
       in
       match%bind
-        Rpc.Connection.client ?max_message_size ?handshake_timeout ?heartbeat_config
+        Rpc.Connection.client
+          ?max_message_size
+          ?handshake_timeout
+          ?heartbeat_config
           ~implementations:master_implementations
           (Tcp.Where_to_connect.of_host_and_port host_and_port)
       with
       | Error exn -> return (Error (Error.of_exn exn))
       | Ok connection ->
         match%bind
-          Rpc.Rpc.dispatch Init_connection_state_rpc.rpc connection
+          Rpc.Rpc.dispatch
+            Init_connection_state_rpc.rpc
+            connection
             { worker_id; worker_shutdown_on_disconnect; arg = init_arg }
         with
         | Error e ->
@@ -892,8 +953,7 @@ module Make (S : Worker_spec) = struct
         (* No heartbeater needed because we call
            [Connection.client_with_worker_shutdown_on_disconnect] and the worker shuts
            itself down if it times out waiting for a connection from the master. *)
-        `Client_will_immediately_connect true
-      , `Setup_master_heartbeater false
+        `Client_will_immediately_connect true, `Setup_master_heartbeater false
       | Called_shutdown_function ->
         `Client_will_immediately_connect false, `Setup_master_heartbeater false
     ;;
@@ -972,7 +1032,10 @@ module Make (S : Worker_spec) = struct
     let { Rpc_settings.max_message_size; handshake_timeout; heartbeat_config } =
       rpc_settings
     in
-    Rpc.Connection.with_client ?max_message_size ?handshake_timeout ?heartbeat_config
+    Rpc.Connection.with_client
+      ?max_message_size
+      ?handshake_timeout
+      ?heartbeat_config
       ~implementations:master_implementations
       (Tcp.Where_to_connect.of_host_and_port host_and_port)
       f
@@ -1011,17 +1074,22 @@ module Make (S : Worker_spec) = struct
         { host_and_port; rpc_settings = global_state.app_rpc_settings; id; name }
       in
       let%bind master_server = Lazy.force global_state.my_server in
-      Hashtbl.add_exn global_state.on_failures ~key:worker.id
+      Hashtbl.add_exn
+        global_state.on_failures
+        ~key:worker.id
         ~data:(on_failure, Monitor.current ());
       with_shutdown_on_error worker ~f:(fun () ->
         match%map
           with_client worker ~f:(fun conn ->
             let heartbeater =
               Option.some_if setup_master_heartbeater
-                (Heartbeater_master.create ~host_and_port:master_server
+                (Heartbeater_master.create
+                   ~host_and_port:master_server
                    ~rpc_settings:global_state.app_rpc_settings)
             in
-            Rpc.Rpc.dispatch Init_worker_state_rpc.rpc conn
+            Rpc.Rpc.dispatch
+              Init_worker_state_rpc.rpc
+              conn
               { master = heartbeater
               ; worker = id
               ; arg = init_arg
@@ -1058,8 +1126,13 @@ module Make (S : Worker_spec) = struct
       with
       | Error e -> return (Error e)
       | Ok (id, process) ->
-        wait_for_connection_and_initialize ~name ~connection_timeout ~on_failure ~id
-          ~client_will_immediately_connect ~setup_master_heartbeater
+        wait_for_connection_and_initialize
+          ~name
+          ~connection_timeout
+          ~on_failure
+          ~id
+          ~client_will_immediately_connect
+          ~setup_master_heartbeater
           worker_state_init_arg
         >>| Or_error.map ~f:(fun worker -> worker, process)
     in
@@ -1072,7 +1145,8 @@ module Make (S : Worker_spec) = struct
         >>=? fun (worker, process) ->
         (* If [Connection_state.init] raises, [client_internal] will close the Rpc
            connection, causing the worker to shutdown. *)
-        Connection.client_with_worker_shutdown_on_disconnect worker
+        Connection.client_with_worker_shutdown_on_disconnect
+          worker
           connection_state_init_arg
         >>|? fun conn -> conn, process
     | Called_shutdown_function ->
@@ -1092,16 +1166,38 @@ module Make (S : Worker_spec) = struct
     match shutdown_on with
     | Disconnect ->
       fun ~connection_state_init_arg ->
-        spawn_in_foreground ?where ?name ?env ?connection_timeout ?cd ~on_failure
-          ~shutdown_on:Disconnect init_arg ~connection_state_init_arg
+        spawn_in_foreground
+          ?where
+          ?name
+          ?env
+          ?connection_timeout
+          ?cd
+          ~on_failure
+          ~shutdown_on:Disconnect
+          init_arg
+          ~connection_state_init_arg
         >>| ok_exn
     | Heartbeater_timeout ->
-      spawn_in_foreground ?where ?name ?env ?connection_timeout ?cd ~on_failure
-        ~shutdown_on:Heartbeater_timeout init_arg
+      spawn_in_foreground
+        ?where
+        ?name
+        ?env
+        ?connection_timeout
+        ?cd
+        ~on_failure
+        ~shutdown_on:Heartbeater_timeout
+        init_arg
       >>| ok_exn
     | Called_shutdown_function ->
-      spawn_in_foreground ?where ?name ?env ?connection_timeout ?cd ~on_failure
-        ~shutdown_on:Called_shutdown_function init_arg
+      spawn_in_foreground
+        ?where
+        ?name
+        ?env
+        ?connection_timeout
+        ?cd
+        ~on_failure
+        ~shutdown_on:Called_shutdown_function
+        init_arg
       >>| ok_exn
   ;;
 
@@ -1146,8 +1242,13 @@ module Make (S : Worker_spec) = struct
         match%bind wait_for_daemonization_and_collect_stderr id_or_name process with
         | Error e -> return (Error e)
         | Ok () ->
-          wait_for_connection_and_initialize ~name ~connection_timeout ~on_failure ~id
-            ~client_will_immediately_connect ~setup_master_heartbeater
+          wait_for_connection_and_initialize
+            ~name
+            ~connection_timeout
+            ~on_failure
+            ~id
+            ~client_will_immediately_connect
+            ~setup_master_heartbeater
             worker_state_init_arg
     in
     let open Spawn_shutdown_on in
@@ -1160,7 +1261,8 @@ module Make (S : Worker_spec) = struct
         >>=? fun worker ->
         (* If [Connection_state.init] raises, [client_internal] will close the Rpc
            connection, causing the worker to shutdown. *)
-        Connection.client_with_worker_shutdown_on_disconnect worker
+        Connection.client_with_worker_shutdown_on_disconnect
+          worker
           connection_state_init_arg
     | Called_shutdown_function ->
       spawn_worker ~client_will_immediately_connect ~setup_master_heartbeater
@@ -1175,17 +1277,47 @@ module Make (S : Worker_spec) = struct
     match shutdown_on with
     | Disconnect ->
       fun ~connection_state_init_arg ->
-        spawn ?where ?name ?env ?connection_timeout ?cd ~on_failure ?umask
-          ~shutdown_on:Disconnect ~redirect_stdout ~redirect_stderr init_arg
+        spawn
+          ?where
+          ?name
+          ?env
+          ?connection_timeout
+          ?cd
+          ~on_failure
+          ?umask
+          ~shutdown_on:Disconnect
+          ~redirect_stdout
+          ~redirect_stderr
+          init_arg
           ~connection_state_init_arg
         >>| ok_exn
     | Heartbeater_timeout ->
-      spawn ?where ?name ?env ?connection_timeout ?cd ~on_failure ?umask
-        ~shutdown_on:Heartbeater_timeout ~redirect_stdout ~redirect_stderr init_arg
+      spawn
+        ?where
+        ?name
+        ?env
+        ?connection_timeout
+        ?cd
+        ~on_failure
+        ?umask
+        ~shutdown_on:Heartbeater_timeout
+        ~redirect_stdout
+        ~redirect_stderr
+        init_arg
       >>| ok_exn
     | Called_shutdown_function ->
-      spawn ?where ?name ?env ?connection_timeout ?cd ~on_failure ?umask
-        ~shutdown_on:Called_shutdown_function ~redirect_stdout ~redirect_stderr init_arg
+      spawn
+        ?where
+        ?name
+        ?env
+        ?connection_timeout
+        ?cd
+        ~on_failure
+        ?umask
+        ~shutdown_on:Called_shutdown_function
+        ~redirect_stdout
+        ~redirect_stderr
+        init_arg
       >>| ok_exn
   ;;
 
@@ -1193,8 +1325,17 @@ module Make (S : Worker_spec) = struct
     let spawn_and_connect ?where ?name ?env ?connection_timeout ?cd ~on_failure ?umask
           ~redirect_stdout ~redirect_stderr ~connection_state_init_arg
           worker_state_init_arg =
-      spawn ?where ?name ?env ?connection_timeout ?cd ?umask ~redirect_stdout
-        ~redirect_stderr ~on_failure ~shutdown_on:Heartbeater_timeout
+      spawn
+        ?where
+        ?name
+        ?env
+        ?connection_timeout
+        ?cd
+        ?umask
+        ~redirect_stdout
+        ~redirect_stderr
+        ~on_failure
+        ~shutdown_on:Heartbeater_timeout
         worker_state_init_arg
       >>=? fun worker ->
       with_shutdown_on_error worker ~f:(fun () ->
@@ -1205,8 +1346,17 @@ module Make (S : Worker_spec) = struct
     let spawn_and_connect_exn ?where ?name ?env ?connection_timeout ?cd ~on_failure
           ?umask ~redirect_stdout ~redirect_stderr ~connection_state_init_arg
           worker_state_init_arg =
-      spawn_and_connect ?where ?name ?env ?connection_timeout ?cd ~on_failure ?umask
-        ~redirect_stdout ~redirect_stderr ~connection_state_init_arg
+      spawn_and_connect
+        ?where
+        ?name
+        ?env
+        ?connection_timeout
+        ?cd
+        ~on_failure
+        ?umask
+        ~redirect_stdout
+        ~redirect_stderr
+        ~connection_state_init_arg
         worker_state_init_arg
       >>| ok_exn
     ;;
@@ -1325,7 +1475,9 @@ module Make (S : Worker_spec) = struct
        ; async_log_impl
        ]
        @ worker_state.implementations;
-    Hashtbl.add_exn worker_implementations ~key:worker_state.type_
+    Hashtbl.add_exn
+      worker_implementations
+      ~key:worker_state.type_
       ~data:(Worker_implementations.T worker_state.implementations)
   ;;
 end
@@ -1360,7 +1512,9 @@ let worker_main ~worker_env =
       (* We must be careful that this code here doesn't raise *)
       Rpc.Connection.with_client ?max_message_size ?handshake_timeout ?heartbeat_config
         (Tcp.Where_to_connect.of_host_and_port config.master) (fun conn ->
-          Rpc.Rpc.dispatch Handle_exn_rpc.rpc conn
+          Rpc.Rpc.dispatch
+            Handle_exn_rpc.rpc
+            conn
             { id; name = config.name; error = Error.of_exn exn })
       >>> fun _ ->
       Log.Global.error !"Rpc_parallel: %{Exn} ... Shutting down." exn;
@@ -1392,7 +1546,9 @@ let worker_main ~worker_env =
     start_server ~implementations:worker_implementations
       ~initial_connection_state:(fun _address connection ->
         connection, Set_once.create ())
-      ~max_message_size ~handshake_timeout ~heartbeat_config
+      ~max_message_size
+      ~handshake_timeout
+      ~heartbeat_config
       ~where_to_listen:Tcp.Where_to_listen.of_port_chosen_by_os
     >>> fun server ->
     let host = Unix.gethostname () in
@@ -1441,7 +1597,11 @@ module Expert = struct
           let redirect_stdout = Utils.to_daemon_fd_redirection redirect_stdout in
           let redirect_stderr = Utils.to_daemon_fd_redirection redirect_stderr in
           Staged.unstage
-            (Daemon.daemonize_wait ~cd:config.cd ~redirect_stdout ~redirect_stderr ?umask
+            (Daemon.daemonize_wait
+               ~cd:config.cd
+               ~redirect_stdout
+               ~redirect_stderr
+               ?umask
                ())
       in
       { Worker_env.config; maybe_release_daemon }
@@ -1454,8 +1614,10 @@ module Expert = struct
     let worker_command_args =
       Worker_env.config worker_env |> Worker_config.worker_command_args
     in
-    init_master_state ~rpc_max_message_size:max_message_size
-      ~rpc_handshake_timeout:handshake_timeout ~rpc_heartbeat_config:heartbeat_config
+    init_master_state
+      ~rpc_max_message_size:max_message_size
+      ~rpc_handshake_timeout:handshake_timeout
+      ~rpc_heartbeat_config:heartbeat_config
       ~worker_command_args;
     worker_main ~worker_env
   ;;
@@ -1465,7 +1627,9 @@ module Expert = struct
     match Utils.whoami () with
     | `Worker -> failwith "Do not call [init_master_exn] in a spawned worker"
     | `Master ->
-      init_master_state ~rpc_max_message_size ~rpc_handshake_timeout
+      init_master_state
+        ~rpc_max_message_size
+        ~rpc_handshake_timeout
         ~rpc_heartbeat_config
         ~worker_command_args:(User_supplied { args = worker_command_args; pass_name })
   ;;
@@ -1495,7 +1659,10 @@ let start_app ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
     never_returns (Scheduler.go ())
   | `Master ->
     let master_exe = Filename.basename Sys.executable_name in
-    init_master_state ~rpc_max_message_size ~rpc_handshake_timeout ~rpc_heartbeat_config
+    init_master_state
+      ~rpc_max_message_size
+      ~rpc_handshake_timeout
+      ~rpc_heartbeat_config
       ~worker_command_args:(Decorate { master_exe });
     Command.run command
 ;;

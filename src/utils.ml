@@ -17,9 +17,7 @@ module Worker_id = struct
   let pp fmt t = String.pp fmt (Sexp.to_string ([%sexp_of: t] t))
 end
 
-module Worker_type_id = Unique_id.Int (struct
-
-  end)
+module Worker_type_id = Unique_id.Int ()
 
 module Internal_connection_state = struct
   type ('worker_state, 'conn_state) t1 =

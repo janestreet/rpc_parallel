@@ -36,8 +36,11 @@ let command =
     (fun max ntimes nworkers ordered () ->
        let list = Pipe.of_list (List.init ntimes ~f:(fun i -> i, max)) in
        let config =
-         Rpc_parallel.Map_reduce.Config.create ~local:nworkers ~redirect_stderr:`Dev_null
-           ~redirect_stdout:`Dev_null ()
+         Rpc_parallel.Map_reduce.Config.create
+           ~local:nworkers
+           ~redirect_stderr:`Dev_null
+           ~redirect_stdout:`Dev_null
+           ()
        in
        if ordered
        then

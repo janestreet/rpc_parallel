@@ -69,6 +69,6 @@ val clear_env : unit -> unit
 
 val create_worker_env : extra:(string * string) list -> (string * string) list Or_error.t
 
-val to_daemon_fd_redirection :
-  [`Dev_null | `File_append of string | `File_truncate of string]
+val to_daemon_fd_redirection
+  :  [`Dev_null | `File_append of string | `File_truncate of string]
   -> Daemon.Fd_redirection.t

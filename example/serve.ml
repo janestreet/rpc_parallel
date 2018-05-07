@@ -56,7 +56,9 @@ let main () =
       assert (i + 1 = i_plus_one);
       assert (i + 2 = i_plus_two);
       let%bind () =
-        Worker.Connection.run_exn connection1 ~f:Rpc_parallel.Function.close_server
+        Worker.Connection.run_exn
+          connection1
+          ~f:Rpc_parallel.Function.close_server
           ~arg:()
       in
       (* Ensure we can't connect to this server anymore *)
@@ -73,8 +75,10 @@ let main () =
 ;;
 
 let command =
-  Command.async_spec ~summary:"Use of the in process [serve] functionality"
-    Command.Spec.empty main
+  Command.async_spec
+    ~summary:"Use of the in process [serve] functionality"
+    Command.Spec.empty
+    main
 ;;
 
 let () = Rpc_parallel.start_app command

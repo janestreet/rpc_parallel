@@ -24,7 +24,9 @@ module Shard = struct
           and type connection_state = Connection_state.t) =
     struct
       let functions =
-        Creator.create_reverse_pipe ~bin_query:Int.bin_t ~bin_update:Int.bin_t
+        Creator.create_reverse_pipe
+          ~bin_query:Int.bin_t
+          ~bin_update:Int.bin_t
           ~bin_response:(List.bin_t String.bin_t)
           ~f:(fun ~worker_state:id ~conn_state:() prefix numbers ->
             Pipe.fold_without_pushback numbers ~init:[] ~f:(fun acc number ->
@@ -46,9 +48,13 @@ let main () =
   let shards = 10 in
   let%bind connections =
     Array.init shards ~f:(fun id ->
-      Shard.spawn_exn ~shutdown_on:Disconnect ~redirect_stdout:`Dev_null
-        ~redirect_stderr:`Dev_null ~on_failure:Error.raise
-        ~connection_state_init_arg:() id)
+      Shard.spawn_exn
+        ~shutdown_on:Disconnect
+        ~redirect_stdout:`Dev_null
+        ~redirect_stderr:`Dev_null
+        ~on_failure:Error.raise
+        ~connection_state_init_arg:()
+        id)
     |> Deferred.Array.all
   in
   let readers =
@@ -78,6 +84,7 @@ let main () =
 
 let () =
   Rpc_parallel.start_app
-    (Command.async ~summary:"Demonstrate using Rpc_parallel with reverse pipes"
+    (Command.async
+       ~summary:"Demonstrate using Rpc_parallel with reverse pipes"
        (Command.Param.return main))
 ;;

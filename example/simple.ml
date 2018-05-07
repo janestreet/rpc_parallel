@@ -60,8 +60,14 @@ let main max log_dir () =
   in
   (* This is the main function called in the master. Spawn a local worker and run
      the [sum] function on this worker *)
-  Sum_worker.spawn ~on_failure:Error.raise ?cd:log_dir ~shutdown_on:Disconnect
-    ~redirect_stdout ~redirect_stderr ~connection_state_init_arg:() ()
+  Sum_worker.spawn
+    ~on_failure:Error.raise
+    ?cd:log_dir
+    ~shutdown_on:Disconnect
+    ~redirect_stdout
+    ~redirect_stderr
+    ~connection_state_init_arg:()
+    ()
   >>=? fun conn ->
   Sum_worker.Connection.run conn ~f:Sum_worker.functions.sum ~arg:max
   >>=? fun res ->
