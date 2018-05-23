@@ -13,6 +13,7 @@ open! Core
 
 module Remote_executable = Remote_executable
 module Executable_location = Executable_location
+module Fd_redirection = Fd_redirection
 module Managed = Parallel_managed
 module Map_reduce = Map_reduce
 include Parallel
