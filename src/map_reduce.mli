@@ -102,8 +102,10 @@ val map_unordered
   :  Config.t
   -> 'a Pipe.Reader.t
   -> m:(module
-         Map_function with type Param.t = 'param and type Input.t = 'a and type Output.t = 
-                                                                             'b)
+         Map_function
+         with type Param.t = 'param
+          and type Input.t = 'a
+          and type Output.t = 'b)
   -> param:'param
   -> ('b * int) Pipe.Reader.t Deferred.t
 
@@ -114,8 +116,10 @@ val map
   :  Config.t
   -> 'a Pipe.Reader.t
   -> m:(module
-         Map_function with type Param.t = 'param and type Input.t = 'a and type Output.t = 
-                                                                             'b)
+         Map_function
+         with type Param.t = 'param
+          and type Input.t = 'a
+          and type Output.t = 'b)
   -> param:'param
   -> 'b Pipe.Reader.t Deferred.t
 
@@ -128,9 +132,10 @@ val find_map
   :  Config.t
   -> 'a Pipe.Reader.t
   -> m:(module
-         Map_function with type Param.t = 'param and type Input.t = 'a and type Output.t = 
-                                                                             'b
-                                                                               option)
+         Map_function
+         with type Param.t = 'param
+          and type Input.t = 'a
+          and type Output.t = 'b option)
   -> param:'param
   -> 'b option Deferred.t
 
@@ -202,8 +207,10 @@ val map_reduce_commutative
   :  Config.t
   -> 'a Pipe.Reader.t
   -> m:(module
-         Map_reduce_function with type Param.t = 'param and type Accum.t = 'accum and type 
-         Input.t = 'a)
+         Map_reduce_function
+         with type Param.t = 'param
+          and type Accum.t = 'accum
+          and type Input.t = 'a)
   -> param:'param
   -> 'accum option Deferred.t
 
@@ -219,7 +226,9 @@ val map_reduce
   :  Config.t
   -> 'a Pipe.Reader.t
   -> m:(module
-         Map_reduce_function with type Param.t = 'param and type Accum.t = 'accum and type 
-         Input.t = 'a)
+         Map_reduce_function
+         with type Param.t = 'param
+          and type Accum.t = 'accum
+          and type Input.t = 'a)
   -> param:'param
   -> 'accum option Deferred.t

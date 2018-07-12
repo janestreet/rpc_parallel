@@ -23,7 +23,8 @@ module Worker = struct
           and type connection_state := Connection_state.t) =
     struct
       let print_impl ~worker_state:() ~conn_state:() string =
-        printf "%s\n" string; return ()
+        printf "%s\n" string;
+        return ()
       ;;
 
       let print =

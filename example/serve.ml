@@ -27,7 +27,9 @@ module Worker = struct
           ~f:(fun ~worker_state ~conn_state:() () ->
             incr worker_state;
             return !worker_state)
-          ~bin_input:Unit.bin_t ~bin_output:Int.bin_t ()
+          ~bin_input:Unit.bin_t
+          ~bin_output:Int.bin_t
+          ()
       ;;
 
       let functions = { inc }

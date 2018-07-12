@@ -24,11 +24,13 @@ module Add_numbers_map_function = Rpc_parallel.Map_reduce.Make_map_function (str
   end)
 
 let command =
-  Command.async_spec ~summary:"Add numbers in parallel"
+  Command.async_spec
+    ~summary:"Add numbers in parallel"
     Command.Spec.(
       empty
       +> flag "max" (required int) ~doc:" Number to add up to"
-      +> flag "ntimes"
+      +> flag
+           "ntimes"
            (optional_with_default 1000 int)
            ~doc:" Number of times to repeat the operation"
       +> flag "nworkers" (optional_with_default 4 int) ~doc:" Number of workers"
@@ -43,24 +45,29 @@ let command =
            ()
        in
        if ordered
-       then
+       then (
          let%bind output_reader =
-           Rpc_parallel.Map_reduce.map config list
+           Rpc_parallel.Map_reduce.map
+             config
+             list
              ~m:(module Add_numbers_map_function)
              ~param:()
          in
          Pipe.iter output_reader ~f:(fun (index, sum) ->
-           printf "%i: %i\n" index sum; Deferred.unit)
-       else
+           printf "%i: %i\n" index sum;
+           Deferred.unit))
+       else (
          let%bind output_reader =
-           Rpc_parallel.Map_reduce.map_unordered config list
+           Rpc_parallel.Map_reduce.map_unordered
+             config
+             list
              ~m:(module Add_numbers_map_function)
              ~param:()
          in
          Pipe.iter output_reader ~f:(fun ((index, sum), mf_index) ->
            assert (index = mf_index);
            printf "%i:%i: %i\n" mf_index index sum;
-           Deferred.unit))
+           Deferred.unit)))
 ;;
 
 let () = Rpc_parallel.start_app command

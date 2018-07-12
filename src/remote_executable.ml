@@ -29,14 +29,16 @@ let copy_to_host ~executable_dir ?strict_host_key_checking host =
   >>=? fun new_basename ->
   let options = hostkey_checking_options strict_host_key_checking in
   let path = String.strip (executable_dir ^/ new_basename) in
-  Process.run ~prog:"scp"
+  Process.run
+    ~prog:"scp"
     ~args:(options @ [ Utils.our_binary (); sprintf "%s:%s" host path ])
     ()
   >>|? Fn.const { host; path; host_key_checking = options }
 ;;
 
 let delete executable =
-  Process.run ~prog:"ssh"
+  Process.run
+    ~prog:"ssh"
     ~args:(executable.host_key_checking @ [ executable.host; "rm"; executable.path ])
     ()
   >>|? Fn.const ()
@@ -55,7 +57,8 @@ let command env binary =
 let run exec ~env ~args =
   Utils.our_md5 ()
   >>=? fun md5 ->
-  Process.run ~prog:"ssh"
+  Process.run
+    ~prog:"ssh"
     ~args:(exec.host_key_checking @ [ exec.host; "md5sum"; exec.path ])
     ()
   >>=? fun remote_md5 ->
@@ -67,7 +70,8 @@ let run exec ~env ~args =
       exec.host
       exec.path
   else
-    Process.create ~prog:"ssh"
+    Process.create
+      ~prog:"ssh"
       ~args:(exec.host_key_checking @ [ exec.host; command env exec.path ] @ args)
       ()
 ;;

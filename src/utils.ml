@@ -76,7 +76,9 @@ let clear_env () = Unix.unsetenv is_child_env_var
 let validate_env env =
   match List.find env ~f:(fun (key, _) -> key = is_child_env_var) with
   | Some e ->
-    Or_error.error "Environment variable conflicts with Rpc_parallel machinery" e
+    Or_error.error
+      "Environment variable conflicts with Rpc_parallel machinery"
+      e
       [%sexp_of: string * string]
   | None -> Ok ()
 ;;

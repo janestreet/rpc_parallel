@@ -67,7 +67,8 @@ let main () =
     let write_everything =
       let%map () =
         Sequence.init 1_000 ~f:Fn.id
-        |> Sequence.delayed_fold ~init:()
+        |> Sequence.delayed_fold
+             ~init:()
              ~f:(fun () i ~k -> Pipe.write writers.(i % shards) i >>= k)
              ~finish:return
       in

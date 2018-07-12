@@ -20,7 +20,9 @@ module Worker = struct
 
     module Functions (C : Rpc_parallel.Creator) = struct
       let write_to_log_global =
-        C.create_rpc ~bin_input:Unit.bin_t ~bin_output:Unit.bin_t
+        C.create_rpc
+          ~bin_input:Unit.bin_t
+          ~bin_output:Unit.bin_t
           ~f:(fun ~worker_state:_ ~conn_state:_ () ->
             Log.Global.info "worker log message";
             Log.Global.flushed ())

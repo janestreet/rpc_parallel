@@ -19,9 +19,7 @@ module Map_reduce = Map_reduce
 include Parallel
 
 (** Old [Std] style interface, which has slightly different module names. *)
-module Std = struct
-
-end
+module Std = struct end
 [@@deprecated "[since 2016-11] Use [Rpc_parallel] instead of [Rpc_parallel.Std]"]
 
 module Parallel =

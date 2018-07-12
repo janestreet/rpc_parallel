@@ -52,23 +52,26 @@ module Stream_worker = struct
         let next_elt = ref 0 in
         let get_element () =
           let elt = !next_elt in
-          incr next_elt; elt
+          incr next_elt;
+          elt
         in
         don't_wait_for
           (let%map () =
-             Deferred.repeat_until_finished worker_state.Worker_state.num_elts
+             Deferred.repeat_until_finished
+               worker_state.Worker_state.num_elts
                (fun count ->
                   let%bind () = Clock.after (sec 0.05) in
                   if count = 0
                   then return (`Finished ())
-                  else
+                  else (
                     let elt = get_element () in
                     let to_worker =
-                      List.nth_exn worker_state.workers
+                      List.nth_exn
+                        worker_state.workers
                         (Random.int (List.length worker_state.workers))
                     in
                     let%map () = Pipe.write to_worker elt in
-                    `Repeat (count - 1))
+                    `Repeat (count - 1)))
            in
            List.iter worker_state.workers ~f:(fun writer -> Pipe.close writer));
         return ()
@@ -92,10 +95,8 @@ end
 module Worker = struct
   module T = struct
     type 'worker functions =
-      { process_elts : ( 'worker
-                       , Stream_worker.t
-                       , int Pipe.Reader.t )
-                         Rpc_parallel.Function.t
+      { process_elts :
+          ('worker, Stream_worker.t, int Pipe.Reader.t) Rpc_parallel.Function.t
       }
 
     module Worker_state = struct
@@ -153,11 +154,13 @@ let handle_error worker err =
 ;;
 
 let command =
-  Command.async_spec_or_error ~summary:"foo"
+  Command.async_spec_or_error
+    ~summary:"foo"
     Command.Spec.(
       empty
       +> flag "-num-workers" (optional_with_default 4 int) ~doc:" number of workers"
-      +> flag "-num-elts"
+      +> flag
+           "-num-elts"
            (optional_with_default 50 int)
            ~doc:" number of elements to process")
     (fun num_workers num_elements () ->
@@ -196,7 +199,8 @@ let command =
             Pipe.iter worker ~f:(fun num ->
               Ivar.fill (List.nth_exn elements num) () |> return)));
        let%map () = Deferred.all_unit (List.map elements ~f:Ivar.read) in
-       printf "Ok.\n"; Or_error.return ())
+       printf "Ok.\n";
+       Or_error.return ())
 ;;
 
 let () = Rpc_parallel.start_app command

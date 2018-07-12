@@ -25,7 +25,8 @@ module Sum_worker = struct
     struct
       let sum_impl ~worker_state:() ~conn_state:() arg writer =
         let _sum =
-          List.fold ~init:0
+          List.fold
+            ~init:0
             ~f:(fun acc x ->
               let acc = acc + x in
               let output = sprintf "Sum_worker.sum: %i\n" acc in
@@ -69,14 +70,17 @@ let main max log_dir () =
   >>=? fun conn ->
   let on_write = function
     | Rpc.Pipe_rpc.Pipe_message.Closed _ -> Rpc.Pipe_rpc.Pipe_response.Continue
-    | Update s -> Core.print_string s; Rpc.Pipe_rpc.Pipe_response.Continue
+    | Update s ->
+      Core.print_string s;
+      Rpc.Pipe_rpc.Pipe_response.Continue
   in
   Sum_worker.Connection.run conn ~f:Sum_worker.functions.sum ~arg:(max, on_write)
   >>|? fun _ -> ()
 ;;
 
 let command =
-  Command.async_spec_or_error ~summary:"Simple use of Async Rpc_parallel V2"
+  Command.async_spec_or_error
+    ~summary:"Simple use of Async Rpc_parallel V2"
     Command.Spec.(
       empty
       +> flag "max" (required int) ~doc:""

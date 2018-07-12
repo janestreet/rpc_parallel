@@ -8,7 +8,9 @@ module Half_open_interval = struct
     let create_exn l u =
       if l >= u
       then
-        failwiths "Lower bound must be less than upper bound" (l, u)
+        failwiths
+          "Lower bound must be less than upper bound"
+          (l, u)
           [%sexp_of: int * int];
       l, u
     ;;
@@ -25,7 +27,9 @@ module Half_open_interval = struct
       else (
         if intersects t1 t2
         then
-          failwiths "Cannot compare unequal intersecting intervals" (t1, t2)
+          failwiths
+            "Cannot compare unequal intersecting intervals"
+            (t1, t2)
             [%sexp_of: t * t];
         Int.compare (lbound t1) (lbound t2))
     ;;
@@ -128,7 +132,9 @@ module Make_rpc_parallel_worker (S : Rpc_parallel_worker_spec) = struct
         let execute =
           C.create_rpc
             ~f:(fun ~worker_state ~conn_state:() -> S.execute worker_state)
-            ~bin_input:S.Run_input.bin_t ~bin_output:S.Run_output.bin_t ()
+            ~bin_input:S.Run_input.bin_t
+            ~bin_output:S.Run_output.bin_t
+            ()
         ;;
 
         let functions = { execute }
@@ -162,8 +168,10 @@ module Make_rpc_parallel_worker (S : Rpc_parallel_worker_spec) = struct
       ~connection_state_init_arg:()
   ;;
 
-  let spawn_config_exn { Config.local; remote; cd; redirect_stderr; redirect_stdout }
-        param =
+  let spawn_config_exn
+        { Config.local; remote; cd; redirect_stderr; redirect_stdout }
+        param
+    =
     if local < 0 then failwiths "config.local must be nonnegative" local Int.sexp_of_t;
     (match List.find remote ~f:(fun (_remote, n) -> n < 0) with
      | Some remote ->
@@ -171,18 +179,26 @@ module Make_rpc_parallel_worker (S : Rpc_parallel_worker_spec) = struct
      | None -> ());
     if local = 0 && not (List.exists remote ~f:(fun (_remote, n) -> n > 0))
     then
-      failwiths "total number of workers must be positive" (local, List.map remote ~f:snd)
+      failwiths
+        "total number of workers must be positive"
+        (local, List.map remote ~f:snd)
         [%sexp_of: int * int list];
     let spawn_n where n =
       Deferred.List.init n ~f:(fun _i ->
-        spawn_exn where param ?cd
+        spawn_exn
+          where
+          param
+          ?cd
           ~redirect_stderr:(redirect_stderr :> Fd_redirection.t)
           ~redirect_stdout:(redirect_stdout :> Fd_redirection.t))
     in
     let%map local_workers, remote_workers =
-      Deferred.both (spawn_n Local local)
-        (Deferred.List.concat_map ~how:`Parallel remote ~f:
-           (fun (Packed_remote remote, n) -> spawn_n (Remote remote) n))
+      Deferred.both
+        (spawn_n Local local)
+        (Deferred.List.concat_map
+           ~how:`Parallel
+           remote
+           ~f:(fun (Packed_remote remote, n) -> spawn_n (Remote remote) n))
     in
     local_workers @ remote_workers
   ;;
@@ -204,7 +220,9 @@ module type Map_function = sig
   module Output : Binable
 
   module Worker :
-    Worker with type param_type = Param.t with type run_input_type = Input.t
+    Worker
+    with type param_type = Param.t
+    with type run_input_type = Input.t
     with type run_output_type = Output.t
 end
 
@@ -273,7 +291,8 @@ module type Map_reduce_function = sig
   module Input : Binable
 
   module Worker :
-    Worker with type param_type = Param.t
+    Worker
+    with type param_type = Param.t
     with type run_input_type =
            [ `Map of Input.t
            | `Combine of Accum.t * Accum.t
@@ -361,10 +380,12 @@ module Make_map_reduce_function (S : Map_reduce_function_spec) =
 
 let map_unordered (type param a b) config input_reader ~m ~(param : param) =
   let module Map_function =
-    ( val ( m
-            : (module
-                Map_function with type Param.t = param and type Input.t = a and type Output.t = 
-                                                                                  b) ) ) in
+    (val m
+      : Map_function
+     with type Param.t = param
+      and type Input.t = a
+      and type Output.t = b)
+  in
   let%bind workers = Map_function.Worker.spawn_config_exn config param in
   let input_with_index_reader = append_index input_reader in
   let output_reader, output_writer = Pipe.create () in
@@ -423,11 +444,12 @@ let map config input_reader ~m ~param =
 
 let find_map (type param a b) config input_reader ~m ~(param : param) =
   let module Map_function =
-    ( val ( m
-            : (module
-                Map_function with type Param.t = param and type Input.t = a and type Output.t = 
-                                                                                  b
-                                                                                    option) ) ) in
+    (val m
+      : Map_function
+     with type Param.t = param
+      and type Input.t = a
+      and type Output.t = b option)
+  in
   let%bind workers = Map_function.Worker.spawn_config_exn config param in
   let found_value = ref None in
   let rec find_loop worker =
@@ -435,14 +457,14 @@ let find_map (type param a b) config input_reader ~m ~(param : param) =
     | `Eof -> Map_function.Worker.shutdown_exn worker
     | `Ok input ->
       (* Check result and exit early if we've found something. *)
-      match !found_value with
-      | Some _ -> Map_function.Worker.shutdown_exn worker
-      | None ->
-        match%bind Map_function.Worker.run_exn worker input with
-        | Some value ->
-          found_value := Some value;
-          Map_function.Worker.shutdown_exn worker
-        | None -> find_loop worker
+      (match !found_value with
+       | Some _ -> Map_function.Worker.shutdown_exn worker
+       | None ->
+         (match%bind Map_function.Worker.run_exn worker input with
+          | Some value ->
+            found_value := Some value;
+            Map_function.Worker.shutdown_exn worker
+          | None -> find_loop worker))
   in
   let%map () = Deferred.all_unit (List.map workers ~f:find_loop) in
   !found_value
@@ -450,11 +472,12 @@ let find_map (type param a b) config input_reader ~m ~(param : param) =
 
 let map_reduce_commutative (type param a accum) config input_reader ~m ~(param : param) =
   let module Map_reduce_function =
-    ( val ( m
-            : (module
-                Map_reduce_function with type Param.t = param and type Input.t = a and type Accum.
-                                                                                              t = 
-                                                                                         accum) ) ) in
+    (val m
+      : Map_reduce_function
+     with type Param.t = param
+      and type Input.t = a
+      and type Accum.t = accum)
+  in
   let%bind workers = Map_reduce_function.Worker.spawn_config_exn config param in
   let rec map_and_combine_loop worker acc =
     match%bind Pipe.read input_reader with
@@ -491,53 +514,58 @@ let map_reduce_commutative (type param a accum) config input_reader ~m ~(param :
 
 let map_reduce (type param a accum) config input_reader ~m ~(param : param) =
   let module Map_reduce_function =
-    ( val ( m
-            : (module
-                Map_reduce_function with type Param.t = param and type Input.t = a and type Accum.
-                                                                                              t = 
-                                                                                         accum) ) ) in
+    (val m
+      : Map_reduce_function
+     with type Param.t = param
+      and type Input.t = a
+      and type Accum.t = accum)
+  in
   let%bind workers = Map_reduce_function.Worker.spawn_config_exn config param in
   let input_with_index_reader = append_index input_reader in
   let module H = Half_open_interval in
   let acc_map = ref H.Map.empty in
-  let rec combine_loop worker key acc
-            (dir : [`Left | `Left_nothing_right | `Right | `Right_nothing_left]) =
+  let rec combine_loop
+            worker
+            key
+            acc
+            (dir : [`Left | `Left_nothing_right | `Right | `Right_nothing_left])
+    =
     match dir with
-    | (`Left | `Left_nothing_right) as dir' -> (
-        match H.Map.closest_key !acc_map `Less_than key with
-        | Some (left_key, left_acc) when H.ubound left_key = H.lbound key ->
-          (* combine acc_{left_lbound, left_ubound} acc_{this_lbound, this_ubound}
-             -> acc_{left_lbound, this_ubound} *)
-          (* We need to remove both nodes from the tree to indicate that we are working on
-             combining them. *)
-          acc_map := H.Map.remove (H.Map.remove !acc_map key) left_key;
-          let%bind new_acc =
-            Map_reduce_function.Worker.run_exn worker (`Combine (left_acc, acc))
-          in
-          let new_key = H.create_exn (H.lbound left_key) (H.ubound key) in
-          acc_map := H.Map.set !acc_map ~key:new_key ~data:new_acc;
-          (* Continue searching in the same direction. (See above comment.) *)
-          combine_loop worker new_key new_acc `Left
-        | _ ->
-          match dir' with
+    | (`Left | `Left_nothing_right) as dir' ->
+      (match H.Map.closest_key !acc_map `Less_than key with
+       | Some (left_key, left_acc) when H.ubound left_key = H.lbound key ->
+         (* combine acc_{left_lbound, left_ubound} acc_{this_lbound, this_ubound}
+            -> acc_{left_lbound, this_ubound} *)
+         (* We need to remove both nodes from the tree to indicate that we are working on
+            combining them. *)
+         acc_map := H.Map.remove (H.Map.remove !acc_map key) left_key;
+         let%bind new_acc =
+           Map_reduce_function.Worker.run_exn worker (`Combine (left_acc, acc))
+         in
+         let new_key = H.create_exn (H.lbound left_key) (H.ubound key) in
+         acc_map := H.Map.set !acc_map ~key:new_key ~data:new_acc;
+         (* Continue searching in the same direction. (See above comment.) *)
+         combine_loop worker new_key new_acc `Left
+       | _ ->
+         (match dir' with
           | `Left -> combine_loop worker key acc `Right_nothing_left
-          | `Left_nothing_right -> Deferred.unit )
+          | `Left_nothing_right -> Deferred.unit))
     | (`Right | `Right_nothing_left) as dir' ->
-      match H.Map.closest_key !acc_map `Greater_than key with
-      | Some (right_key, right_acc) when H.lbound right_key = H.ubound key ->
-        (* combine acc_{this_lbound, this_ubound} acc_{right_lbound, right_ubound}
-           -> acc_{this_lbound, right_ubound} *)
-        acc_map := H.Map.remove (H.Map.remove !acc_map key) right_key;
-        let%bind new_acc =
-          Map_reduce_function.Worker.run_exn worker (`Combine (acc, right_acc))
-        in
-        let new_key = H.create_exn (H.lbound key) (H.ubound right_key) in
-        acc_map := H.Map.set !acc_map ~key:new_key ~data:new_acc;
-        combine_loop worker new_key new_acc `Right
-      | _ ->
-        match dir' with
-        | `Right -> combine_loop worker key acc `Left_nothing_right
-        | `Right_nothing_left -> Deferred.unit
+      (match H.Map.closest_key !acc_map `Greater_than key with
+       | Some (right_key, right_acc) when H.lbound right_key = H.ubound key ->
+         (* combine acc_{this_lbound, this_ubound} acc_{right_lbound, right_ubound}
+            -> acc_{this_lbound, right_ubound} *)
+         acc_map := H.Map.remove (H.Map.remove !acc_map key) right_key;
+         let%bind new_acc =
+           Map_reduce_function.Worker.run_exn worker (`Combine (acc, right_acc))
+         in
+         let new_key = H.create_exn (H.lbound key) (H.ubound right_key) in
+         acc_map := H.Map.set !acc_map ~key:new_key ~data:new_acc;
+         combine_loop worker new_key new_acc `Right
+       | _ ->
+         (match dir' with
+          | `Right -> combine_loop worker key acc `Left_nothing_right
+          | `Right_nothing_left -> Deferred.unit))
   in
   let rec map_and_combine_loop worker =
     match%bind Pipe.read input_with_index_reader with

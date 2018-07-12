@@ -26,7 +26,8 @@ module Side_arg_map_function =
   end)
 
 let command =
-  Command.async_spec ~summary:"Pass a side arg"
+  Command.async_spec
+    ~summary:"Pass a side arg"
     Command.Spec.(
       empty
       +> flag "ntimes" (optional_with_default 100 int) ~doc:" Number of things to map"
@@ -41,7 +42,9 @@ let command =
            ~redirect_stdout:`Dev_null
        in
        let%bind output_reader =
-         Rpc_parallel.Map_reduce.map_unordered config list
+         Rpc_parallel.Map_reduce.map_unordered
+           config
+           list
            ~m:(module Side_arg_map_function)
            ~param:"Message from the master"
        in

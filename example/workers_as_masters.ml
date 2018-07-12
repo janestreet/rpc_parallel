@@ -94,14 +94,14 @@ module Primary_worker = struct
           match%bind Secondary_worker.Connection.client worker () with
           | Error e -> failwiths "failed connecting to worker" e [%sexp_of: Error.t]
           | Ok conn ->
-            match%map
-              Secondary_worker.Connection.run
-                conn
-                ~arg:()
-                ~f:Secondary_worker.functions.ping
-            with
-            | Error e -> sprintf "%s: failed (%s)" name (Error.to_string_hum e)
-            | Ok s -> sprintf "%s: %s" name s)
+            (match%map
+               Secondary_worker.Connection.run
+                 conn
+                 ~arg:()
+                 ~f:Secondary_worker.functions.ping
+             with
+             | Error e -> sprintf "%s: failed (%s)" name (Error.to_string_hum e)
+             | Ok s -> sprintf "%s: %s" name s))
       ;;
 
       let ping =
@@ -110,7 +110,10 @@ module Primary_worker = struct
 
       let functions = { run; ping }
 
-      let init_worker_state () = Bag.clear workers; Deferred.unit
+      let init_worker_state () =
+        Bag.clear workers;
+        Deferred.unit
+      ;;
 
       let init_connection_state ~connection:_ ~worker_state:_ = return
     end
@@ -121,7 +124,8 @@ end
 
 let command =
   (* Make sure to always use [Command.async] *)
-  Command.async_spec_or_error ~summary:"Simple use of Async Rpc_parallel V2"
+  Command.async_spec_or_error
+    ~summary:"Simple use of Async Rpc_parallel V2"
     Command.Spec.(
       empty
       +> flag "primary" (required int) ~doc:" Number of primary workers to spawn"
@@ -146,8 +150,7 @@ let command =
          >>=? fun () ->
          Primary_worker.Connection.run conn ~f:Primary_worker.functions.ping ~arg:()
          >>|? fun ping_results ->
-         List.map ping_results ~f:(fun s ->
-           sprintf "Primary worker #%i: %s" worker_id s))
+         List.map ping_results ~f:(fun s -> sprintf "Primary worker #%i: %s" worker_id s))
        >>|? fun l -> List.iter (List.join l) ~f:(printf "%s\n%!"))
 ;;
 

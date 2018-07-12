@@ -35,7 +35,8 @@ end
 
 let worker_command =
   let open Command.Let_syntax in
-  Command.Staged.async ~summary:"for internal use"
+  Command.Staged.async
+    ~summary:"for internal use"
     (let%map_open () = return () in
      fun () ->
        let worker_env = Rpc_parallel.Expert.worker_init_before_async_exn () in
@@ -46,7 +47,8 @@ let worker_command =
 
 let main_command =
   let open Command.Let_syntax in
-  Command.async ~summary:"start the master and spawn a worker"
+  Command.async
+    ~summary:"start the master and spawn a worker"
     (let%map_open () = return () in
      fun () ->
        let open Deferred.Let_syntax in
