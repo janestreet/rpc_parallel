@@ -1,7 +1,10 @@
 (library (
   (name        rpc_parallel)
   (public_name rpc_parallel)
-  (libraries (core async sexplib))
+  (libraries (async
+              core
+              core.daemon
+              sexplib))
   (preprocess (pps (ppx_jane ppxlib.runner)))))
 
 
