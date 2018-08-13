@@ -56,7 +56,7 @@ let worker_implementations = Worker_type_id.Table.create ~size:1 ()
 
 module Worker_command_args = struct
   type t =
-    | Decorate of { master_exe : string }
+    | Decorate of string
     | User_supplied of { args : string list; pass_name : bool }
   [@@deriving sexp]
 end
@@ -768,6 +768,7 @@ module Make (S : Worker_spec) = struct
     | Executable_location.Local ->
       Process.create
         ~prog:(Utils.our_binary ())
+        ~argv0:Sys.argv.(0)
         ~args:worker_command_args
         ~env:(`Extend env)
         ()
@@ -1050,8 +1051,7 @@ module Make (S : Worker_spec) = struct
     let pending_ivar = Ivar.create () in
     let worker_command_args =
       match global_state.worker_command_args with
-      | Decorate { master_exe } ->
-        [ "RPC_PARALLEL_WORKER"; master_exe ] @ Option.to_list name
+      | Decorate token -> "RPC_PARALLEL_WORKER" :: token :: Option.to_list name
       | User_supplied { args; pass_name } ->
         if pass_name then args @ Option.to_list name else args
     in
@@ -1785,11 +1785,14 @@ let start_app ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
     Expert.start_worker_server_exn worker_env;
     never_returns (Scheduler.go ())
   | `Master ->
-    let master_exe = Filename.basename Sys.executable_name in
+    let decoration =
+      (* make it obvious which process the worker belongs to *)
+      sprintf !"child-of-%{Pid}" (Unix.getpid ())
+    in
     init_master_state
       ~rpc_max_message_size
       ~rpc_handshake_timeout
       ~rpc_heartbeat_config
-      ~worker_command_args:(Decorate { master_exe });
+      ~worker_command_args:(Decorate decoration);
     Command.run command
 ;;

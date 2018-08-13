@@ -4,7 +4,8 @@
   (libraries (async
               core
               core.daemon
-              sexplib))
+              sexplib
+              core_kernel.uuid))
   (preprocess (pps (ppx_jane ppxlib.runner)))))
 
 
