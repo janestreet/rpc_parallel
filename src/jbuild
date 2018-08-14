@@ -5,7 +5,7 @@
               core
               core.daemon
               sexplib
-              core_kernel.uuid))
+              core.uuid))
   (preprocess (pps (ppx_jane ppxlib.runner)))))
 
 
