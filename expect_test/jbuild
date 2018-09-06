@@ -1,0 +1,11 @@
+(library (
+  (name rpc_parallel_expect_test)
+  (libraries (async
+              core
+              rpc_parallel
+              ))
+  (preprocess (pps (ppx_jane ppxlib.runner)))))
+
+
+
+(jbuild_version 1)

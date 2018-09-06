@@ -524,6 +524,28 @@ module type Parallel = sig
     val get : unit -> t option
   end
 
+  module For_testing : sig
+    (** [initialize [%here]] must be called at the top level of any files that have inline
+        or expect tests that use [Rpc_parallel]. Further, these calls must come before the
+        definitions of the tests, but after the definitions of any workers used in the
+        tests.
+
+        For example:
+
+        {[
+
+          let () = Rpc_parallel.For_testing.initialize [%here]
+
+          let%expect_test "" =
+            run_code_with_rpc_parallel ();
+            [%expect {| output |}]
+          ;;
+
+        ]}
+    *)
+    val initialize : Source_code_position.t -> unit
+  end
+
   (** If you want more direct control over your executable, you can use the [Expert]
       module instead of [start_app]. If you use [Expert], you are responsible for starting
       the master and worker rpc servers. [worker_command_args] will be the arguments sent

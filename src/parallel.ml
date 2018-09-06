@@ -1018,6 +1018,14 @@ module Make (S : Worker_spec) = struct
      after spawn succeeded. *)
   let connection_timeout_default = sec 10.
 
+  let decorate_error_if_running_inline_test error =
+    let tag =
+      "You must call [Rpc_parallel.For_testing.initialize] at the top level before any \
+       tests are defined. See lib/rpc_parallel/src/parallel_intf.ml for more information."
+    in
+    if am_running_inline_test then Error.tag ~tag error else error
+  ;;
+
   let spawn_process ~where ~env ~cd ~name ~connection_timeout ~daemonize_args =
     let where = Option.value where ~default:Executable_location.Local in
     let env = Option.value env ~default:[] in
@@ -1027,9 +1035,12 @@ module Make (S : Worker_spec) = struct
     in
     (match Set_once.get global_state with
      | None ->
-       Deferred.Or_error.error_string
-         "You must initialize this process to run as a master before calling [spawn]. \
-          Either use a top-level [start_app] call or use the [Expert] module."
+       let error =
+         Error.of_string
+           "You must initialize this process to run as a master before calling [spawn]. \
+            Either use a top-level [start_app] call or use the [Expert] module."
+       in
+       return (Error (decorate_error_if_running_inline_test error))
      | Some global_state -> Deferred.Or_error.return global_state.as_master)
     >>=? fun global_state ->
     (* generate a unique identifier for this worker *)
@@ -1276,10 +1287,12 @@ module Make (S : Worker_spec) = struct
     match exit_or_signal with
     | Ok () -> Ok ()
     | Error _ ->
-      let error_string =
-        sprintf "Worker process %s" (Unix.Exit_or_signal.to_string_hum exit_or_signal)
+      let error =
+        Error.createf
+          "Worker process %s"
+          (Unix.Exit_or_signal.to_string_hum exit_or_signal)
       in
-      Error (Error.of_string error_string)
+      Error (decorate_error_if_running_inline_test error)
   ;;
 
   module Spawn_shutdown_on = Shutdown_on (Or_error)
@@ -1776,6 +1789,25 @@ module State = struct
   type t = [`started]
 
   let get () = Option.map (Set_once.get global_state) ~f:(fun _ -> `started)
+end
+
+module For_testing = struct
+  let initialize here =
+    if am_running_inline_test
+    then (
+      match Utils.whoami () with
+      | `Master ->
+        For_testing_internal.set_initialize_source_code_position here;
+        (match State.get () with
+         | Some `started -> ()
+         | None -> Expert.start_master_server_exn ~worker_command_args:[] ())
+      | `Worker ->
+        if For_testing_internal.worker_should_initialize here
+        then (
+          let env = Expert.worker_init_before_async_exn () in
+          Expert.start_worker_server_exn env;
+          never_returns (Scheduler.go ())))
+  ;;
 end
 
 let start_app ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config command =
