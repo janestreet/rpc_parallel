@@ -11,13 +11,11 @@ module Shard = struct
 
     module Worker_state = struct
       type t = int
-
       type init_arg = int [@@deriving bin_io]
     end
 
     module Connection_state = struct
       type t = unit
-
       type init_arg = unit [@@deriving bin_io]
     end
 
@@ -38,7 +36,6 @@ module Shard = struct
       ;;
 
       let init_worker_state = return
-
       let init_connection_state ~connection:_ ~worker_state:_ () = Deferred.unit
     end
   end

@@ -1,7 +1,6 @@
 open Core
 open Async
 
-
 module Worker_id : sig
   type t [@@deriving bin_io, sexp]
 
@@ -26,7 +25,6 @@ module Worker_type_id : Unique_id
    process.
 
    The [Rpc.Connection.t] is the underlying connection that has this state *)
-
 module Internal_connection_state : sig
   type ('worker_state, 'conn_state) t1 =
     { worker_state : 'worker_state

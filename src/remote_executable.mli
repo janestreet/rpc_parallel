@@ -33,7 +33,6 @@ val delete : [`Deletable] t -> unit Or_error.t Deferred.t
 val path : _ t -> string
 
 val host : _ t -> string
-
 val host_key_checking : _ t -> string list
 
 (** Run the executable remotely with the given environment and arguments. This checks to

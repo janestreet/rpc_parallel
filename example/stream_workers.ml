@@ -24,7 +24,6 @@ module Stream_worker = struct
 
     module Connection_state = struct
       type init_arg = unit [@@deriving bin_io]
-
       type t = unit
     end
 
@@ -34,7 +33,6 @@ module Stream_worker = struct
           and type worker_state := Worker_state.t) =
     struct
       let init_connection_state ~connection:_ ~worker_state:_ = return
-
       let init_worker_state num_elts = return { Worker_state.num_elts; workers = [] }
 
       let subscribe_impl ~worker_state ~conn_state:() () =
@@ -101,13 +99,11 @@ module Worker = struct
 
     module Worker_state = struct
       type t = unit
-
       type init_arg = unit [@@deriving bin_io]
     end
 
     module Connection_state = struct
       type init_arg = unit [@@deriving bin_io]
-
       type t = unit
     end
 
@@ -139,9 +135,7 @@ module Worker = struct
       ;;
 
       let functions = { process_elts }
-
       let init_worker_state () = Deferred.unit
-
       let init_connection_state ~connection:_ ~worker_state:_ = return
     end
   end

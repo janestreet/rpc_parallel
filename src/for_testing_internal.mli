@@ -23,7 +23,5 @@ open! Core
 *)
 
 val set_initialize_source_code_position : Source_code_position.t -> unit
-
 val worker_environment : unit -> (string * string) list
-
 val worker_should_initialize : Source_code_position.t -> bool

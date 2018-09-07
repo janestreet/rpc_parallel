@@ -8,13 +8,11 @@ module Sum_worker = struct
 
     module Worker_state = struct
       type init_arg = unit [@@deriving bin_io]
-
       type t = unit
     end
 
     module Connection_state = struct
       type init_arg = unit [@@deriving bin_io]
-
       type t = unit
     end
 
@@ -43,9 +41,7 @@ module Sum_worker = struct
       ;;
 
       let functions = { sum }
-
       let init_worker_state () = return ()
-
       let init_connection_state ~connection:_ ~worker_state:_ = return
     end
   end

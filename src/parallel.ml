@@ -106,7 +106,6 @@ let get_state_exn () =
 ;;
 
 let get_master_state_exn () = (get_state_exn ()).as_master
-
 let get_worker_state_exn () = (get_state_exn ()).as_worker
 
 (* Functions that are implemented by all workers *)
@@ -214,7 +213,8 @@ module Function = struct
           match%bind Rpc.Pipe_rpc.dispatch t.master_rpc conn id with
           | Ok (Ok (updates, (_ : Rpc.Pipe_rpc.Metadata.t))) ->
             f ~worker_state ~conn_state arg updates
-          | Ok (Error error) | Error error -> Error.raise error))
+          | Ok (Error error)
+          | Error error -> Error.raise error))
     ;;
 
     let make_master t ~implement ~ok ~error =
@@ -333,7 +333,6 @@ module Function = struct
   end
 
   let map (T (q, i, r)) ~f = T (q, i, Fn.compose f r)
-
   let contra_map (T (q, i, r)) ~f = T (Fn.compose q f, i, r)
 
   let create_rpc ~monitor ~name ~f ~bin_input ~bin_output =
@@ -450,7 +449,6 @@ module Function = struct
   ;;
 
   let async_log = T (Fn.id, Piped (Async_log_rpc.rpc, Type_equal.T), Fn.id)
-
   let close_server = T (Fn.id, One_way Close_server_rpc.rpc, Fn.id)
 end
 
@@ -462,14 +460,16 @@ module Daemonize_args = struct
     }
   [@@deriving sexp]
 
-  type t = [`Don't_daemonize | `Daemonize of args] [@@deriving sexp]
+  type t =
+    [ `Don't_daemonize
+    | `Daemonize of args ]
+  [@@deriving sexp]
 end
 
 module Heartbeater_master : sig
   type t [@@deriving bin_io]
 
   val create : host_and_port:Host_and_port.t -> rpc_settings:Rpc_settings.t -> t
-
   val connect_and_shutdown_on_disconnect_exn : t -> [`Connected] Deferred.t
 end = struct
   type t =
@@ -509,7 +509,6 @@ end = struct
 end
 
 module type Worker = Worker with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
-
 module type Functions = Functions
 
 module type Creator =
@@ -570,7 +569,10 @@ end
 module Register_rpc = struct
   type t = Worker_id.t * Host_and_port.t [@@deriving bin_io]
 
-  type response = [`Shutdown | `Registered] [@@deriving bin_io]
+  type response =
+    [ `Shutdown
+    | `Registered ]
+  [@@deriving bin_io]
 
   let rpc =
     Rpc.Rpc.create ~name:"register_worker_rpc" ~version:0 ~bin_query:bin_t ~bin_response
@@ -733,7 +735,8 @@ module Make (S : Worker_spec) = struct
 
     let rpc =
       Rpc.Rpc.create
-        ~name:(sprintf "worker_init_rpc_%s" (Worker_type_id.to_string worker_state.type_))
+        ~name:
+          (sprintf "worker_init_rpc_%s" (Worker_type_id.to_string worker_state.type_))
         ~version:0
         ~bin_query
         ~bin_response:Unit.bin_t
@@ -784,9 +787,7 @@ module Make (S : Worker_spec) = struct
 
   module Function_creator = struct
     type nonrec worker = worker
-
     type connection_state = S.Connection_state.t
-
     type worker_state = S.Worker_state.t
 
     let with_add_impl f =
@@ -796,7 +797,8 @@ module Make (S : Worker_spec) = struct
     ;;
 
     let create_rpc ?name ~f ~bin_input ~bin_output () =
-      with_add_impl (fun () -> Function.create_rpc ~monitor ~name ~f ~bin_input ~bin_output)
+      with_add_impl (fun () ->
+        Function.create_rpc ~monitor ~name ~f ~bin_input ~bin_output)
     ;;
 
     let create_pipe ?name ~f ~bin_input ~bin_output () =
@@ -913,11 +915,8 @@ module Make (S : Worker_spec) = struct
     [@@deriving fields, sexp_of]
 
     let close t = Rpc.Connection.close t.connection
-
     let close_finished t = Rpc.Connection.close_finished t.connection
-
     let close_reason t = Rpc.Connection.close_reason t.connection
-
     let is_closed t = Rpc.Connection.is_closed t.connection
 
     let client_aux
@@ -967,7 +966,6 @@ module Make (S : Worker_spec) = struct
     ;;
 
     let run t ~f ~arg = Function.run f t.connection ~arg
-
     let run_exn t ~f ~arg = run t ~f ~arg >>| Or_error.ok_exn
   end
 
@@ -982,17 +980,17 @@ module Make (S : Worker_spec) = struct
 
     let args : type a.
       a t
-      -> [`Client_will_immediately_connect of bool] * [`Setup_master_heartbeater of bool]
-      = function
-        | Heartbeater_timeout ->
-          `Client_will_immediately_connect false, `Setup_master_heartbeater true
-        | Disconnect ->
-          (* No heartbeater needed because we call
-             [Connection.client_with_worker_shutdown_on_disconnect] and the worker shuts
-             itself down if it times out waiting for a connection from the master. *)
-          `Client_will_immediately_connect true, `Setup_master_heartbeater false
-        | Called_shutdown_function ->
-          `Client_will_immediately_connect false, `Setup_master_heartbeater false
+      -> [`Client_will_immediately_connect of bool]
+         * [`Setup_master_heartbeater of bool] = function
+      | Heartbeater_timeout ->
+        `Client_will_immediately_connect false, `Setup_master_heartbeater true
+      | Disconnect ->
+        (* No heartbeater needed because we call
+           [Connection.client_with_worker_shutdown_on_disconnect] and the worker shuts
+           itself down if it times out waiting for a connection from the master. *)
+        `Client_will_immediately_connect true, `Setup_master_heartbeater false
+      | Called_shutdown_function ->
+        `Client_will_immediately_connect false, `Setup_master_heartbeater false
     ;;
   end
 
@@ -1021,7 +1019,8 @@ module Make (S : Worker_spec) = struct
   let decorate_error_if_running_inline_test error =
     let tag =
       "You must call [Rpc_parallel.For_testing.initialize] at the top level before any \
-       tests are defined. See lib/rpc_parallel/src/parallel_intf.ml for more information."
+       tests are defined. See lib/rpc_parallel/src/parallel_intf.ml for more \
+       information."
     in
     if am_running_inline_test then Error.tag ~tag error else error
   ;;
@@ -1222,7 +1221,8 @@ module Make (S : Worker_spec) = struct
     type 'a t = 'a * Process.t
   end
 
-  module Spawn_in_foreground_exn_shutdown_on = Shutdown_on (Spawn_in_foreground_exn_result)
+  module Spawn_in_foreground_exn_shutdown_on =
+    Shutdown_on (Spawn_in_foreground_exn_result)
 
   let spawn_in_foreground_exn
         (type a)
@@ -1514,8 +1514,8 @@ module Make (S : Worker_spec) = struct
                if not worker_state.client_has_connected
                then (
                  Log.Global.error
-                   "Rpc_parallel: worker timed out waiting for client connection... Shutting \
-                    down";
+                   "Rpc_parallel: worker timed out waiting for client connection... \
+                    Shutting down";
                  Shutdown.shutdown 254));
             Hashtbl.add_exn worker_state.states ~key:worker ~data:state)
   ;;
@@ -1759,7 +1759,7 @@ module Expert = struct
         ?rpc_max_message_size
         ?rpc_handshake_timeout
         ?rpc_heartbeat_config
-        ?(pass_name=true)
+        ?(pass_name = true)
         ~worker_command_args
         ()
     =

@@ -8,13 +8,11 @@ module Worker = struct
 
     module Worker_state = struct
       type init_arg = unit [@@deriving bin_io]
-
       type t = unit
     end
 
     module Connection_state = struct
       type init_arg = unit [@@deriving bin_io]
-
       type t = unit
     end
 
@@ -30,9 +28,7 @@ module Worker = struct
       ;;
 
       let functions = { write_to_log_global }
-
       let init_worker_state () = Deferred.unit
-
       let init_connection_state ~connection:_ ~worker_state:_ = return
     end
   end

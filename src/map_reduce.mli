@@ -22,17 +22,12 @@ end
 
 module type Worker = sig
   type t
-
   type param_type
-
   type run_input_type
-
   type run_output_type
 
   val spawn_config_exn : Config.t -> param_type -> t list Deferred.t
-
   val run_exn : t -> run_input_type -> run_output_type Deferred.t
-
   val shutdown_exn : t -> unit Deferred.t
 end
 
@@ -47,9 +42,7 @@ end
 
 module type Map_function = sig
   module Param : Binable
-
   module Input : Binable
-
   module Output : Binable
 
   module Worker :
@@ -63,14 +56,11 @@ module type Map_function_with_init_spec = sig
   type state_type
 
   module Param : Binable
-
   module Input : Binable
-
   module Output : Binable
 
 
   val init : Param.t -> state_type Deferred.t
-
   val map : state_type -> Input.t -> Output.t Deferred.t
 end
 
@@ -82,7 +72,6 @@ module Make_map_function_with_init (S : Map_function_with_init_spec) :
 
 module type Map_function_spec = sig
   module Input : Binable
-
   module Output : Binable
 
   val map : Input.t -> Output.t Deferred.t
@@ -143,9 +132,7 @@ val find_map
 
 module type Map_reduce_function = sig
   module Param : Binable
-
   module Accum : Binable
-
   module Input : Binable
 
   module Worker :
@@ -163,15 +150,11 @@ module type Map_reduce_function_with_init_spec = sig
   type state_type
 
   module Param : Binable
-
   module Accum : Binable
-
   module Input : Binable
 
   val init : Param.t -> state_type Deferred.t
-
   val map : state_type -> Input.t -> Accum.t Deferred.t
-
   val combine : state_type -> Accum.t -> Accum.t -> Accum.t Deferred.t
 end
 
@@ -183,11 +166,9 @@ module Make_map_reduce_function_with_init (S : Map_reduce_function_with_init_spe
 
 module type Map_reduce_function_spec = sig
   module Accum : Binable
-
   module Input : Binable
 
   val map : Input.t -> Accum.t Deferred.t
-
   val combine : Accum.t -> Accum.t -> Accum.t Deferred.t
 end
 

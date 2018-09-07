@@ -13,16 +13,13 @@ open Async
 
 module type Worker = sig
   type t [@@deriving sexp_of]
-
   type unmanaged_t
-
   type 'a functions
 
   (** Accessor for the functions implemented by this worker type *)
   val functions : unmanaged_t functions
 
   type worker_state_init_arg
-
   type connection_state_init_arg
 
   module Id : Identifiable

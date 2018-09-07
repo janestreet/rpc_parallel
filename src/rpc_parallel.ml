@@ -22,10 +22,9 @@ include Parallel
 module Std = struct end
 [@@deprecated "[since 2016-11] Use [Rpc_parallel] instead of [Rpc_parallel.Std]"]
 
-module Parallel =
-  Parallel
+module Parallel = Parallel
 [@@deprecated "[since 2016-11] Use [Rpc_parallel] instead of [Rpc_parallel.Parallel]"]
-module Parallel_managed =
-  Parallel_managed
+
+module Parallel_managed = Parallel_managed
 [@@deprecated
   "[since 2016-11] Use [Rpc_parallel.Managed] instead of [Rpc_parallel.Parallel_managed]"]

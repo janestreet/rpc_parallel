@@ -14,13 +14,11 @@ module Worker = struct
        incremented anytime it gets pinged *)
     module Worker_state = struct
       type init_arg = unit [@@deriving bin_io]
-
       type t = int ref
     end
 
     module Connection_state = struct
       type init_arg = unit [@@deriving bin_io]
-
       type t = unit
     end
 
@@ -37,11 +35,8 @@ module Worker = struct
       ;;
 
       let ping = C.create_rpc ~f:ping_impl ~bin_input:Unit.bin_t ~bin_output:Int.bin_t ()
-
       let functions = { ping }
-
       let init_worker_state () = return (ref 0)
-
       let init_connection_state ~connection:_ ~worker_state:_ = return
     end
   end
@@ -56,13 +51,11 @@ module Dispatcher = struct
 
     module Worker_state = struct
       type init_arg = unit [@@deriving bin_io]
-
       type t = unit
     end
 
     module Connection_state = struct
       type init_arg = unit [@@deriving bin_io]
-
       type t = unit
     end
 
@@ -84,9 +77,7 @@ module Dispatcher = struct
       ;;
 
       let functions = { dispatch }
-
       let init_worker_state () = Deferred.unit
-
       let init_connection_state ~connection:_ ~worker_state:_ = return
     end
   end

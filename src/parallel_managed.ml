@@ -3,15 +3,12 @@ open Async
 
 module type Worker = sig
   type t [@@deriving sexp_of]
-
   type unmanaged_t
-
   type 'a functions
 
   val functions : unmanaged_t functions
 
   type worker_state_init_arg
-
   type connection_state_init_arg
 
   module Id : Identifiable
@@ -59,7 +56,6 @@ module type Worker = sig
     -> 'response Deferred.t
 
   val kill : t -> unit Or_error.t Deferred.t
-
   val kill_exn : t -> unit Deferred.t
 end
 
@@ -80,11 +76,8 @@ module Make (S : Parallel.Worker_spec) = struct
     | `Connected of Unmanaged.Connection.t ]
 
   let sexp_of_t t = [%sexp_of: Unmanaged.t] t.unmanaged
-
   let id t = t.id
-
   let functions = Unmanaged.functions
-
   let workers : conn Id.Table.t = Id.Table.create ()
 
   let get_connection { unmanaged = t; connection_state_init_arg; id } =

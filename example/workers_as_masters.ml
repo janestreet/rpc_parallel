@@ -11,13 +11,11 @@ module Secondary_worker = struct
 
     module Worker_state = struct
       type init_arg = unit [@@deriving bin_io]
-
       type t = unit
     end
 
     module Connection_state = struct
       type init_arg = unit [@@deriving bin_io]
-
       type t = unit
     end
 
@@ -33,9 +31,7 @@ module Secondary_worker = struct
       ;;
 
       let functions = { ping }
-
       let init_worker_state () = Deferred.unit
-
       let init_connection_state ~connection:_ ~worker_state:_ = return
     end
   end
@@ -53,18 +49,15 @@ module Primary_worker = struct
       }
 
     let workers = Bag.create ()
-
     let next_worker_name () = sprintf "Secondary worker #%i" (Bag.length workers)
 
     module Worker_state = struct
       type init_arg = unit [@@deriving bin_io]
-
       type t = unit
     end
 
     module Connection_state = struct
       type init_arg = unit [@@deriving bin_io]
-
       type t = unit
     end
 

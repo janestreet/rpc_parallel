@@ -11,7 +11,8 @@ type 'a t =
 let hostkey_checking_options opt =
   match opt with
   | None -> []
-  (* Use ssh default *) | Some `Ask -> [ "-o"; "StrictHostKeyChecking=ask" ]
+  (* Use ssh default *)
+  | Some `Ask -> [ "-o"; "StrictHostKeyChecking=ask" ]
   | Some `No -> [ "-o"; "StrictHostKeyChecking=no" ]
   | Some `Yes -> [ "-o"; "StrictHostKeyChecking=yes" ]
 ;;

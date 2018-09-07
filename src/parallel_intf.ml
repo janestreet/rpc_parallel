@@ -63,7 +63,6 @@ module type Worker = sig
   val functions : t functions
 
   type worker_state_init_arg
-
   type connection_state_init_arg
 
   module Id : Identifiable
@@ -118,11 +117,8 @@ module type Worker = sig
 
 
     val close : t -> unit Deferred.t
-
     val close_finished : t -> unit Deferred.t
-
     val close_reason : t -> on_close:[`started | `finished] -> Info.t Deferred.t
-
     val is_closed : t -> bool
   end
 
@@ -259,15 +255,10 @@ end
 
 module type Functions = sig
   type worker
-
   type worker_state_init_arg
-
   type worker_state
-
   type connection_state_init_arg
-
   type connection_state
-
   type 'worker functions
 
   val functions : worker functions
@@ -288,13 +279,9 @@ end
 
 module type Creator = sig
   type ('worker, 'query, 'response) _function
-
   type ('worker, 'query, 'response) _direct
-
   type worker
-
   type worker_state
-
   type connection_state
 
   (** [create_rpc ?name ~f ~bin_input ~bin_output ()] will create an [Rpc.Rpc.t] with
@@ -433,7 +420,6 @@ end
 (** Specification for the creation of a worker type *)
 module type Worker_spec = sig
   type ('worker, 'query, 'response) _function
-
   type ('worker, 'query, 'response) _direct
 
   (** A type to encapsulate all the functions that can be run on this worker. Using a
@@ -444,14 +430,12 @@ module type Worker_spec = sig
       think carefully when making multiple connections to the same spawned worker. *)
   module Worker_state : sig
     type t
-
     type init_arg [@@deriving bin_io]
   end
 
   (** State associated with each connection to a [Worker.t] *)
   module Connection_state : sig
     type t
-
     type init_arg [@@deriving bin_io]
   end
 
@@ -475,7 +459,6 @@ module type Parallel = sig
   module Function : Function
 
   module type Worker = Worker with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
-
   module type Functions = Functions
 
   module type Creator =
@@ -581,7 +564,6 @@ module type Parallel = sig
         away in the future. *)
 
     val worker_command : Command.t
-
 
     module Worker_env : sig
       type t
