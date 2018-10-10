@@ -2,7 +2,7 @@ open Core
 open Async
 
 module Worker_id = struct
-  let create = Uuid.create
+  let create = Uuid_unix.create
 
   (* If we do not use the stable sexp serialization, when running
      inline tests, we will create UUIDs that fail tests *)
