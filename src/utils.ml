@@ -44,18 +44,45 @@ let try_within_exn ~monitor f =
   | Error e -> Error.raise e
 ;;
 
-(* Use /proc/PID/exe to get the currently running executable.
+(* To get the currently running executable:
+  On Darwin:
+  Use _NSGetExecutablePath via Ctypes
+
+  On Linux:
+  Use /proc/PID/exe
    - argv[0] might have been deleted (this is quite common with jenga)
    - `cp /proc/PID/exe dst` works as expected while `cp /proc/self/exe dst` does not *)
 let our_binary =
-  let our_binary_lazy = lazy (Unix.getpid () |> Pid.to_int |> sprintf "/proc/%d/exe") in
+  let our_binary_lazy =
+    lazy
+      (let open Deferred.Or_error.Let_syntax in
+      let%map os = Process.run ~prog:"uname" ~args:["-s"] () in
+      if os = "Darwin\n" then (
+        let open Ctypes in
+        let ns_get_executable_path =
+          Foreign.foreign "_NSGetExecutablePath"
+            (ptr char @-> ptr uint32_t @-> returning void)
+        in
+        let path_max = 1024 in
+        let buf = Ctypes.allocate_n char ~count:path_max in
+        let count =
+          Ctypes.allocate uint32_t (Unsigned.UInt32.of_int (path_max - 1))
+        in
+        ns_get_executable_path buf count ;
+        let s =
+          string_from_ptr buf ~length:(!@count |> Unsigned.UInt32.to_int)
+        in
+        List.hd_exn @@ String.split s ~on:(Char.of_int 0 |> Option.value_exn) )
+      else Unix.getpid () |> Pid.to_int |> sprintf "/proc/%d/exe")
+  in
   fun () -> Lazy.force our_binary_lazy
 ;;
 
 let our_md5 =
   let our_md5_lazy =
     lazy
-      (Process.run ~prog:"md5sum" ~args:[ our_binary () ] ()
+      (our_binary () >>=? fun our_binary ->
+        Process.run ~prog:"md5sum" ~args:[ our_binary ] ()
        >>|? fun our_md5 ->
        let our_md5, _ = String.lsplit2_exn ~on:' ' our_md5 in
        our_md5)

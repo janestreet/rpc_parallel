@@ -49,7 +49,7 @@ val try_within_exn : monitor:Monitor.t -> (unit -> 'a Deferred.t) -> 'a Deferred
 
 (* Get the location of the currently running binary. *)
 
-val our_binary : unit -> string
+val our_binary : unit -> string Or_error.t Deferre.t
 
 (* Get an md5 hash of the currently running binary *)
 

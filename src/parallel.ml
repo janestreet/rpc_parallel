@@ -769,8 +769,9 @@ module Make (S : Worker_spec) = struct
     >>=? fun env ->
     match where with
     | Executable_location.Local ->
+      Utils.our_binary () >>=? fun our_binary ->
       Process.create
-        ~prog:(Utils.our_binary ())
+        ~prog:our_binary
         ~argv0:Sys.argv.(0)
         ~args:worker_command_args
         ~env:(`Extend env)
