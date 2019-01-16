@@ -1,0 +1,3 @@
+(library (name rpc_parallel) (public_name rpc_parallel)
+ (libraries async core core.daemon sexplib core.uuid)
+ (preprocess (pps ppx_jane)))
