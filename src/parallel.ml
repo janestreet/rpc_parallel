@@ -1712,10 +1712,12 @@ module Expert = struct
       Utils.clear_env ();
       let config =
         try Sexp.input_sexp In_channel.stdin |> Worker_config.t_of_sexp with
-        | _ ->
-          failwith
-            "Unable to read worker config from stdin. Make sure nothing is read from \
-             stdin before [worker_init_before_async_exn] is called."
+        | exn ->
+          raise_s
+            [%message
+              "Unable to read worker config from stdin. Make sure nothing is read from \
+               stdin before [worker_init_before_async_exn] is called."
+                (exn : Exn.t)]
       in
       let maybe_release_daemon =
         match config.daemonize_args with
