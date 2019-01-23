@@ -971,11 +971,11 @@ module Make (S : Worker_spec) = struct
 
   module Shutdown_on (M : T1) = struct
     type _ t =
-      | Heartbeater_timeout : worker M.t Deferred.t t
       | Disconnect
         : (connection_state_init_arg:S.Connection_state.init_arg
            -> Connection.t M.t Deferred.t)
             t
+      | Heartbeater_timeout : worker M.t Deferred.t t
       | Called_shutdown_function : worker M.t Deferred.t t
 
     let args : type a.

@@ -124,16 +124,16 @@ module type Worker = sig
 
   module Shutdown_on (M : T1) : sig
     type _ t =
-      | Heartbeater_timeout : worker M.t Deferred.t t
-      (** A "heartbeater" connection is established between the worker and its master. The
-          worker shuts itself down when [Rpc.Connection.close_finished] on this connection,
-          which is likely when the master process exits. *)
       | Disconnect
         : (connection_state_init_arg:connection_state_init_arg
            -> Connection.t M.t Deferred.t)
             t
       (** An initial connection to the worker is established. The worker shuts itself down
           when [Rpc.Connection.close_finished] on this connection. *)
+      | Heartbeater_timeout : worker M.t Deferred.t t
+      (** A "heartbeater" connection is established between the worker and its master. The
+          worker shuts itself down when [Rpc.Connection.close_finished] on this connection,
+          which is likely when the master process exits. *)
       | Called_shutdown_function : worker M.t Deferred.t t
       (** WARNING! Worker's spawned with this variant do not shutdown when the master
           process exits. The worker only shuts itself down on an explicit shutdown
@@ -203,7 +203,10 @@ module type Worker = sig
   end
 
   (** Similar to [spawn] but the worker process does not daemonize. If the process was
-      spawned on a remote host, the ssh [Process.t] is returned. *)
+      spawned on a remote host, the ssh [Process.t] is returned.
+
+      Remember to call [Process.wait] on the returned [Process.t] to avoid zombie
+      processes. *)
   val spawn_in_foreground :
     (shutdown_on:'a Shutdown_on(Spawn_in_foreground_result).t
      -> worker_state_init_arg
