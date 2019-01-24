@@ -1190,15 +1190,21 @@ module Make (S : Worker_spec) = struct
       with
       | Error e -> return (Error e)
       | Ok (id, process) ->
-        wait_for_connection_and_initialize
-          ~name
-          ~connection_timeout
-          ~on_failure
-          ~id
-          ~client_will_immediately_connect
-          ~setup_master_heartbeater
-          worker_state_init_arg
-        >>| Or_error.map ~f:(fun worker -> worker, process)
+        (match%bind
+           wait_for_connection_and_initialize
+             ~name
+             ~connection_timeout
+             ~on_failure
+             ~id
+             ~client_will_immediately_connect
+             ~setup_master_heartbeater
+             worker_state_init_arg
+         with
+         | Error _ as error ->
+           don't_wait_for
+             (Process.wait process >>| (ignore : Unix.Exit_or_signal.t -> unit));
+           return error
+         | Ok worker -> Deferred.Or_error.return (worker, process))
     in
     match shutdown_on with
     | Heartbeater_timeout ->
