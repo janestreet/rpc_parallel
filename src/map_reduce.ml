@@ -1,5 +1,6 @@
 open Core
 open Async
+module Heap = Pairing_heap
 
 module Half_open_interval = struct
   module T = struct
