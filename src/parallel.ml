@@ -1166,6 +1166,12 @@ module Make (S : Worker_spec) = struct
 
   module Spawn_in_foreground_shutdown_on = Shutdown_on (Spawn_in_foreground_result)
 
+  let finalize_on_error ~finalize f =
+    let%bind result = f () in
+    if Or_error.is_error result then finalize ();
+    return result
+  ;;
+
   let spawn_in_foreground
         (type a)
         ?where
@@ -1177,6 +1183,7 @@ module Make (S : Worker_spec) = struct
         ~(shutdown_on : a Spawn_in_foreground_shutdown_on.t)
         worker_state_init_arg
     : a =
+    let open Deferred.Or_error.Let_syntax in
     let open Spawn_in_foreground_shutdown_on in
     let daemonize_args = `Don't_daemonize in
     let ( `Client_will_immediately_connect client_will_immediately_connect
@@ -1184,43 +1191,54 @@ module Make (S : Worker_spec) = struct
       =
       args shutdown_on
     in
-    let spawn_worker ~client_will_immediately_connect ~setup_master_heartbeater =
-      match%bind
+    let with_spawned_worker ~client_will_immediately_connect ~setup_master_heartbeater ~f
+      =
+      let%bind id, process =
         spawn_process ~where ~env ~cd ~name ~connection_timeout ~daemonize_args
-      with
-      | Error e -> return (Error e)
-      | Ok (id, process) ->
-        (match%bind
-           wait_for_connection_and_initialize
-             ~name
-             ~connection_timeout
-             ~on_failure
-             ~id
-             ~client_will_immediately_connect
-             ~setup_master_heartbeater
-             worker_state_init_arg
-         with
-         | Error _ as error ->
-           don't_wait_for
-             (Process.wait process >>| (ignore : Unix.Exit_or_signal.t -> unit));
-           return error
-         | Ok worker -> Deferred.Or_error.return (worker, process))
+      in
+      finalize_on_error
+        ~finalize:(fun () ->
+          let open Deferred.Let_syntax in
+          don't_wait_for
+            (Process.wait process >>| (ignore : Unix.Exit_or_signal.t -> unit)))
+        (fun () ->
+           let%bind worker =
+             wait_for_connection_and_initialize
+               ~name
+               ~connection_timeout
+               ~on_failure
+               ~id
+               ~client_will_immediately_connect
+               ~setup_master_heartbeater
+               worker_state_init_arg
+           in
+           f (worker, process))
     in
     match shutdown_on with
     | Heartbeater_timeout ->
-      spawn_worker ~client_will_immediately_connect ~setup_master_heartbeater
+      with_spawned_worker
+        ~client_will_immediately_connect
+        ~setup_master_heartbeater
+        ~f:return
     | Disconnect ->
       fun ~connection_state_init_arg ->
-        spawn_worker ~client_will_immediately_connect ~setup_master_heartbeater
-        >>=? fun (worker, process) ->
-        (* If [Connection_state.init] raises, [client_internal] will close the Rpc
-           connection, causing the worker to shutdown. *)
-        Connection.client_with_worker_shutdown_on_disconnect
-          worker
-          connection_state_init_arg
-        >>|? fun conn -> conn, process
+        with_spawned_worker
+          ~client_will_immediately_connect
+          ~setup_master_heartbeater
+          ~f:(fun (worker, process) ->
+            (* If [Connection_state.init] raises, [client_internal] will close the Rpc
+               connection, causing the worker to shutdown. *)
+            let%bind conn =
+              Connection.client_with_worker_shutdown_on_disconnect
+                worker
+                connection_state_init_arg
+            in
+            return (conn, process))
     | Called_shutdown_function ->
-      spawn_worker ~client_will_immediately_connect ~setup_master_heartbeater
+      with_spawned_worker
+        ~client_will_immediately_connect
+        ~setup_master_heartbeater
+        ~f:return
   ;;
 
   module Spawn_in_foreground_exn_result = struct
