@@ -254,6 +254,22 @@ module type Worker = sig
        -> (t * Connection.t) Deferred.t)
         with_spawn_args
   end
+
+  (** This module is used for internal testing of the rpc_parallel library. *)
+  module For_internal_testing : sig
+    module Spawn_in_foreground_result : sig
+      type 'a t =
+        ( 'a * Process.t
+        , Error.t * [`Worker_process of Unix.Exit_or_signal.t Deferred.t option] )
+          Result.t
+    end
+
+    val spawn_in_foreground :
+      (shutdown_on:'a Shutdown_on(Spawn_in_foreground_result).t
+       -> worker_state_init_arg
+       -> 'a)
+        with_spawn_args
+  end
 end
 
 module type Functions = sig

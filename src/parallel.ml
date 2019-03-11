@@ -1160,19 +1160,26 @@ module Make (S : Worker_spec) = struct
         | Ok (Ok ()) -> Ok worker)
   ;;
 
-  module Spawn_in_foreground_result = struct
-    type 'a t = ('a * Process.t) Or_error.t
+  module Spawn_in_foreground_aux_result = struct
+    type 'a t =
+      ( 'a * Process.t
+      , Error.t * [`Worker_process of Unix.Exit_or_signal.t Deferred.t option] )
+        Result.t
   end
 
-  module Spawn_in_foreground_shutdown_on = Shutdown_on (Spawn_in_foreground_result)
+  module Spawn_in_foreground_aux_shutdown_on =
+    Shutdown_on (Spawn_in_foreground_aux_result)
 
   let finalize_on_error ~finalize f =
     let%bind result = f () in
-    if Or_error.is_error result then finalize ();
-    return result
+    match result with
+    | Ok x -> return (Ok x)
+    | Error e ->
+      let finalized = finalize () in
+      return (Error (e, finalized))
   ;;
 
-  let spawn_in_foreground
+  let spawn_in_foreground_aux
         (type a)
         ?where
         ?name
@@ -1180,11 +1187,11 @@ module Make (S : Worker_spec) = struct
         ?connection_timeout
         ?cd
         ~on_failure
-        ~(shutdown_on : a Spawn_in_foreground_shutdown_on.t)
+        ~(shutdown_on : a Spawn_in_foreground_aux_shutdown_on.t)
         worker_state_init_arg
     : a =
-    let open Deferred.Or_error.Let_syntax in
-    let open Spawn_in_foreground_shutdown_on in
+    let open Deferred.Result.Let_syntax in
+    let open Spawn_in_foreground_aux_shutdown_on in
     let daemonize_args = `Don't_daemonize in
     let ( `Client_will_immediately_connect client_will_immediately_connect
         , `Setup_master_heartbeater setup_master_heartbeater )
@@ -1195,12 +1202,12 @@ module Make (S : Worker_spec) = struct
       =
       let%bind id, process =
         spawn_process ~where ~env ~cd ~name ~connection_timeout ~daemonize_args
+        |> Deferred.Result.map_error ~f:(fun e -> e, `Worker_process None)
       in
       finalize_on_error
         ~finalize:(fun () ->
-          let open Deferred.Let_syntax in
-          don't_wait_for
-            (Process.wait process >>| (ignore : Unix.Exit_or_signal.t -> unit)))
+          let exit_or_signal = Process.wait process in
+          `Worker_process (Some exit_or_signal))
         (fun () ->
            let%bind worker =
              wait_for_connection_and_initialize
@@ -1239,6 +1246,50 @@ module Make (S : Worker_spec) = struct
         ~client_will_immediately_connect
         ~setup_master_heartbeater
         ~f:return
+  ;;
+
+  module Spawn_in_foreground_result = struct
+    type 'a t = ('a * Process.t) Or_error.t
+  end
+
+  module Spawn_in_foreground_shutdown_on = Shutdown_on (Spawn_in_foreground_result)
+
+  let spawn_in_foreground
+        (type a)
+        ?where
+        ?name
+        ?env
+        ?connection_timeout
+        ?cd
+        ~on_failure
+        ~(shutdown_on : a Spawn_in_foreground_shutdown_on.t)
+        worker_state_init_arg
+    : a =
+    let spawn_in_foreground_aux
+          (type a)
+          ~(shutdown_on : a Spawn_in_foreground_aux_shutdown_on.t)
+      : a =
+      spawn_in_foreground_aux
+        ?where
+        ?name
+        ?env
+        ?connection_timeout
+        ?cd
+        ~on_failure
+        ~shutdown_on
+        worker_state_init_arg
+    in
+    match shutdown_on with
+    | Heartbeater_timeout ->
+      spawn_in_foreground_aux ~shutdown_on:Heartbeater_timeout
+      >>| Result.map_error ~f:fst
+    | Disconnect ->
+      fun ~connection_state_init_arg ->
+        spawn_in_foreground_aux ~shutdown_on:Disconnect ~connection_state_init_arg
+        >>| Result.map_error ~f:fst
+    | Called_shutdown_function ->
+      spawn_in_foreground_aux ~shutdown_on:Called_shutdown_function
+      >>| Result.map_error ~f:fst
   ;;
 
   module Spawn_in_foreground_exn_result = struct
@@ -1502,6 +1553,12 @@ module Make (S : Worker_spec) = struct
         worker_state_init_arg
       >>| ok_exn
     ;;
+  end
+
+  module For_internal_testing = struct
+    module Spawn_in_foreground_result = Spawn_in_foreground_aux_result
+
+    let spawn_in_foreground = spawn_in_foreground_aux
   end
 
   let init_worker_state_impl =
