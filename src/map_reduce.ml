@@ -1,4 +1,5 @@
 open Core
+open Poly
 open Async
 module Heap = Pairing_heap
 
