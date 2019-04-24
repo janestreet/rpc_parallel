@@ -46,7 +46,7 @@ module Worker_implementations = struct
         ('state, 'connection_state) Utils.Internal_connection_state.t
           Rpc.Implementation.t
           list
-      -> t
+        -> t
 end
 
 (* Applications of the [Make()] functor have the side effect of populating an
@@ -301,28 +301,28 @@ module Function = struct
     | Piped :
         ('worker, 'query, 'response) Function_piped.t
         * ('r, 'response Pipe.Reader.t) Type_equal.t
-      -> ('worker, 'query, 'r) t_internal
+        -> ('worker, 'query, 'r) t_internal
     | Directly_piped :
         ('worker, 'query, 'response) Function_piped.t
-      -> ( 'worker
-         , 'query
-           * ('response Rpc.Pipe_rpc.Pipe_message.t -> Rpc.Pipe_rpc.Pipe_response.t)
-         , Rpc.Pipe_rpc.Id.t )
-           t_internal
+        -> ( 'worker
+           , 'query
+             * ('response Rpc.Pipe_rpc.Pipe_message.t -> Rpc.Pipe_rpc.Pipe_response.t)
+           , Rpc.Pipe_rpc.Id.t )
+             t_internal
     | One_way :
         ('worker, 'query) Function_one_way.t
-      -> ('worker, 'query, unit) t_internal
+        -> ('worker, 'query, unit) t_internal
     | Reverse_piped :
         ('worker, 'query, 'update, 'response, 'in_progress) Function_reverse_piped.t
         * ('q, 'query * 'in_progress) Type_equal.t
-      -> ('worker, 'q, 'response) t_internal
+        -> ('worker, 'q, 'response) t_internal
 
   type ('worker, 'query, 'response) t =
     | T :
         ('query -> 'query_internal)
         * ('worker, 'query_internal, 'response_internal) t_internal
         * ('response_internal -> 'response)
-      -> ('worker, 'query, 'response) t
+        -> ('worker, 'query, 'response) t
 
   module Direct_pipe = struct
     type nonrec ('worker, 'query, 'response) t =
