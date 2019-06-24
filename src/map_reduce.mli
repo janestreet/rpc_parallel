@@ -7,6 +7,7 @@ open! Async
 module Config : sig
   type t
 
+
   (** Default is to create the same number of local workers as the cores in local
       machine. All spawned workers will their redirect stdout and stderr to the same
       file. *)
@@ -14,8 +15,8 @@ module Config : sig
     :  ?local:int
     -> ?remote:(_ Remote_executable.t * int) list
     -> ?cd:string (** default / *)
-    -> redirect_stderr:[`Dev_null | `File_append of string]
-    -> redirect_stdout:[`Dev_null | `File_append of string]
+    -> redirect_stderr:[ `Dev_null | `File_append of string ]
+    -> redirect_stdout:[ `Dev_null | `File_append of string ]
     -> unit
     -> t
 end
@@ -90,8 +91,7 @@ module Make_map_function (S : Map_function_spec) :
 val map_unordered
   :  Config.t
   -> 'a Pipe.Reader.t
-  -> m:(module
-         Map_function
+  -> m:(module Map_function
          with type Param.t = 'param
           and type Input.t = 'a
           and type Output.t = 'b)
@@ -104,8 +104,7 @@ val map_unordered
 val map
   :  Config.t
   -> 'a Pipe.Reader.t
-  -> m:(module
-         Map_function
+  -> m:(module Map_function
          with type Param.t = 'param
           and type Input.t = 'a
           and type Output.t = 'b)
@@ -120,8 +119,7 @@ val map
 val find_map
   :  Config.t
   -> 'a Pipe.Reader.t
-  -> m:(module
-         Map_function
+  -> m:(module Map_function
          with type Param.t = 'param
           and type Input.t = 'a
           and type Output.t = 'b option)
@@ -187,8 +185,7 @@ module Make_map_reduce_function (S : Map_reduce_function_spec) :
 val map_reduce_commutative
   :  Config.t
   -> 'a Pipe.Reader.t
-  -> m:(module
-         Map_reduce_function
+  -> m:(module Map_reduce_function
          with type Param.t = 'param
           and type Accum.t = 'accum
           and type Input.t = 'a)
@@ -206,8 +203,7 @@ val map_reduce_commutative
 val map_reduce
   :  Config.t
   -> 'a Pipe.Reader.t
-  -> m:(module
-         Map_reduce_function
+  -> m:(module Map_reduce_function
          with type Param.t = 'param
           and type Accum.t = 'accum
           and type Input.t = 'a)

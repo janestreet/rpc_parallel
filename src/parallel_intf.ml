@@ -118,7 +118,7 @@ module type Worker = sig
 
     val close : t -> unit Deferred.t
     val close_finished : t -> unit Deferred.t
-    val close_reason : t -> on_close:[`started | `finished] -> Info.t Deferred.t
+    val close_reason : t -> on_close:[ `started | `finished ] -> Info.t Deferred.t
     val is_closed : t -> bool
   end
 
@@ -180,23 +180,23 @@ module type Worker = sig
 
       [redirect_stdout] and [redirect_stderr] specify stdout and stderr of the worker
       process. *)
-  val spawn :
-    (?umask:int (** defaults to use existing umask *)
-     -> shutdown_on:'a Shutdown_on(Or_error).t
-     -> redirect_stdout:Fd_redirection.t
-     -> redirect_stderr:Fd_redirection.t
-     -> worker_state_init_arg
-     -> 'a)
-      with_spawn_args
+  val spawn
+    : (?umask:int (** defaults to use existing umask *)
+       -> shutdown_on:'a Shutdown_on(Or_error).t
+       -> redirect_stdout:Fd_redirection.t
+       -> redirect_stderr:Fd_redirection.t
+       -> worker_state_init_arg
+       -> 'a)
+        with_spawn_args
 
-  val spawn_exn :
-    (?umask:int (** defaults to use existing umask *)
-     -> shutdown_on:'a Shutdown_on(Monad.Ident).t
-     -> redirect_stdout:Fd_redirection.t
-     -> redirect_stderr:Fd_redirection.t
-     -> worker_state_init_arg
-     -> 'a)
-      with_spawn_args
+  val spawn_exn
+    : (?umask:int (** defaults to use existing umask *)
+       -> shutdown_on:'a Shutdown_on(Monad.Ident).t
+       -> redirect_stdout:Fd_redirection.t
+       -> redirect_stderr:Fd_redirection.t
+       -> worker_state_init_arg
+       -> 'a)
+        with_spawn_args
 
   module Spawn_in_foreground_result : sig
     type 'a t = ('a * Process.t) Or_error.t
@@ -207,21 +207,21 @@ module type Worker = sig
 
       Remember to call [Process.wait] on the returned [Process.t] to avoid zombie
       processes. *)
-  val spawn_in_foreground :
-    (shutdown_on:'a Shutdown_on(Spawn_in_foreground_result).t
-     -> worker_state_init_arg
-     -> 'a)
-      with_spawn_args
+  val spawn_in_foreground
+    : (shutdown_on:'a Shutdown_on(Spawn_in_foreground_result).t
+       -> worker_state_init_arg
+       -> 'a)
+        with_spawn_args
 
   module Spawn_in_foreground_exn_result : sig
     type 'a t = 'a * Process.t
   end
 
-  val spawn_in_foreground_exn :
-    (shutdown_on:'a Shutdown_on(Spawn_in_foreground_exn_result).t
-     -> worker_state_init_arg
-     -> 'a)
-      with_spawn_args
+  val spawn_in_foreground_exn
+    : (shutdown_on:'a Shutdown_on(Spawn_in_foreground_exn_result).t
+       -> worker_state_init_arg
+       -> 'a)
+        with_spawn_args
 
   (** [shutdown] attempts to connect to a worker. Upon success, [Shutdown.shutdown 0] is
       run in the worker. If you want strong guarantees that a worker did shutdown, consider
@@ -236,23 +236,23 @@ module type Worker = sig
         Uses of [spawn_and_connect] that disregard [t] can likely be replaced with [spawn
         ~shutdown_on:Disconnect]. If [t] is used for reconnecting, then you can use [spawn]
         followed by [Connection.client]. *)
-    val spawn_and_connect :
-      (?umask:int
-       -> redirect_stdout:Fd_redirection.t
-       -> redirect_stderr:Fd_redirection.t
-       -> connection_state_init_arg:connection_state_init_arg
-       -> worker_state_init_arg
-       -> (t * Connection.t) Or_error.t Deferred.t)
-        with_spawn_args
+    val spawn_and_connect
+      : (?umask:int
+         -> redirect_stdout:Fd_redirection.t
+         -> redirect_stderr:Fd_redirection.t
+         -> connection_state_init_arg:connection_state_init_arg
+         -> worker_state_init_arg
+         -> (t * Connection.t) Or_error.t Deferred.t)
+          with_spawn_args
 
-    val spawn_and_connect_exn :
-      (?umask:int
-       -> redirect_stdout:Fd_redirection.t
-       -> redirect_stderr:Fd_redirection.t
-       -> connection_state_init_arg:connection_state_init_arg
-       -> worker_state_init_arg
-       -> (t * Connection.t) Deferred.t)
-        with_spawn_args
+    val spawn_and_connect_exn
+      : (?umask:int
+         -> redirect_stdout:Fd_redirection.t
+         -> redirect_stderr:Fd_redirection.t
+         -> connection_state_init_arg:connection_state_init_arg
+         -> worker_state_init_arg
+         -> (t * Connection.t) Deferred.t)
+          with_spawn_args
   end
 
   (** This module is used for internal testing of the rpc_parallel library. *)
@@ -260,15 +260,15 @@ module type Worker = sig
     module Spawn_in_foreground_result : sig
       type 'a t =
         ( 'a * Process.t
-        , Error.t * [`Worker_process of Unix.Exit_or_signal.t Deferred.t option] )
+        , Error.t * [ `Worker_process of Unix.Exit_or_signal.t Deferred.t option ] )
           Result.t
     end
 
-    val spawn_in_foreground :
-      (shutdown_on:'a Shutdown_on(Spawn_in_foreground_result).t
-       -> worker_state_init_arg
-       -> 'a)
-        with_spawn_args
+    val spawn_in_foreground
+      : (shutdown_on:'a Shutdown_on(Spawn_in_foreground_result).t
+         -> worker_state_init_arg
+         -> 'a)
+          with_spawn_args
   end
 end
 
@@ -521,7 +521,7 @@ module type Parallel = sig
       used, require a [State.t] as an argument. If you don't need the [State.t] anymore,
       just pattern match on it. *)
   module State : sig
-    type t = private [< `started]
+    type t = private [< `started ]
 
     val get : unit -> t option
   end

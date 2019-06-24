@@ -57,7 +57,7 @@ val our_md5 : unit -> string Or_error.t Deferred.t
 
 (* Determine in what context the current executable is running *)
 
-val whoami : unit -> [`Worker | `Master]
+val whoami : unit -> [ `Worker | `Master ]
 
 (* Clear any environment variables that this library has set *)
 
@@ -68,5 +68,5 @@ val clear_env : unit -> unit
 val create_worker_env : extra:(string * string) list -> (string * string) list Or_error.t
 
 val to_daemon_fd_redirection
-  :  [`Dev_null | `File_append of string | `File_truncate of string]
+  :  [ `Dev_null | `File_append of string | `File_truncate of string ]
   -> Daemon.Fd_redirection.t

@@ -73,7 +73,8 @@ module Make (S : Parallel.Worker_spec) = struct
 
   type conn =
     [ `Pending of Unmanaged.Connection.t Or_error.t Ivar.t
-    | `Connected of Unmanaged.Connection.t ]
+    | `Connected of Unmanaged.Connection.t
+    ]
 
   let sexp_of_t t = [%sexp_of: Unmanaged.t] t.unmanaged
   let id t = t.id
@@ -141,7 +142,8 @@ module Make (S : Parallel.Worker_spec) = struct
     (Unmanaged.Connection.close_finished connection
      >>> fun () ->
      match Hashtbl.find workers id with
-     | None -> (* [kill] was called, don't report closed connection *)
+     | None ->
+       (* [kill] was called, don't report closed connection *)
        ()
      | Some _ ->
        Hashtbl.remove workers id;

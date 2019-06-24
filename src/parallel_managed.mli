@@ -70,6 +70,7 @@ module type Worker = sig
     -> arg:'query
     -> 'response Deferred.t
 
+
   (** Using these functions will not result in [on_failure] reporting a closed
       connection, unlike running the [shutdown] function. *)
   val kill : t -> unit Or_error.t Deferred.t

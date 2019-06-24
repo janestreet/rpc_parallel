@@ -64,16 +64,13 @@ end
 (* All global state that is needed for a process to act as a master *)
 type master_state =
   { (* The [Host_and_port.t] corresponding to one's own master Rpc server. *)
-    my_server :
-      Host_and_port.t Deferred.t lazy_t
+    my_server : Host_and_port.t Deferred.t lazy_t
   (* The rpc settings used universally for all rpc connections *)
-  ; app_rpc_settings :
-      Rpc_settings.t (* Used to facilitate timeout of connecting to a spawned worker *)
-  ; pending :
-      Host_and_port.t Ivar.t Worker_id.Table.t
+  ; app_rpc_settings : Rpc_settings.t
+  (* Used to facilitate timeout of connecting to a spawned worker *)
+  ; pending : Host_and_port.t Ivar.t Worker_id.Table.t
   (* Arguments used when spawning a new worker. *)
-  ; worker_command_args :
-      Worker_command_args.t
+  ; worker_command_args : Worker_command_args.t
   (* Callbacks for spawned worker exceptions along with the monitor that was current
      when [spawn] was called *)
   ; on_failures : ((Error.t -> unit) * Monitor.t) Worker_id.Table.t
@@ -82,10 +79,9 @@ type master_state =
 (* All global state that is not specific to worker types is collected here *)
 type worker_state =
   { (* Currently running worker servers in this process *)
-    my_worker_servers :
-      (Socket.Address.Inet.t, int) Tcp.Server.t Worker_id.Table.t
+    my_worker_servers : (Socket.Address.Inet.t, int) Tcp.Server.t Worker_id.Table.t
   (* To facilitate process creation cleanup.*)
-  ; initialized : [`Init_started of [`Initialized] Or_error.t Deferred.t] Set_once.t
+  ; initialized : [ `Init_started of [ `Initialized ] Or_error.t Deferred.t ] Set_once.t
   }
 
 type global_state =
@@ -213,8 +209,7 @@ module Function = struct
           match%bind Rpc.Pipe_rpc.dispatch t.master_rpc conn id with
           | Ok (Ok (updates, (_ : Rpc.Pipe_rpc.Metadata.t))) ->
             f ~worker_state ~conn_state arg updates
-          | Ok (Error error)
-          | Error error -> Error.raise error))
+          | Ok (Error error) | Error error -> Error.raise error))
     ;;
 
     let make_master t ~implement ~ok ~error =
@@ -425,7 +420,8 @@ module Function = struct
         (t_internal : (_, query, response) t_internal)
         connection
         ~(arg : query)
-    : response Or_error.t Deferred.t =
+    : response Or_error.t Deferred.t
+    =
     match t_internal with
     | Plain proto -> Rpc.Rpc.dispatch proto connection arg
     | Piped (proto, Type_equal.T) ->
@@ -462,7 +458,8 @@ module Daemonize_args = struct
 
   type t =
     [ `Don't_daemonize
-    | `Daemonize of args ]
+    | `Daemonize of args
+    ]
   [@@deriving sexp]
 end
 
@@ -470,7 +467,7 @@ module Heartbeater_master : sig
   type t [@@deriving bin_io]
 
   val create : host_and_port:Host_and_port.t -> rpc_settings:Rpc_settings.t -> t
-  val connect_and_shutdown_on_disconnect_exn : t -> [`Connected] Deferred.t
+  val connect_and_shutdown_on_disconnect_exn : t -> [ `Connected ] Deferred.t
 end = struct
   type t =
     { host_and_port : Host_and_port.t
@@ -571,7 +568,8 @@ module Register_rpc = struct
 
   type response =
     [ `Shutdown
-    | `Registered ]
+    | `Registered
+    ]
   [@@deriving bin_io]
 
   let rpc =
@@ -691,14 +689,12 @@ module Make (S : Worker_spec) = struct
     { (* A unique identifier for each application of the [Make] functor.
          Because we are running the same executable and this is supposed to run at the
          top level, the master and the workers agree on these ids *)
-      type_ :
-        Worker_type_id.t
+      type_ : Worker_type_id.t
     (* Persistent states associated with instances of this worker server *)
-    ; states :
-        S.Worker_state.t Worker_id.Table.t
+    ; states : S.Worker_state.t Worker_id.Table.t
     (* To facilitate cleanup in the [Shutdown_on.Disconnect] case *)
-    ; mutable client_has_connected :
-        bool (* Build up a list of all implementations for this worker type *)
+    ; mutable client_has_connected : bool
+    (* Build up a list of all implementations for this worker type *)
     ; mutable implementations :
         (S.Worker_state.t, S.Connection_state.t) Utils.Internal_connection_state.t
           Rpc.Implementation.t
@@ -978,19 +974,21 @@ module Make (S : Worker_spec) = struct
       | Heartbeater_timeout : worker M.t Deferred.t t
       | Called_shutdown_function : worker M.t Deferred.t t
 
-    let args : type a.
-      a t
-      -> [`Client_will_immediately_connect of bool]
-         * [`Setup_master_heartbeater of bool] = function
-      | Heartbeater_timeout ->
-        `Client_will_immediately_connect false, `Setup_master_heartbeater true
-      | Disconnect ->
-        (* No heartbeater needed because we call
-           [Connection.client_with_worker_shutdown_on_disconnect] and the worker shuts
-           itself down if it times out waiting for a connection from the master. *)
-        `Client_will_immediately_connect true, `Setup_master_heartbeater false
-      | Called_shutdown_function ->
-        `Client_will_immediately_connect false, `Setup_master_heartbeater false
+    let args
+      : type a.
+        a t
+        -> [ `Client_will_immediately_connect of bool ]
+           * [ `Setup_master_heartbeater of bool ]
+      = function
+        | Heartbeater_timeout ->
+          `Client_will_immediately_connect false, `Setup_master_heartbeater true
+        | Disconnect ->
+          (* No heartbeater needed because we call
+             [Connection.client_with_worker_shutdown_on_disconnect] and the worker shuts
+             itself down if it times out waiting for a connection from the master. *)
+          `Client_will_immediately_connect true, `Setup_master_heartbeater false
+        | Called_shutdown_function ->
+          `Client_will_immediately_connect false, `Setup_master_heartbeater false
     ;;
   end
 
@@ -1163,7 +1161,7 @@ module Make (S : Worker_spec) = struct
   module Spawn_in_foreground_aux_result = struct
     type 'a t =
       ( 'a * Process.t
-      , Error.t * [`Worker_process of Unix.Exit_or_signal.t Deferred.t option] )
+      , Error.t * [ `Worker_process of Unix.Exit_or_signal.t Deferred.t option ] )
         Result.t
   end
 
@@ -1189,7 +1187,8 @@ module Make (S : Worker_spec) = struct
         ~on_failure
         ~(shutdown_on : a Spawn_in_foreground_aux_shutdown_on.t)
         worker_state_init_arg
-    : a =
+    : a
+    =
     let open Deferred.Result.Let_syntax in
     let open Spawn_in_foreground_aux_shutdown_on in
     let daemonize_args = `Don't_daemonize in
@@ -1264,11 +1263,13 @@ module Make (S : Worker_spec) = struct
         ~on_failure
         ~(shutdown_on : a Spawn_in_foreground_shutdown_on.t)
         worker_state_init_arg
-    : a =
+    : a
+    =
     let spawn_in_foreground_aux
           (type a)
           ~(shutdown_on : a Spawn_in_foreground_aux_shutdown_on.t)
-      : a =
+      : a
+      =
       spawn_in_foreground_aux
         ?where
         ?name
@@ -1309,7 +1310,8 @@ module Make (S : Worker_spec) = struct
         ~on_failure
         ~(shutdown_on : a Spawn_in_foreground_exn_shutdown_on.t)
         init_arg
-    : a =
+    : a
+    =
     let open Spawn_in_foreground_exn_shutdown_on in
     match shutdown_on with
     | Disconnect ->
@@ -1385,7 +1387,8 @@ module Make (S : Worker_spec) = struct
         ~redirect_stdout
         ~redirect_stderr
         worker_state_init_arg
-    : a =
+    : a
+    =
     let daemonize_args =
       `Daemonize { Daemonize_args.umask; redirect_stderr; redirect_stdout }
     in
@@ -1445,7 +1448,8 @@ module Make (S : Worker_spec) = struct
         ~redirect_stdout
         ~redirect_stderr
         init_arg
-    : a =
+    : a
+    =
     let open Spawn_exn_shutdown_on in
     match shutdown_on with
     | Disconnect ->
@@ -1565,7 +1569,11 @@ module Make (S : Worker_spec) = struct
     Rpc.Rpc.implement
       Init_worker_state_rpc.rpc
       (fun _conn_state
-        { Init_worker_state_rpc.master; worker; arg; initial_client_connection_timeout }
+        { Init_worker_state_rpc.master
+        ; worker
+        ; arg
+        ; initial_client_connection_timeout
+        }
         ->
           let init_finished =
             Utils.try_within ~monitor (fun () ->
@@ -1869,7 +1877,7 @@ module Expert = struct
 end
 
 module State = struct
-  type t = [`started]
+  type t = [ `started ]
 
   let get () = Option.map (Set_once.get global_state) ~f:(fun _ -> `started)
 end

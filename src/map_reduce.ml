@@ -54,8 +54,8 @@ module Config = struct
     { local : int
     ; remote : (packed_remote * int) list
     ; cd : string option
-    ; redirect_stderr : [`Dev_null | `File_append of string]
-    ; redirect_stdout : [`Dev_null | `File_append of string]
+    ; redirect_stderr : [ `Dev_null | `File_append of string ]
+    ; redirect_stdout : [ `Dev_null | `File_append of string ]
     }
 
   let default_cores () = (ok_exn Linux_ext.cores) ()
@@ -303,7 +303,8 @@ struct
         type t =
           [ `Map of Input.t
           | `Combine of Accum.t * Accum.t
-          | `Map_right_combine of Accum.t * Input.t ]
+          | `Map_right_combine of Accum.t * Input.t
+          ]
         [@@deriving bin_io]
       end
 
@@ -346,8 +347,7 @@ module Make_map_reduce_function (S : Map_reduce_function_spec) =
   end)
 
 let map_unordered (type param a b) config input_reader ~m ~(param : param) =
-  let module Map_function = (val m
-                              : Map_function
+  let module Map_function = (val m : Map_function
                              with type Param.t = param
                               and type Input.t = a
                               and type Output.t = b)
@@ -383,8 +383,7 @@ let map config input_reader ~m ~param =
   (* Pops in-order output until we reach a gap. *)
   let rec write_out_of_order_output () =
     match Heap.top out_of_order_output with
-    | Some (output, index)
-      when index = !expecting_index ->
+    | Some (output, index) when index = !expecting_index ->
       expecting_index := !expecting_index + 1;
       Heap.remove_top out_of_order_output;
       let%bind () = Pipe.write new_writer output in
@@ -410,8 +409,7 @@ let map config input_reader ~m ~param =
 ;;
 
 let find_map (type param a b) config input_reader ~m ~(param : param) =
-  let module Map_function = (val m
-                              : Map_function
+  let module Map_function = (val m : Map_function
                              with type Param.t = param
                               and type Input.t = a
                               and type Output.t = b option)
@@ -437,8 +435,7 @@ let find_map (type param a b) config input_reader ~m ~(param : param) =
 ;;
 
 let map_reduce_commutative (type param a accum) config input_reader ~m ~(param : param) =
-  let module Map_reduce_function = (val m
-                                     : Map_reduce_function
+  let module Map_reduce_function = (val m : Map_reduce_function
                                     with type Param.t = param
                                      and type Input.t = a
                                      and type Accum.t = accum)
@@ -478,8 +475,7 @@ let map_reduce_commutative (type param a accum) config input_reader ~m ~(param :
 ;;
 
 let map_reduce (type param a accum) config input_reader ~m ~(param : param) =
-  let module Map_reduce_function = (val m
-                                     : Map_reduce_function
+  let module Map_reduce_function = (val m : Map_reduce_function
                                     with type Param.t = param
                                      and type Input.t = a
                                      and type Accum.t = accum)
@@ -492,13 +488,12 @@ let map_reduce (type param a accum) config input_reader ~m ~(param : param) =
             worker
             key
             acc
-            (dir : [`Left | `Left_nothing_right | `Right | `Right_nothing_left])
+            (dir : [ `Left | `Left_nothing_right | `Right | `Right_nothing_left ])
     =
     match dir with
     | (`Left | `Left_nothing_right) as dir' ->
       (match H.Map.closest_key !acc_map `Less_than key with
-       | Some (left_key, left_acc)
-         when H.ubound left_key = H.lbound key ->
+       | Some (left_key, left_acc) when H.ubound left_key = H.lbound key ->
          (* combine acc_{left_lbound, left_ubound} acc_{this_lbound, this_ubound}
             -> acc_{left_lbound, this_ubound} *)
          (* We need to remove both nodes from the tree to indicate that we are working on
@@ -517,8 +512,7 @@ let map_reduce (type param a accum) config input_reader ~m ~(param : param) =
           | `Left_nothing_right -> Deferred.unit))
     | (`Right | `Right_nothing_left) as dir' ->
       (match H.Map.closest_key !acc_map `Greater_than key with
-       | Some (right_key, right_acc)
-         when H.lbound right_key = H.ubound key ->
+       | Some (right_key, right_acc) when H.lbound right_key = H.ubound key ->
          (* combine acc_{this_lbound, this_ubound} acc_{right_lbound, right_ubound}
             -> acc_{this_lbound, right_ubound} *)
          acc_map := H.Map.remove (H.Map.remove !acc_map key) right_key;
@@ -540,8 +534,7 @@ let map_reduce (type param a accum) config input_reader ~m ~(param : param) =
       let key = H.create_exn index (index + 1) in
       let%bind () =
         match H.Map.closest_key !acc_map `Less_than key with
-        | Some (left_key, left_acc)
-          when H.ubound left_key = H.lbound key ->
+        | Some (left_key, left_acc) when H.ubound left_key = H.lbound key ->
           (* combine acc_{left_lbound, left_ubound} (map a_index)
              -> acc_{left_lbound, index + 1} *)
           acc_map := H.Map.remove !acc_map left_key;

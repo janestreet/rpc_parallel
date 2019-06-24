@@ -11,9 +11,9 @@ type 'a t
     sshing into this host *)
 val existing_on_host
   :  executable_path:string
-  -> ?strict_host_key_checking:[`No | `Ask | `Yes]
+  -> ?strict_host_key_checking:[ `No | `Ask | `Yes ]
   -> string
-  -> [`Undeletable] t
+  -> [ `Undeletable ] t
 
 (** [copy_to_host ~executable_dir ?strict_host_key_checking host] will copy the currently
     running executable to the desired host and path. It will keep the same name but add a
@@ -21,13 +21,13 @@ val existing_on_host
     option used when sshing into this host *)
 val copy_to_host
   :  executable_dir:string
-  -> ?strict_host_key_checking:[`No | `Ask | `Yes]
+  -> ?strict_host_key_checking:[ `No | `Ask | `Yes ]
   -> string
-  -> [`Deletable] t Or_error.t Deferred.t
+  -> [ `Deletable ] t Or_error.t Deferred.t
 
 (** [delete t] will delete a remote executable that was copied over by a previous call to
     [copy_to_host] *)
-val delete : [`Deletable] t -> unit Or_error.t Deferred.t
+val delete : [ `Deletable ] t -> unit Or_error.t Deferred.t
 
 (** Get the underlying path, host, and host_key_checking *)
 val path : _ t -> string
