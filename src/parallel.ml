@@ -1660,7 +1660,7 @@ module Make (S : Worker_spec) = struct
       let r, w = Pipe.create () in
       let new_output =
         Log.Output.create
-          ~flush:(fun () -> Deferred.ignore (Pipe.downstream_flushed w))
+          ~flush:(fun () -> Deferred.ignore_m (Pipe.downstream_flushed w))
           (fun msgs ->
              if not (Pipe.is_closed w)
              then Queue.iter msgs ~f:(fun msg -> Pipe.write_without_pushback w msg);
