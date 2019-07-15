@@ -57,7 +57,10 @@ let worker_implementations = Worker_type_id.Table.create ~size:1 ()
 module Worker_command_args = struct
   type t =
     | Decorate of string
-    | User_supplied of { args : string list; pass_name : bool }
+    | User_supplied of
+        { args : string list
+        ; pass_name : bool
+        }
   [@@deriving sexp]
 end
 
