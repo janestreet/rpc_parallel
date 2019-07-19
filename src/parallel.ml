@@ -491,8 +491,8 @@ end = struct
     | Error e -> raise e
     | Ok conn ->
       `Connected
-        (let%map () = Rpc.Connection.close_finished conn in
-         `Disconnected)
+        (let%map reason = Rpc.Connection.close_reason ~on_close:`finished conn in
+         `Disconnected reason)
   ;;
 
   let connect_and_shutdown_on_disconnect_exn heartbeater =
@@ -500,9 +500,11 @@ end = struct
       connect_and_wait_for_disconnect_exn heartbeater
     in
     (wait_for_disconnect
-     >>> fun `Disconnected ->
-     Log.Global.error
-       "Rpc_parallel: Heartbeater with master lost connection... Shutting down.";
+     >>> fun (`Disconnected reason) ->
+     Log.Global.error_s
+       [%message
+         "Rpc_parallel: Heartbeater with master lost connection... Shutting down."
+           (reason : Info.t)];
      Shutdown.shutdown 254);
     return `Connected
   ;;
@@ -1622,10 +1624,12 @@ module Make (S : Worker_spec) = struct
           let worker_state = Hashtbl.find_exn worker_state.states worker_id in
           if worker_shutdown_on_disconnect
           then (
-            Rpc.Connection.close_finished connection
-            >>> fun () ->
-            Log.Global.info
-              "Rpc_parallel: initial client connection closed... Shutting down.";
+            Rpc.Connection.close_reason ~on_close:`finished connection
+            >>> fun reason ->
+            Log.Global.info_s
+              [%message
+                "Rpc_parallel: initial client connection closed... Shutting down."
+                  (reason : Info.t)];
             Shutdown.shutdown 0);
           let%map conn_state =
             Utils.try_within_exn ~monitor (fun () ->
