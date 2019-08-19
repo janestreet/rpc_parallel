@@ -28,7 +28,9 @@ module Sum_worker = struct
             ~f:(fun acc x ->
               let acc = acc + x in
               let output = sprintf "Sum_worker.sum: %i\n" acc in
-              let _ = Rpc.Pipe_rpc.Direct_stream_writer.write writer output in
+              let (_ : [ `Closed | `Flushed of unit Deferred.t ]) =
+                Rpc.Pipe_rpc.Direct_stream_writer.write writer output
+              in
               acc)
             (List.init arg ~f:Fn.id)
         in

@@ -76,7 +76,9 @@ module Primary_worker = struct
               ~on_failure:Error.raise
               ()
           in
-          ignore (Bag.add workers (next_worker_name (), secondary_worker)))
+          ignore
+            (Bag.add workers (next_worker_name (), secondary_worker)
+             : (string * Secondary_worker.worker) Bag.Elt.t))
         >>| ignore
       ;;
 

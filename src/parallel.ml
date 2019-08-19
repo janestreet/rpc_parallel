@@ -772,7 +772,7 @@ module Make (S : Worker_spec) = struct
     | Executable_location.Local ->
       Process.create
         ~prog:(Utils.our_binary ())
-        ~argv0:Sys.argv.(0)
+        ~argv0:(Sys.get_argv ()).(0)
         ~args:worker_command_args
         ~env:(`Extend env)
         ()
