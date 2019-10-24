@@ -16,7 +16,7 @@ depends: [
   "core_kernel"
   "ppx_jane"
   "sexplib"
-  "dune"        {build & >= "1.5.1"}
+  "dune"        {>= "1.5.1"}
 ]
 synopsis: "Type-safe parallel library built on top of Async_rpc"
 description: "
