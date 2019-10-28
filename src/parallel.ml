@@ -1028,9 +1028,31 @@ module Make (S : Worker_spec) = struct
     if am_running_inline_test then Error.tag ~tag error else error
   ;;
 
+  (* Specific environment variables that influence process execution that a child should
+     inherit from the parent. Not copying can result in confusing behavior based on how
+     RPC Parallel is configured because:
+     - If no use of other machines is configured, all processes run locally and inherit
+       the parent's full environment
+     - If another machine is configured, all processes (even local ones) do not inherit
+       the parent's environment *)
+  let ocaml_env_vars_to_child = [ "OCAMLRUNPARAM"; "ASYNC_CONFIG" ]
+
+  let ocaml_env_from_parent =
+    lazy
+      (List.filter_map ocaml_env_vars_to_child ~f:(fun var ->
+         Option.map (Unix.getenv var) ~f:(fun value -> var, value)))
+  ;;
+
   let spawn_process ~where ~env ~cd ~name ~connection_timeout ~daemonize_args =
     let where = Option.value where ~default:Executable_location.Local in
-    let env = Option.value env ~default:[] in
+    let env =
+      (* [force ocaml_env_from_parent] must come before [Option.value env ~default:[]]
+         so any user-supplied [env] can override [ocaml_env_from_parent]. *)
+      force ocaml_env_from_parent @ Option.value env ~default:[]
+      |> List.fold ~init:String.Map.empty ~f:(fun acc (key, data) ->
+        Map.set acc ~key ~data)
+      |> Map.to_alist
+    in
     let cd = Option.value cd ~default:"/" in
     let connection_timeout =
       Option.value connection_timeout ~default:connection_timeout_default
