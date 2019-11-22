@@ -7,7 +7,7 @@ open! Async
     'response Deferred.t] that can only be run on a ['worker]. Under the hood it
     represents an Async Rpc protocol that we know a ['worker] will implement. *)
 module type Function = sig
-  type ('worker, 'query, 'response) t
+  type ('worker, 'query, +'response) t
 
   module Direct_pipe : sig
     type nonrec ('worker, 'query, 'response) t =
@@ -165,7 +165,7 @@ module type Worker = sig
       [Worker_spec] module. This initializes a persistent worker state for all connections
       to this worker. *)
   type 'a with_spawn_args =
-    ?where:Executable_location.t (** default Local *)
+    ?how:How_to_run.t (** default [How_to_run.local] *)
     -> ?name:string
     -> ?env:(string * string) list
     -> ?connection_timeout:Time.Span.t (** default 10 sec *)
@@ -500,9 +500,9 @@ module type Parallel = sig
      and type worker_state_init_arg := S.Worker_state.init_arg
      and type connection_state_init_arg := S.Connection_state.init_arg
 
-  (** [start_app command] should be called from the top-level in order to start the parallel
-      application. This function will parse certain environment variables and determine
-      whether to start as a master or a worker.
+  (** [start_app command] should be called from the top-level in order to start the
+      parallel application. This function will parse certain environment variables and
+      determine whether to start as a master or a worker.
 
       [rpc_max_message_size], [rpc_handshake_timeout], [rpc_heartbeat_config] can be used
       to alter the rpc defaults. These rpc settings will be used for all connections.

@@ -315,7 +315,7 @@ module Function = struct
         * ('q, 'query * 'in_progress) Type_equal.t
         -> ('worker, 'q, 'response) t_internal
 
-  type ('worker, 'query, 'response) t =
+  type ('worker, 'query, +'response) t =
     | T :
         ('query -> 'query_internal)
         * ('worker, 'query_internal, 'response_internal) t_internal
@@ -764,26 +764,14 @@ module Make (S : Worker_spec) = struct
     ;;
   end
 
-  let run_executable where ~env ~worker_command_args ~input =
+  let run_executable how ~env ~worker_command_args ~input =
     Utils.create_worker_env ~extra:env
     |> return
     >>=? fun env ->
-    match where with
-    | Executable_location.Local ->
-      Process.create
-        ~prog:(Utils.our_binary ())
-        ~argv0:(Sys.get_argv ()).(0)
-        ~args:worker_command_args
-        ~env:(`Extend env)
-        ()
-      >>|? fun p ->
-      Writer.write_sexp (Process.stdin p) input;
-      p
-    | Executable_location.Remote exec ->
-      Remote_executable.run exec ~env ~args:worker_command_args
-      >>|? fun p ->
-      Writer.write_sexp (Process.stdin p) input;
-      p
+    How_to_run.run how ~env ~worker_command_args
+    >>|? fun p ->
+    Writer.write_sexp (Process.stdin p) input;
+    p
   ;;
 
   module Function_creator = struct
@@ -998,7 +986,7 @@ module Make (S : Worker_spec) = struct
   end
 
   type 'a with_spawn_args =
-    ?where:Executable_location.t
+    ?how:How_to_run.t
     -> ?name:string
     -> ?env:(string * string) list
     -> ?connection_timeout:Time.Span.t
@@ -1043,8 +1031,8 @@ module Make (S : Worker_spec) = struct
          Option.map (Unix.getenv var) ~f:(fun value -> var, value)))
   ;;
 
-  let spawn_process ~where ~env ~cd ~name ~connection_timeout ~daemonize_args =
-    let where = Option.value where ~default:Executable_location.Local in
+  let spawn_process ~how ~env ~cd ~name ~connection_timeout ~daemonize_args =
+    let how = Option.value how ~default:How_to_run.local in
     let env =
       (* [force ocaml_env_from_parent] must come before [Option.value env ~default:[]]
          so any user-supplied [env] can override [ocaml_env_from_parent]. *)
@@ -1091,7 +1079,7 @@ module Make (S : Worker_spec) = struct
         if pass_name then args @ Option.to_list name else args
     in
     Hashtbl.add_exn global_state.pending ~key:id ~data:pending_ivar;
-    match%map run_executable where ~env ~worker_command_args ~input with
+    match%map run_executable how ~env ~worker_command_args ~input with
     | Error _ as err ->
       Hashtbl.remove global_state.pending id;
       err
@@ -1206,7 +1194,7 @@ module Make (S : Worker_spec) = struct
 
   let spawn_in_foreground_aux
         (type a)
-        ?where
+        ?how
         ?name
         ?env
         ?connection_timeout
@@ -1227,7 +1215,7 @@ module Make (S : Worker_spec) = struct
     let with_spawned_worker ~client_will_immediately_connect ~setup_master_heartbeater ~f
       =
       let%bind id, process =
-        spawn_process ~where ~env ~cd ~name ~connection_timeout ~daemonize_args
+        spawn_process ~how ~env ~cd ~name ~connection_timeout ~daemonize_args
         |> Deferred.Result.map_error ~f:(fun e -> e, `Worker_process None)
       in
       finalize_on_error
@@ -1282,7 +1270,7 @@ module Make (S : Worker_spec) = struct
 
   let spawn_in_foreground
         (type a)
-        ?where
+        ?how
         ?name
         ?env
         ?connection_timeout
@@ -1298,7 +1286,7 @@ module Make (S : Worker_spec) = struct
       : a
       =
       spawn_in_foreground_aux
-        ?where
+        ?how
         ?name
         ?env
         ?connection_timeout
@@ -1329,7 +1317,7 @@ module Make (S : Worker_spec) = struct
 
   let spawn_in_foreground_exn
         (type a)
-        ?where
+        ?how
         ?name
         ?env
         ?connection_timeout
@@ -1344,7 +1332,7 @@ module Make (S : Worker_spec) = struct
     | Disconnect ->
       fun ~connection_state_init_arg ->
         spawn_in_foreground
-          ?where
+          ?how
           ?name
           ?env
           ?connection_timeout
@@ -1356,7 +1344,7 @@ module Make (S : Worker_spec) = struct
         >>| ok_exn
     | Heartbeater_timeout ->
       spawn_in_foreground
-        ?where
+        ?how
         ?name
         ?env
         ?connection_timeout
@@ -1367,7 +1355,7 @@ module Make (S : Worker_spec) = struct
       >>| ok_exn
     | Called_shutdown_function ->
       spawn_in_foreground
-        ?where
+        ?how
         ?name
         ?env
         ?connection_timeout
@@ -1403,7 +1391,7 @@ module Make (S : Worker_spec) = struct
 
   let spawn
         (type a)
-        ?where
+        ?how
         ?name
         ?env
         ?connection_timeout
@@ -1426,7 +1414,7 @@ module Make (S : Worker_spec) = struct
     in
     let spawn_worker ~client_will_immediately_connect ~setup_master_heartbeater =
       match%bind
-        spawn_process ~where ~env ~cd ~name ~connection_timeout ~daemonize_args
+        spawn_process ~how ~env ~cd ~name ~connection_timeout ~daemonize_args
       with
       | Error e -> return (Error e)
       | Ok (id, process) ->
@@ -1464,7 +1452,7 @@ module Make (S : Worker_spec) = struct
 
   let spawn_exn
         (type a)
-        ?where
+        ?how
         ?name
         ?env
         ?connection_timeout
@@ -1482,7 +1470,7 @@ module Make (S : Worker_spec) = struct
     | Disconnect ->
       fun ~connection_state_init_arg ->
         spawn
-          ?where
+          ?how
           ?name
           ?env
           ?connection_timeout
@@ -1497,7 +1485,7 @@ module Make (S : Worker_spec) = struct
         >>| ok_exn
     | Heartbeater_timeout ->
       spawn
-        ?where
+        ?how
         ?name
         ?env
         ?connection_timeout
@@ -1511,7 +1499,7 @@ module Make (S : Worker_spec) = struct
       >>| ok_exn
     | Called_shutdown_function ->
       spawn
-        ?where
+        ?how
         ?name
         ?env
         ?connection_timeout
@@ -1527,7 +1515,7 @@ module Make (S : Worker_spec) = struct
 
   module Deprecated = struct
     let spawn_and_connect
-          ?where
+          ?how
           ?name
           ?env
           ?connection_timeout
@@ -1540,7 +1528,7 @@ module Make (S : Worker_spec) = struct
           worker_state_init_arg
       =
       spawn
-        ?where
+        ?how
         ?name
         ?env
         ?connection_timeout
@@ -1558,7 +1546,7 @@ module Make (S : Worker_spec) = struct
     ;;
 
     let spawn_and_connect_exn
-          ?where
+          ?how
           ?name
           ?env
           ?connection_timeout
@@ -1571,7 +1559,7 @@ module Make (S : Worker_spec) = struct
           worker_state_init_arg
       =
       spawn_and_connect
-        ?where
+        ?how
         ?name
         ?env
         ?connection_timeout

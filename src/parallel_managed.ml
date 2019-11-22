@@ -16,7 +16,7 @@ module type Worker = sig
   val id : t -> Id.t
 
   val spawn
-    :  ?where:Executable_location.t
+    :  ?how:How_to_run.t
     -> ?name:string
     -> ?env:(string * string) list
     -> ?connection_timeout:Time.Span.t
@@ -30,7 +30,7 @@ module type Worker = sig
     -> t Or_error.t Deferred.t
 
   val spawn_exn
-    :  ?where:Executable_location.t
+    :  ?how:How_to_run.t
     -> ?name:string
     -> ?env:(string * string) list
     -> ?connection_timeout:Time.Span.t
@@ -109,7 +109,7 @@ module Make (S : Parallel.Worker_spec) = struct
   ;;
 
   let spawn
-        ?where
+        ?how
         ?name
         ?env
         ?connection_timeout
@@ -122,7 +122,7 @@ module Make (S : Parallel.Worker_spec) = struct
         ~on_failure
     =
     Unmanaged.spawn
-      ?where
+      ?how
       ?env
       ?name
       ?connection_timeout
@@ -153,7 +153,7 @@ module Make (S : Parallel.Worker_spec) = struct
   ;;
 
   let spawn_exn
-        ?where
+        ?how
         ?name
         ?env
         ?connection_timeout
@@ -166,7 +166,7 @@ module Make (S : Parallel.Worker_spec) = struct
         ~on_failure
     =
     spawn
-      ?where
+      ?how
       ?name
       ?env
       ?connection_timeout

@@ -41,4 +41,5 @@ val run
   :  _ t
   -> env:(string * string) list
   -> args:string list
+  -> wrap:(Prog_and_args.t -> Prog_and_args.t)
   -> Process.t Or_error.t Deferred.t

@@ -11,11 +11,12 @@ open! Core
     [Worker.t] as well as the implementations for these functions. In addition, [T]
     specifies worker states and connection states. See README for more details *)
 
-module Remote_executable = Remote_executable
-module Executable_location = Executable_location
 module Fd_redirection = Fd_redirection
+module How_to_run = How_to_run
 module Managed = Parallel_managed
 module Map_reduce = Map_reduce
+module Prog_and_args = Prog_and_args
+module Remote_executable = Remote_executable
 include Parallel
 
 (** Old [Std] style interface, which has slightly different module names. *)

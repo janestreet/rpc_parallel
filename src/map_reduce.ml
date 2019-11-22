@@ -141,9 +141,9 @@ module Make_rpc_parallel_worker (S : Rpc_parallel_worker_spec) = struct
   type run_input_type = S.Run_input.t
   type run_output_type = S.Run_output.t
 
-  let spawn_exn where param ?cd ~redirect_stderr ~redirect_stdout =
+  let spawn_exn how param ?cd ~redirect_stderr ~redirect_stdout =
     Parallel_worker.spawn_exn
-      ~where
+      ~how
       ?cd
       ~shutdown_on:Disconnect
       ~redirect_stderr
@@ -179,11 +179,11 @@ module Make_rpc_parallel_worker (S : Rpc_parallel_worker_spec) = struct
     in
     let%map local_workers, remote_workers =
       Deferred.both
-        (spawn_n Local local)
+        (spawn_n How_to_run.local local)
         (Deferred.List.concat_map
            ~how:`Parallel
            remote
-           ~f:(fun (Packed_remote remote, n) -> spawn_n (Remote remote) n))
+           ~f:(fun (Packed_remote remote, n) -> spawn_n (How_to_run.remote remote) n))
     in
     local_workers @ remote_workers
   ;;

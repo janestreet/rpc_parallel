@@ -46,17 +46,12 @@ let delete executable =
   >>|? Fn.const ()
 ;;
 
-let command env binary =
+let env_for_ssh env =
   let cheesy_escape str = Sexp.to_string (String.sexp_of_t str) in
-  let env =
-    String.concat
-      (List.map env ~f:(fun (key, data) -> key ^ "=" ^ cheesy_escape data))
-      ~sep:" "
-  in
-  sprintf "%s %s" env binary
+  List.map env ~f:(fun (key, data) -> key ^ "=" ^ cheesy_escape data)
 ;;
 
-let run exec ~env ~args =
+let run exec ~env ~args ~wrap =
   Utils.our_md5 ()
   >>=? fun md5 ->
   Process.run
@@ -71,9 +66,10 @@ let run exec ~env ~args =
       "The remote executable %s:%s does not match the local executable"
       exec.host
       exec.path
-  else
+  else (
+    let { Prog_and_args.prog; args } = wrap { Prog_and_args.prog = exec.path; args } in
     Process.create
       ~prog:"ssh"
-      ~args:(exec.host_key_checking @ [ exec.host; command env exec.path ] @ args)
-      ()
+      ~args:(exec.host_key_checking @ [ exec.host ] @ env_for_ssh env @ [ prog ] @ args)
+      ())
 ;;

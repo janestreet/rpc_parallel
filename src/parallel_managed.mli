@@ -28,7 +28,7 @@ module type Worker = sig
 
 
   val spawn
-    :  ?where:Executable_location.t
+    :  ?how:How_to_run.t
     -> ?name:string
     -> ?env:(string * string) list
     -> ?connection_timeout:Time.Span.t
@@ -42,7 +42,7 @@ module type Worker = sig
     -> t Or_error.t Deferred.t
 
   val spawn_exn
-    :  ?where:Executable_location.t
+    :  ?how:How_to_run.t
     -> ?name:string
     -> ?env:(string * string) list
     -> ?connection_timeout:Time.Span.t
