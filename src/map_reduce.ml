@@ -145,7 +145,7 @@ module Make_rpc_parallel_worker (S : Rpc_parallel_worker_spec) = struct
     Parallel_worker.spawn_exn
       ~how
       ?cd
-      ~shutdown_on:Disconnect
+      ~shutdown_on:Connection_closed
       ~redirect_stderr
       ~redirect_stdout
       param

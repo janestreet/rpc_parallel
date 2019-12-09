@@ -93,7 +93,7 @@ let command =
     Command.Spec.(empty)
     (fun () ->
        Worker.spawn
-         ~shutdown_on:Heartbeater_timeout
+         ~shutdown_on:Heartbeater_connection_timeout
          ~redirect_stdout:`Dev_null
          ~redirect_stderr:`Dev_null
          ~on_failure:Error.raise
@@ -102,7 +102,7 @@ let command =
        Worker.Connection.client worker ()
        >>=? fun worker_conn ->
        Dispatcher.spawn
-         ~shutdown_on:Disconnect
+         ~shutdown_on:Connection_closed
          ~redirect_stdout:`Dev_null
          ~redirect_stderr:`Dev_null
          ~on_failure:Error.raise

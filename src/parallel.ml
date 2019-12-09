@@ -697,7 +697,7 @@ module Make (S : Worker_spec) = struct
       type_ : Worker_type_id.t
     (* Persistent states associated with instances of this worker server *)
     ; states : S.Worker_state.t Worker_id.Table.t
-    (* To facilitate cleanup in the [Shutdown_on.Disconnect] case *)
+    (* To facilitate cleanup in the [Shutdown_on.Connection_closed] case *)
     ; mutable client_has_connected : bool
     (* Build up a list of all implementations for this worker type *)
     ; mutable implementations :
@@ -960,11 +960,11 @@ module Make (S : Worker_spec) = struct
 
   module Shutdown_on (M : T1) = struct
     type _ t =
-      | Disconnect
+      | Connection_closed
         : (connection_state_init_arg:S.Connection_state.init_arg
            -> Connection.t M.t Deferred.t)
             t
-      | Heartbeater_timeout : worker M.t Deferred.t t
+      | Heartbeater_connection_timeout : worker M.t Deferred.t t
       | Called_shutdown_function : worker M.t Deferred.t t
 
     let args
@@ -973,9 +973,9 @@ module Make (S : Worker_spec) = struct
         -> [ `Client_will_immediately_connect of bool ]
            * [ `Setup_master_heartbeater of bool ]
       = function
-        | Heartbeater_timeout ->
+        | Heartbeater_connection_timeout ->
           `Client_will_immediately_connect false, `Setup_master_heartbeater true
-        | Disconnect ->
+        | Connection_closed ->
           (* No heartbeater needed because we call
              [Connection.client_with_worker_shutdown_on_disconnect] and the worker shuts
              itself down if it times out waiting for a connection from the master. *)
@@ -1002,7 +1002,7 @@ module Make (S : Worker_spec) = struct
      (2) a worker hasn't gotten its [init_arg] from the master within [connection_timeout]
      of sending the register rpc
 
-     Additionally, if [~shutdown_on:Disconnect] was used:
+     Additionally, if [~shutdown_on:Connection_closed] was used:
      (3) a worker will shut itself down if it doesn't get a connection from the master
      after spawn succeeded. *)
   let connection_timeout_default = sec 10.
@@ -1236,12 +1236,12 @@ module Make (S : Worker_spec) = struct
            f (worker, process))
     in
     match shutdown_on with
-    | Heartbeater_timeout ->
+    | Heartbeater_connection_timeout ->
       with_spawned_worker
         ~client_will_immediately_connect
         ~setup_master_heartbeater
         ~f:return
-    | Disconnect ->
+    | Connection_closed ->
       fun ~connection_state_init_arg ->
         with_spawned_worker
           ~client_will_immediately_connect
@@ -1296,12 +1296,12 @@ module Make (S : Worker_spec) = struct
         worker_state_init_arg
     in
     match shutdown_on with
-    | Heartbeater_timeout ->
-      spawn_in_foreground_aux ~shutdown_on:Heartbeater_timeout
+    | Heartbeater_connection_timeout ->
+      spawn_in_foreground_aux ~shutdown_on:Heartbeater_connection_timeout
       >>| Result.map_error ~f:fst
-    | Disconnect ->
+    | Connection_closed ->
       fun ~connection_state_init_arg ->
-        spawn_in_foreground_aux ~shutdown_on:Disconnect ~connection_state_init_arg
+        spawn_in_foreground_aux ~shutdown_on:Connection_closed ~connection_state_init_arg
         >>| Result.map_error ~f:fst
     | Called_shutdown_function ->
       spawn_in_foreground_aux ~shutdown_on:Called_shutdown_function
@@ -1329,7 +1329,7 @@ module Make (S : Worker_spec) = struct
     =
     let open Spawn_in_foreground_exn_shutdown_on in
     match shutdown_on with
-    | Disconnect ->
+    | Connection_closed ->
       fun ~connection_state_init_arg ->
         spawn_in_foreground
           ?how
@@ -1338,11 +1338,11 @@ module Make (S : Worker_spec) = struct
           ?connection_timeout
           ?cd
           ~on_failure
-          ~shutdown_on:Disconnect
+          ~shutdown_on:Connection_closed
           init_arg
           ~connection_state_init_arg
         >>| ok_exn
-    | Heartbeater_timeout ->
+    | Heartbeater_connection_timeout ->
       spawn_in_foreground
         ?how
         ?name
@@ -1350,7 +1350,7 @@ module Make (S : Worker_spec) = struct
         ?connection_timeout
         ?cd
         ~on_failure
-        ~shutdown_on:Heartbeater_timeout
+        ~shutdown_on:Heartbeater_connection_timeout
         init_arg
       >>| ok_exn
     | Called_shutdown_function ->
@@ -1433,9 +1433,9 @@ module Make (S : Worker_spec) = struct
     in
     let open Spawn_shutdown_on in
     match shutdown_on with
-    | Heartbeater_timeout ->
+    | Heartbeater_connection_timeout ->
       spawn_worker ~client_will_immediately_connect ~setup_master_heartbeater
-    | Disconnect ->
+    | Connection_closed ->
       fun ~connection_state_init_arg ->
         spawn_worker ~client_will_immediately_connect ~setup_master_heartbeater
         >>=? fun worker ->
@@ -1467,7 +1467,7 @@ module Make (S : Worker_spec) = struct
     =
     let open Spawn_exn_shutdown_on in
     match shutdown_on with
-    | Disconnect ->
+    | Connection_closed ->
       fun ~connection_state_init_arg ->
         spawn
           ?how
@@ -1477,13 +1477,13 @@ module Make (S : Worker_spec) = struct
           ?cd
           ~on_failure
           ?umask
-          ~shutdown_on:Disconnect
+          ~shutdown_on:Connection_closed
           ~redirect_stdout
           ~redirect_stderr
           init_arg
           ~connection_state_init_arg
         >>| ok_exn
-    | Heartbeater_timeout ->
+    | Heartbeater_connection_timeout ->
       spawn
         ?how
         ?name
@@ -1492,7 +1492,7 @@ module Make (S : Worker_spec) = struct
         ?cd
         ~on_failure
         ?umask
-        ~shutdown_on:Heartbeater_timeout
+        ~shutdown_on:Heartbeater_connection_timeout
         ~redirect_stdout
         ~redirect_stderr
         init_arg
@@ -1537,7 +1537,7 @@ module Make (S : Worker_spec) = struct
         ~redirect_stdout
         ~redirect_stderr
         ~on_failure
-        ~shutdown_on:Heartbeater_timeout
+        ~shutdown_on:Heartbeater_connection_timeout
         worker_state_init_arg
       >>=? fun worker ->
       with_shutdown_on_error worker ~f:(fun () ->

@@ -46,7 +46,7 @@ let main () =
   let%bind connections =
     Array.init shards ~f:(fun id ->
       Shard.spawn_exn
-        ~shutdown_on:Disconnect
+        ~shutdown_on:Connection_closed
         ~redirect_stdout:`Dev_null
         ~redirect_stderr:`Dev_null
         ~on_failure:Error.raise

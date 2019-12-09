@@ -60,7 +60,7 @@ let main max log_dir () =
   Sum_worker.spawn
     ~on_failure:Error.raise
     ?cd:log_dir
-    ~shutdown_on:Disconnect
+    ~shutdown_on:Connection_closed
     ~redirect_stdout
     ~redirect_stderr
     ~connection_state_init_arg:()

@@ -128,7 +128,7 @@ module Make (S : Parallel.Worker_spec) = struct
       ?connection_timeout
       ?cd
       ?umask
-      ~shutdown_on:Heartbeater_timeout
+      ~shutdown_on:Heartbeater_connection_timeout
       ~redirect_stdout
       ~redirect_stderr
       worker_state_init_arg

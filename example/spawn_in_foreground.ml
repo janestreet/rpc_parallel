@@ -40,7 +40,7 @@ end
 
 let main () =
   Worker.spawn_in_foreground
-    ~shutdown_on:Disconnect
+    ~shutdown_on:Connection_closed
     ~connection_state_init_arg:()
     ~on_failure:Error.raise
     ()

@@ -47,7 +47,7 @@ let main () =
   let%bind worker =
     Worker.spawn_exn
       ~on_failure:Error.raise
-      ~shutdown_on:Heartbeater_timeout
+      ~shutdown_on:Heartbeater_connection_timeout
       ~redirect_stdout:`Dev_null
       ~redirect_stderr:`Dev_null
       ()

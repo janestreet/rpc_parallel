@@ -52,7 +52,7 @@ let main_command =
        let%map (_connection : Worker.Connection.t) =
          Worker.spawn_exn
            ~on_failure:Error.raise
-           ~shutdown_on:Disconnect
+           ~shutdown_on:Connection_closed
            ~connection_state_init_arg:()
            ~redirect_stdout:`Dev_null
            ~redirect_stderr:`Dev_null

@@ -41,7 +41,7 @@ let main max =
   let%bind conn =
     spawn
       ~on_failure:Error.raise
-      ~shutdown_on:Disconnect
+      ~shutdown_on:Connection_closed
       ~redirect_stdout:`Dev_null
       ~redirect_stderr:`Dev_null
       ~connection_state_init_arg:()

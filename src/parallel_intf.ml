@@ -124,16 +124,19 @@ module type Worker = sig
 
   module Shutdown_on (M : T1) : sig
     type _ t =
-      | Disconnect
+      | Connection_closed
         : (connection_state_init_arg:connection_state_init_arg
            -> Connection.t M.t Deferred.t)
             t
       (** An initial connection to the worker is established. The worker shuts itself down
-          when [Rpc.Connection.close_finished] on this connection. *)
-      | Heartbeater_timeout : worker M.t Deferred.t t
+          when [Rpc.Connection.close_finished] on this connection, which is likely when
+          the master process exits or explicitly calls [Rpc.Connection.close], but can
+          also result from network problems or long async cycles. *)
+      | Heartbeater_connection_timeout : worker M.t Deferred.t t
       (** A "heartbeater" connection is established between the worker and its master. The
-          worker shuts itself down when [Rpc.Connection.close_finished] on this connection,
-          which is likely when the master process exits. *)
+          worker shuts itself down when [Rpc.Connection.close_finished] on this
+          connection, which is likely when the master process exits, but can also result
+          from network problems or long async cycles. *)
       | Called_shutdown_function : worker M.t Deferred.t t
       (** WARNING! Worker's spawned with this variant do not shutdown when the master
           process exits. The worker only shuts itself down on an explicit shutdown
@@ -229,12 +232,12 @@ module type Worker = sig
   val shutdown : t -> unit Or_error.t Deferred.t
 
   module Deprecated : sig
-    (** This is nearly identical to calling [spawn ~shutdown_on:Heartbeater_timeout] and
+    (** This is nearly identical to calling [spawn ~shutdown_on:Heartbeater_connection_timeout] and
         then [Connection.client]. The only difference is that this function handles
         shutting down the worker when [Connection.client] returns an error.
 
         Uses of [spawn_and_connect] that disregard [t] can likely be replaced with [spawn
-        ~shutdown_on:Disconnect]. If [t] is used for reconnecting, then you can use [spawn]
+        ~shutdown_on:Connection_closed]. If [t] is used for reconnecting, then you can use [spawn]
         followed by [Connection.client]. *)
     val spawn_and_connect
       : (?umask:int
