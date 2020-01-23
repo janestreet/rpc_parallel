@@ -13,11 +13,17 @@ open! Core
 
 module Fd_redirection = Fd_redirection
 module How_to_run = How_to_run
-module Managed = Parallel_managed
 module Map_reduce = Map_reduce
 module Prog_and_args = Prog_and_args
 module Remote_executable = Remote_executable
 include Parallel
+
+(** [Rpc_parallel.Managed] is a wrapper around [Rpc_parallel] that attempts to make manage
+    connections for you, but it ended up being too magical to reason about, so you should
+    prefer to use the plain [Rpc_parallel] interface. *)
+module Managed = Parallel_managed
+[@@alert
+  legacy "Prefer using the plain [Rpc_parallel] instead of [Rpc_parallel.Managed]"]
 
 (** Old [Std] style interface, which has slightly different module names. *)
 module Std = struct end
