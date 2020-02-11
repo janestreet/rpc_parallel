@@ -1,0 +1,53 @@
+#+TITLE: Migrating off Rpc\_parallel.Managed
+
+* What is Rpc\_parallel.Managed?
+
+  This module exposes a =Make= functor that is built on top of
+  =Rpc_parallel.Make=. The primary difference is that the interface
+  doesn't expose a =Connection.t=. Under the hood, =spawn= will spawn
+  a worker and make a connection to the worker. This connection is
+  stored in a hash table. When this connection is closed, the
+  connection is removed from the table. =run= looks for a cached
+  connection, reconnecting if there is none.
+
+* Why you shouldn't use this
+
+  The semantics of the reconnect and error reporting are not
+  well-defined.
+
+  Regarding reconnect, the library will attempt to reconnect, but it
+  won't attempt to respawn. Unless your worker is intentionally
+  closing connections, it is most likely the case that a connection
+  closure is indicative of a problem that would require a respawn
+  (e.g. the worker actually exited).
+
+  Regarding error reporting, there is an exposed =on_failure= callback
+  that is passed through as an argument to =on_failure= for the
+  unmanaged worker. In addition, this callback is used to report when
+  the first connection is closed. Subsequent connection closures don't
+  trigger the callback. This means that some classes of errors might
+  result in =on_failure= being called twice.
+
+  This module was created primarily for backwards compatibility with
+  code that used earlier versions of =Rpc_parallel=. New code should
+  use =Rpc_parallel.Make=.
+
+* How to migrate
+
+  If your code is never reconnecting to a spawned worker, you can
+  safely use =Rpc_parallel.Make= and pass through
+  =~shutdown_on:Connection_closed= to =spawn=. This will give you back
+  a =Connection.t=, so it isn't even possible for you to reconnect.
+
+  If you don't know if you are reconnecting, you can add some logging
+  to the =on_error= callback that you supply to the managed worker's
+  =spawn= function. In general, if you aren't storing your =Worker.t=
+  anywhere and are immediately calling =run= after =spawn=, you are
+  almost certainly not reconnecting.
+
+  If you are relying on reconnect, we don't have a great alternative
+  right now. We recommend you think carefully about the semantics you
+  want for your reconnect logic and code something up. If there is
+  enough desire, we could add some library support. From looking
+  through our code base, very few users (if any!) of
+  =Rpc_parallel.Managed= actually reconnect.

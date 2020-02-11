@@ -1,12 +1,25 @@
-# Mental Model
+#+TITLE: Rpc\_parallel
+
+=Rpc_parallel= is a library that uses processes to achieve
+parallelism. Because of the garbage collector and async locks,
+thread-level parallelism in OCaml is not achievable.
+
+The library works by spawning processes that start rpc servers. The
+spawned process is running /proc/self/exe (i.e. the same executable as
+the running process). Communication between a "master" and a "worker"
+involves sending rpc queries and receiving rpc responses. The "worker"
+already has the code to do computation because it is running the same
+binary!
+
+* Mental Model
 
 - =Worker.t= identifies a worker rpc server
-- =spawn= (=serve=) starts a worker Rpc server in another process (the same
+- =spawn= (=serve=) starts a worker rpc server in another process (the same
   process)
-- =client= connects to a worker Rpc server
-- =run= dispatches on a connection to a worker Rpc server
+- =client= connects to a worker rpc server
+- =run= dispatches on a connection to a worker rpc server
 
-# Top-level
+* Top-level
 
 It is highly recommended for =Rpc_parallel.start_app= and =Rpc_parallel.Make=
 calls to be top-level. But the real requirements are:
@@ -27,10 +40,11 @@ calls to be top-level. But the real requirements are:
    regardless of master and worker code paths. This is necessary for the masters
    and workers to agree on certain generated ids.
 
-# Monitoring your workers
+* Monitoring your workers
 
-Uncaught exceptions in workers will always result in the worker shutting down.
-The master can be notified of these exceptions in multiple ways:
+Uncaught exceptions in workers will always result in the worker
+calling =Shutdown.shutdown=. The master can be notified of these
+exceptions in multiple ways:
 
 - If the exception occured in a function implementation =f= before =f= is
   determined, the exception will be returned back to the caller. E.g. the caller
@@ -43,14 +57,14 @@ The master can be notified of these exceptions in multiple ways:
 - If =redirect_stderr= specifies a file, the worker will also write its
   exception to that file before shutting down.
 
-# Optional Rpc Settings
+* Optional Rpc Settings
 
-The master's Rpc server will be started with the =max_message_size=,
+The master's rpc server will be started with the =max_message_size=,
 =heartbeat_config=, and =handshake_timeout= settings passed in to
 =start_app= / =init_master_exn=.
 
-Each worker's Rpc server will be started with the settings passed in upon
+Each worker's rpc server will be started with the settings passed in upon
 =spawn= or =serve= of that worker.
 
-All =client= calls will use the corresponding Rpc settings for the given
+All =client= calls will use the corresponding rpc settings for the given
 worker/master that it is connecting to.
