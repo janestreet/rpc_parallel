@@ -2,7 +2,7 @@ open Core
 open Async
 
 module T = struct
-  type 'worker functions = unit
+  type 'worker functions = { fail : ('worker, unit, unit) Rpc_parallel.Function.t }
 
   module Worker_state = struct
     type init_arg = unit [@@deriving bin_io]
@@ -19,16 +19,19 @@ module T = struct
        with type worker_state := Worker_state.t
         and type connection_state := Connection_state.t) =
   struct
-    let functions = ()
-
-    let init_worker_state () =
-      (* Make sure this exception is raised asynchronously. I'm not sure how to do this in
-         a non-racy way, but hopefully 0.01 seconds strikes the right balance of not being
-         racy but not introducing too much of a delay. *)
-      upon (after (sec 0.01)) (fun () -> failwith "asynchronous exception");
-      Deferred.unit
+    let fail =
+      C.create_one_way
+        ~f:(fun ~worker_state:() ~conn_state:() () ->
+          (* Make sure this exception is raised asynchronously. I'm not sure how to do
+             this in a non-racy way, but hopefully 0.01 seconds strikes the right balance
+             of not being racy but not introducing too much of a delay. *)
+          upon (after (sec 0.01)) (fun () -> failwith "asynchronous exception"))
+        ~bin_input:Unit.bin_t
+        ()
     ;;
 
+    let functions = { fail }
+    let init_worker_state () = Deferred.unit
     let init_connection_state ~connection:_ ~worker_state:_ = return
   end
 end
@@ -47,7 +50,7 @@ let error_to_string_masking_uuid error =
 
 let main () =
   let errors = Transaction.Var.create [] in
-  let%bind (_ : t) =
+  let%bind worker =
     spawn
       ~on_failure:(fun error ->
         Transaction.Var.replace_now errors (fun errors ->
@@ -58,6 +61,7 @@ let main () =
       ()
     >>| ok_exn
   in
+  let%bind () = run_exn worker ~f:functions.fail ~arg:() in
   match%bind
     (let open Transaction.Let_syntax in
      match%bind Transaction.Var.get errors with
