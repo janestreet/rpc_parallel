@@ -50,11 +50,13 @@ let error_to_string_masking_uuid error =
 
 let main () =
   let errors = Transaction.Var.create [] in
+  let add_error ~tag error =
+    Transaction.Var.replace_now errors (fun errors -> Error.tag ~tag error :: errors)
+  in
   let%bind worker =
     spawn
-      ~on_failure:(fun error ->
-        Transaction.Var.replace_now errors (fun errors ->
-          Error.tag ~tag:"on_failure" error :: errors))
+      ~on_failure:(add_error ~tag:"on_failure")
+      ~on_connection_to_worker_closed:(add_error ~tag:"on_connection_to_worker_closed")
       ~redirect_stdout:`Dev_null
       ~redirect_stderr:`Dev_null
       ()
@@ -89,9 +91,9 @@ let%expect_test "" =
   [%expect
     {|
     (errors
-     ( "(on_failure\
+     ("(on_connection_to_worker_closed \"Lost connection with worker\")"
+       "(on_failure\
       \n (5a863fc1-67b7-3a0a-dc90-aca2995afbf9\
       \n  (monitor.ml.Error (Failure \"asynchronous exception\")\
-      \n   (\"<backtrace elided in test>\"))))"
-      "(on_failure \"Lost connection with worker\")")) |}]
+      \n   (\"<backtrace elided in test>\"))))")) |}]
 ;;

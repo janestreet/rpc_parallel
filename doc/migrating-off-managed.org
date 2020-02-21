@@ -23,10 +23,12 @@
 
   Regarding error reporting, there is an exposed =on_failure= callback
   that is passed through as an argument to =on_failure= for the
-  unmanaged worker. In addition, this callback is used to report when
-  the first connection is closed. Subsequent connection closures don't
-  trigger the callback. This means that some classes of errors might
-  result in =on_failure= being called twice.
+  unmanaged worker. In addition, there is an
+  =on_connection_to_worker_closed= callback used to report when the
+  first connection is closed. Subsequent connection closures don't
+  trigger the callback. Some classes of errors might result in
+  =on_failure= and =on_connection_to_worker_closed= both being called
+  while others result in just one of them being called.
 
   This module was created primarily for backwards compatibility with
   code that used earlier versions of =Rpc_parallel=. New code should
