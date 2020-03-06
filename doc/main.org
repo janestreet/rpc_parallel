@@ -57,14 +57,18 @@ exceptions in multiple ways:
 - If =redirect_stderr= specifies a file, the worker will also write its
   exception to that file before shutting down.
 
-* Optional Rpc Settings
+* Dealing with long async cycles
 
-The master's rpc server will be started with the =max_message_size=,
-=heartbeat_config=, and =handshake_timeout= settings passed in to
-=start_app= / =init_master_exn=.
+Long async cycles can cause the connections to your workers to close.
+If you are using =~shutdown_on:Disconnect= (which is recommended!),
+then this connection closing will result in your worker shutting down.
 
-Each worker's rpc server will be started with the settings passed in upon
-=spawn= or =serve= of that worker.
+You can bump the =max_message_size=, =heartbeat_config=, and
+=handshake_timeout= settings that are used for all rpc communication.
+These settings are determined by (in descending order of preference):
 
-All =client= calls will use the corresponding rpc settings for the given
-worker/master that it is connecting to.
+1) The environment variable =RPC_PARALLEL_RPC_SETTINGS= (see
+   =Rpc_settings= in =lib/rpc_parallel/src/parallel.ml= for how to
+   construct a value)
+2) Arguments supplied to =start_app= or =Expert.start_master_server_exn=
+3) The defaults supplied by the =Rpc= library

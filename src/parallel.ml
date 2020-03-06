@@ -29,14 +29,24 @@ module Worker_id = Utils.Worker_id
 
 module Rpc_settings = struct
   type t =
-    { max_message_size : int option
-    ; handshake_timeout : Time.Span.t option
-    ; heartbeat_config : Rpc.Connection.Heartbeat_config.t option
+    { max_message_size : int option [@sexp.option]
+    ; handshake_timeout : Time.Span.t option [@sexp.option]
+    ; heartbeat_config : Rpc.Connection.Heartbeat_config.t option [@sexp.option]
     }
   [@@deriving sexp, bin_io]
 
-  let create ~max_message_size ~handshake_timeout ~heartbeat_config =
-    { max_message_size; handshake_timeout; heartbeat_config }
+  let env_var = "RPC_PARALLEL_RPC_SETTINGS"
+
+  let create_with_env_override ~max_message_size ~handshake_timeout ~heartbeat_config =
+    match Sys.getenv env_var with
+    | None -> { max_message_size; handshake_timeout; heartbeat_config }
+    | Some value ->
+      let from_env = [%of_sexp: t] (Sexp.of_string value) in
+      { max_message_size = Option.first_some from_env.max_message_size max_message_size
+      ; handshake_timeout =
+          Option.first_some from_env.handshake_timeout handshake_timeout
+      ; heartbeat_config = Option.first_some from_env.heartbeat_config heartbeat_config
+      }
   ;;
 end
 
@@ -641,7 +651,7 @@ let init_master_state
   | Some _state -> failwith "Master state must not be set up twice"
   | None ->
     let app_rpc_settings =
-      Rpc_settings.create
+      Rpc_settings.create_with_env_override
         ~max_message_size:rpc_max_message_size
         ~handshake_timeout:rpc_handshake_timeout
         ~heartbeat_config:rpc_heartbeat_config
@@ -891,7 +901,10 @@ module Make (S : Worker_spec) = struct
       let%map state = User_functions.init_worker_state worker_state_init_arg in
       Hashtbl.add_exn worker_state.states ~key:id ~data:state;
       let rpc_settings =
-        Rpc_settings.create ~max_message_size ~handshake_timeout ~heartbeat_config
+        Rpc_settings.create_with_env_override
+          ~max_message_size
+          ~handshake_timeout
+          ~heartbeat_config
       in
       { host_and_port = Host_and_port.create ~host ~port; rpc_settings; id; name = None }
   ;;
