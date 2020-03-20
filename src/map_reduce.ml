@@ -11,6 +11,7 @@ module Half_open_interval = struct
       if l >= u
       then
         failwiths
+          ~here:[%here]
           "Lower bound must be less than upper bound"
           (l, u)
           [%sexp_of: int * int];
@@ -28,6 +29,7 @@ module Half_open_interval = struct
         if intersects t1 t2
         then
           failwiths
+            ~here:[%here]
             "Cannot compare unequal intersecting intervals"
             (t1, t2)
             [%sexp_of: t * t];
@@ -157,14 +159,20 @@ module Make_rpc_parallel_worker (S : Rpc_parallel_worker_spec) = struct
         { Config.local; remote; cd; redirect_stderr; redirect_stdout }
         param
     =
-    if local < 0 then failwiths "config.local must be nonnegative" local Int.sexp_of_t;
+    if local < 0
+    then failwiths ~here:[%here] "config.local must be nonnegative" local Int.sexp_of_t;
     (match List.find remote ~f:(fun (_remote, n) -> n < 0) with
      | Some remote ->
-       failwiths "remote number of workers must be nonnegative" (snd remote) Int.sexp_of_t
+       failwiths
+         ~here:[%here]
+         "remote number of workers must be nonnegative"
+         (snd remote)
+         Int.sexp_of_t
      | None -> ());
     if local = 0 && not (List.exists remote ~f:(fun (_remote, n) -> n > 0))
     then
       failwiths
+        ~here:[%here]
         "total number of workers must be positive"
         (local, List.map remote ~f:snd)
         [%sexp_of: int * int list];

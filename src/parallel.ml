@@ -1740,8 +1740,10 @@ let worker_main ~worker_env =
         (Tcp.Where_to_connect.of_host_and_port config.master)
         (fun conn -> Rpc.Rpc.dispatch Register_rpc.rpc conn (id, my_host_and_port))
     with
-    | Error exn -> failwiths "Worker failed to register" exn [%sexp_of: Exn.t]
-    | Ok (Error e) -> failwiths "Worker failed to register" e [%sexp_of: Error.t]
+    | Error exn ->
+      failwiths ~here:[%here] "Worker failed to register" exn [%sexp_of: Exn.t]
+    | Ok (Error e) ->
+      failwiths ~here:[%here] "Worker failed to register" e [%sexp_of: Error.t]
     | Ok (Ok `Shutdown) -> failwith "Got [`Shutdown] on register"
     | Ok (Ok `Registered) -> ()
   in

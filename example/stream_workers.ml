@@ -144,7 +144,7 @@ module Worker = struct
 end
 
 let handle_error worker err =
-  failwiths (sprintf "error in %s" worker) err Error.sexp_of_t
+  failwiths ~here:[%here] (sprintf "error in %s" worker) err Error.sexp_of_t
 ;;
 
 let command =
