@@ -377,10 +377,10 @@ module type Creator = sig
     -> unit
     -> (worker, 'query * 'update Pipe.Reader.t, 'response) _function
 
-  (** [create_reverse_pipe ?name ~f ~bin_query ~bin_update ~bin_response ()] generates a
-      function allowing you to send a [query] and a direct stream of [update]s to a
-      worker. The worker will send back a [response]. It is up to you whether to send a
-      [response] before or after finishing with the pipe; Rpc_parallel doesn't care. *)
+  (** [create_reverse_direct_pipe ?name ~f ~bin_query ~bin_update ~bin_response ()]
+      generates a function allowing you to send a [query] and a direct stream of [update]s
+      to a worker. The worker will send back a [response]. It is up to you whether to send
+      a [response] before or after finishing with the pipe; Rpc_parallel doesn't care. *)
   val create_reverse_direct_pipe
     :  ?name:string
     -> f:(worker_state:worker_state
