@@ -503,6 +503,21 @@ module type Parallel = sig
      and type worker_state_init_arg := S.Worker_state.init_arg
      and type connection_state_init_arg := S.Connection_state.init_arg
 
+  module Rpc_settings : sig
+    (** [env_var] is the name of the environment variable read by rpc-parallel on start-up
+        to inject additional rpc-settings for the application. *)
+    val env_var : string
+
+    (** [to_string_for_env_var] generates the expected string format from the arguments
+        matching the [start_app] function to be used with the [env_var] above. *)
+    val to_string_for_env_var
+      :  ?max_message_size:int
+      -> ?handshake_timeout:Time.Span.t
+      -> ?heartbeat_config:Rpc.Connection.Heartbeat_config.t
+      -> unit
+      -> string
+  end
+
   (** [start_app command] should be called from the top-level in order to start the
       parallel application. This function will parse certain environment variables and
       determine whether to start as a master or a worker.

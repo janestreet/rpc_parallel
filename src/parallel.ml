@@ -37,6 +37,24 @@ module Rpc_settings = struct
 
   let env_var = "RPC_PARALLEL_RPC_SETTINGS"
 
+  let to_string_for_env_var ?max_message_size ?handshake_timeout ?heartbeat_config () =
+    let t = { max_message_size; handshake_timeout; heartbeat_config } in
+    Sexp.to_string (sexp_of_t t)
+  ;;
+
+  let%expect_test _ =
+    let heartbeat_config =
+      Rpc.Connection.Heartbeat_config.create
+        ~timeout:Time_ns.Span.hour
+        ~send_every:Time_ns.Span.minute
+        ()
+    in
+    let () = print_string (to_string_for_env_var ()) in
+    let%bind () = [%expect {| () |}] in
+    let () = print_string (to_string_for_env_var ~heartbeat_config ()) in
+    [%expect {| ((heartbeat_config((timeout 1h)(send_every 1m)))) |}]
+  ;;
+
   let create_with_env_override ~max_message_size ~handshake_timeout ~heartbeat_config =
     match Sys.getenv env_var with
     | None -> { max_message_size; handshake_timeout; heartbeat_config }
