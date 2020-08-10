@@ -1,8 +1,7 @@
 open Core
 open Async
 
-module Side_arg_map_function =
-  Rpc_parallel.Map_reduce.Make_map_function_with_init (struct
+module Side_arg_map_function = Rpc_parallel.Map_reduce.Make_map_function_with_init (struct
     type state_type = string
 
     module Param = struct

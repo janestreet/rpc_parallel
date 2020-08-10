@@ -22,8 +22,7 @@ include Parallel
     connections for you, but it ended up being too magical to reason about, so you should
     prefer to use the plain [Rpc_parallel] interface. *)
 module Managed = Parallel_managed
-[@@alert
-  legacy "Prefer using the plain [Rpc_parallel] instead of [Rpc_parallel.Managed]"]
+[@@alert legacy "Prefer using the plain [Rpc_parallel] instead of [Rpc_parallel.Managed]"]
 
 (** Old [Std] style interface, which has slightly different module names. *)
 module Std = struct end

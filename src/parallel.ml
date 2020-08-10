@@ -61,8 +61,7 @@ module Rpc_settings = struct
     | Some value ->
       let from_env = [%of_sexp: t] (Sexp.of_string value) in
       { max_message_size = Option.first_some from_env.max_message_size max_message_size
-      ; handshake_timeout =
-          Option.first_some from_env.handshake_timeout handshake_timeout
+      ; handshake_timeout = Option.first_some from_env.handshake_timeout handshake_timeout
       ; heartbeat_config = Option.first_some from_env.heartbeat_config heartbeat_config
       }
   ;;
@@ -71,8 +70,7 @@ end
 module Worker_implementations = struct
   type t =
     | T :
-        ('state, 'connection_state) Utils.Internal_connection_state.t
-          Rpc.Implementation.t
+        ('state, 'connection_state) Utils.Internal_connection_state.t Rpc.Implementation.t
           list
         -> t
 end
@@ -275,11 +273,7 @@ module Function = struct
           type 'a t = 'a * Id.t [@@deriving bin_io]
         end
         in
-        Rpc.Rpc.create
-          ~name
-          ~version:0
-          ~bin_query:(With_id.bin_t bin_query)
-          ~bin_response
+        Rpc.Rpc.create ~name ~version:0 ~bin_query:(With_id.bin_t bin_query) ~bin_response
       in
       let master_rpc =
         Rpc.Pipe_rpc.create
@@ -335,9 +329,7 @@ module Function = struct
              * ('response Rpc.Pipe_rpc.Pipe_message.t -> Rpc.Pipe_rpc.Pipe_response.t)
            , Rpc.Pipe_rpc.Id.t )
              t_internal
-    | One_way :
-        ('worker, 'query) Function_one_way.t
-        -> ('worker, 'query, unit) t_internal
+    | One_way : ('worker, 'query) Function_one_way.t -> ('worker, 'query, unit) t_internal
     | Reverse_piped :
         ('worker, 'query, 'update, 'response, 'in_progress) Function_reverse_piped.t
         * ('q, 'query * 'in_progress) Type_equal.t
@@ -764,8 +756,7 @@ module Make (S : Worker_spec) = struct
 
     let rpc =
       Rpc.Rpc.create
-        ~name:
-          (sprintf "worker_init_rpc_%s" (Worker_type_id.to_string worker_state.type_))
+        ~name:(sprintf "worker_init_rpc_%s" (Worker_type_id.to_string worker_state.type_))
         ~version:0
         ~bin_query
         ~bin_response:Unit.bin_t
@@ -1211,8 +1202,7 @@ module Make (S : Worker_spec) = struct
         Result.t
   end
 
-  module Spawn_in_foreground_aux_shutdown_on =
-    Shutdown_on (Spawn_in_foreground_aux_result)
+  module Spawn_in_foreground_aux_shutdown_on = Shutdown_on (Spawn_in_foreground_aux_result)
 
   let finalize_on_error ~finalize f =
     let%bind result = f () in
@@ -1243,15 +1233,21 @@ module Make (S : Worker_spec) = struct
       =
       args shutdown_on
     in
-    let with_spawned_worker ~client_will_immediately_connect ~setup_master_heartbeater ~f
-      =
+    let with_spawned_worker ~client_will_immediately_connect ~setup_master_heartbeater ~f =
       let%bind id, process =
         spawn_process ~how ~env ~cd ~name ~connection_timeout ~daemonize_args
         |> Deferred.Result.map_error ~f:(fun e -> e, `Worker_process None)
       in
       finalize_on_error
         ~finalize:(fun () ->
-          let exit_or_signal = Process.wait process in
+          let exit_or_signal =
+            let open Deferred.Let_syntax in
+            let%bind exit_status = Process.wait process in
+            let%map () = Writer.close (Process.stdin process)
+            and () = Reader.close (Process.stdout process)
+            and () = Reader.close (Process.stderr process) in
+            exit_status
+          in
           `Worker_process (Some exit_or_signal))
         (fun () ->
            let%bind worker =
@@ -1343,8 +1339,7 @@ module Make (S : Worker_spec) = struct
     type 'a t = 'a * Process.t
   end
 
-  module Spawn_in_foreground_exn_shutdown_on =
-    Shutdown_on (Spawn_in_foreground_exn_result)
+  module Spawn_in_foreground_exn_shutdown_on = Shutdown_on (Spawn_in_foreground_exn_result)
 
   let spawn_in_foreground_exn
         (type a)
@@ -1615,11 +1610,7 @@ module Make (S : Worker_spec) = struct
     Rpc.Rpc.implement
       Init_worker_state_rpc.rpc
       (fun _conn_state
-        { Init_worker_state_rpc.master
-        ; worker
-        ; arg
-        ; initial_client_connection_timeout
-        }
+        { Init_worker_state_rpc.master; worker; arg; initial_client_connection_timeout }
         ->
           let init_finished =
             Utils.try_within ~monitor (fun () ->
@@ -1808,8 +1799,8 @@ let worker_main ~worker_env =
   match Hashtbl.find worker_implementations config.worker_type with
   | None ->
     failwith
-      "Worker could not find RPC implementations. Make sure the Parallel.Make () \
-       functor is applied in the worker. It is suggested to make this toplevel."
+      "Worker could not find RPC implementations. Make sure the Parallel.Make () functor \
+       is applied in the worker. It is suggested to make this toplevel."
   | Some (Worker_implementations.T worker_implementations) ->
     start_server
       ~implementations:worker_implementations

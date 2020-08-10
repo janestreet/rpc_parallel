@@ -91,7 +91,8 @@ module Make_map_function (S : Map_function_spec) :
 val map_unordered
   :  Config.t
   -> 'a Pipe.Reader.t
-  -> m:(module Map_function
+  -> m:
+       (module Map_function
          with type Param.t = 'param
           and type Input.t = 'a
           and type Output.t = 'b)
@@ -104,7 +105,8 @@ val map_unordered
 val map
   :  Config.t
   -> 'a Pipe.Reader.t
-  -> m:(module Map_function
+  -> m:
+       (module Map_function
          with type Param.t = 'param
           and type Input.t = 'a
           and type Output.t = 'b)
@@ -119,7 +121,8 @@ val map
 val find_map
   :  Config.t
   -> 'a Pipe.Reader.t
-  -> m:(module Map_function
+  -> m:
+       (module Map_function
          with type Param.t = 'param
           and type Input.t = 'a
           and type Output.t = 'b option)
@@ -185,7 +188,8 @@ module Make_map_reduce_function (S : Map_reduce_function_spec) :
 val map_reduce_commutative
   :  Config.t
   -> 'a Pipe.Reader.t
-  -> m:(module Map_reduce_function
+  -> m:
+       (module Map_reduce_function
          with type Param.t = 'param
           and type Accum.t = 'accum
           and type Input.t = 'a)
@@ -203,7 +207,8 @@ val map_reduce_commutative
 val map_reduce
   :  Config.t
   -> 'a Pipe.Reader.t
-  -> m:(module Map_reduce_function
+  -> m:
+       (module Map_reduce_function
          with type Param.t = 'param
           and type Accum.t = 'accum
           and type Input.t = 'a)

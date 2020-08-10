@@ -208,8 +208,10 @@ module type Worker = sig
   (** Similar to [spawn] but the worker process does not daemonize. If the process was
       spawned on a remote host, the ssh [Process.t] is returned.
 
-      Remember to call [Process.wait] on the returned [Process.t] to avoid zombie
-      processes. *)
+      Remember to call [Process.wait] on the returned [Process.t] to avoid a zombie
+      process. Once the process exits, remember to call [Writer.close] on [Process.stdin]
+      and [Reader.close] on [Process.stdout] and [Process.stderr] to close the process's
+      stdin/stdout/stderr. *)
   val spawn_in_foreground
     : (shutdown_on:'a Shutdown_on(Spawn_in_foreground_result).t
        -> worker_state_init_arg
@@ -311,7 +313,8 @@ module type Creator = sig
       [_function], a type-safe Rpc protocol. *)
   val create_rpc
     :  ?name:string
-    -> f:(worker_state:worker_state
+    -> f:
+         (worker_state:worker_state
           -> conn_state:connection_state
           -> 'query
           -> 'response Deferred.t)
@@ -328,7 +331,8 @@ module type Creator = sig
       Notice that [aborted] is not exposed. The pipe is closed upon aborted. *)
   val create_pipe
     :  ?name:string
-    -> f:(worker_state:worker_state
+    -> f:
+         (worker_state:worker_state
           -> conn_state:connection_state
           -> 'query
           -> 'response Pipe.Reader.t Deferred.t)
@@ -341,7 +345,8 @@ module type Creator = sig
       [Rpc.Pipe_rpc.t] with [name] if specified. *)
   val create_direct_pipe
     :  ?name:string
-    -> f:(worker_state:worker_state
+    -> f:
+         (worker_state:worker_state
           -> conn_state:connection_state
           -> 'query
           -> 'response Rpc.Pipe_rpc.Direct_stream_writer.t
@@ -366,7 +371,8 @@ module type Creator = sig
       before or after finishing with the pipe; Rpc_parallel doesn't care. *)
   val create_reverse_pipe
     :  ?name:string
-    -> f:(worker_state:worker_state
+    -> f:
+         (worker_state:worker_state
           -> conn_state:connection_state
           -> 'query
           -> 'update Pipe.Reader.t
@@ -383,7 +389,8 @@ module type Creator = sig
       a [response] before or after finishing with the pipe; Rpc_parallel doesn't care. *)
   val create_reverse_direct_pipe
     :  ?name:string
-    -> f:(worker_state:worker_state
+    -> f:
+         (worker_state:worker_state
           -> conn_state:connection_state
           -> 'query
           -> 'update Pipe.Reader.t
@@ -401,7 +408,8 @@ module type Creator = sig
   (** [of_async_rpc ~f rpc] is the analog to [create_rpc] but instead of creating an Rpc
       protocol, it uses the supplied one *)
   val of_async_rpc
-    :  f:(worker_state:worker_state
+    :  f:
+         (worker_state:worker_state
           -> conn_state:connection_state
           -> 'query
           -> 'response Deferred.t)
@@ -413,7 +421,8 @@ module type Creator = sig
 
       Notice that [aborted] is not exposed. The pipe is closed upon aborted. *)
   val of_async_pipe_rpc
-    :  f:(worker_state:worker_state
+    :  f:
+         (worker_state:worker_state
           -> conn_state:connection_state
           -> 'query
           -> 'response Pipe.Reader.t Deferred.t)
@@ -423,7 +432,8 @@ module type Creator = sig
   (** [of_async_direct_pipe_rpc ~f rpc] is the analog to [create_direct_pipe] but instead
       of creating a Pipe rpc protocol, it uses the supplied one. *)
   val of_async_direct_pipe_rpc
-    :  f:(worker_state:worker_state
+    :  f:
+         (worker_state:worker_state
           -> conn_state:connection_state
           -> 'query
           -> 'response Rpc.Pipe_rpc.Direct_stream_writer.t
