@@ -27,13 +27,13 @@ end
 
 include Rpc_parallel.Make (T)
 
-let count_fds () =
+let fds () =
   let pid = Unix.getpid () |> Pid.to_string in
-  Process.run_lines_exn () ~prog:"/usr/sbin/lsof" ~args:[ "-p"; pid ] >>| List.length
+  Process.run_lines_exn () ~prog:"/usr/sbin/lsof" ~args:[ "-p"; pid ]
 ;;
 
-let print_fd_counts () =
-  let run_and_count_fds () =
+let check_fds () =
+  let run_and_get_fds () =
     match%bind
       For_internal_testing.spawn_in_foreground
         ~on_failure:Error.raise
@@ -49,19 +49,27 @@ let print_fd_counts () =
         | Some exit_or_signal ->
           exit_or_signal >>| (ignore : Unix.Exit_or_signal.t -> unit)
       in
-      count_fds ()
+      fds ()
   in
-  let%bind baseline = run_and_count_fds () in
-  let%bind fd_counts = Deferred.List.init 5 ~f:(fun _ -> run_and_count_fds ()) in
-  let fd_counts = List.map fd_counts ~f:(fun fd_count -> fd_count - baseline) in
-  print_s [%sexp (fd_counts : int list)];
+  let%bind baseline = run_and_get_fds () in
+  let%bind fds_after_each_run = Deferred.List.init 5 ~f:(fun _ -> run_and_get_fds ()) in
+  List.map fds_after_each_run ~f:(fun fds_after_run ->
+    if List.length fds_after_run = List.length baseline
+    then Ok ()
+    else
+      Or_error.error_s
+        [%message "Fd leak?" (baseline : string list) (fds_after_run : string list)])
+  |> Or_error.all_unit
+  |> [%sexp_of: unit Or_error.t]
+  |> print_s;
   return ()
 ;;
 
 let () = Rpc_parallel.For_testing.initialize [%here]
 
 let%expect_test "" =
-  let%bind () = print_fd_counts () in
+  let%bind () = check_fds () in
   (* The stdout/stdin/stderr of the child process are closed when the process fails. *)
-  [%expect {| (0 0 0 0 0) |}]
+  [%expect {| (Ok ()) |}];
+  return ()
 ;;

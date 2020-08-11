@@ -50,9 +50,10 @@ module Rpc_settings = struct
         ()
     in
     let () = print_string (to_string_for_env_var ()) in
-    let%bind () = [%expect {| () |}] in
+    [%expect {| () |}];
     let () = print_string (to_string_for_env_var ~heartbeat_config ()) in
-    [%expect {| ((heartbeat_config((timeout 1h)(send_every 1m)))) |}]
+    [%expect {| ((heartbeat_config((timeout 1h)(send_every 1m)))) |}];
+    return ()
   ;;
 
   let create_with_env_override ~max_message_size ~handshake_timeout ~heartbeat_config =

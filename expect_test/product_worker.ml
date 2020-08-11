@@ -57,5 +57,6 @@ let%expect_test "" =
   let%bind res = main 10 in
   printf "%d\n" res;
   [%expect {|
-    3628800 |}]
+    3628800 |}];
+  return ()
 ;;

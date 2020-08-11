@@ -68,5 +68,6 @@ let%expect_test "" =
   let%bind res = main 42 in
   printf "%d\n" res;
   [%expect {|
-    861 |}]
+    861 |}];
+  return ()
 ;;
