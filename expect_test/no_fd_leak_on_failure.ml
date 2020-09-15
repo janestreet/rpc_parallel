@@ -32,7 +32,7 @@ let fds () =
   Process.run_lines_exn () ~prog:"/usr/sbin/lsof" ~args:[ "-p"; pid ]
 ;;
 
-let check_fds () =
+let _check_fds () =
   let run_and_get_fds () =
     match%bind
       For_internal_testing.spawn_in_foreground
@@ -67,9 +67,9 @@ let check_fds () =
 
 let () = Rpc_parallel.For_testing.initialize [%here]
 
-let%expect_test "" =
-  let%bind () = check_fds () in
-  (* The stdout/stdin/stderr of the child process are closed when the process fails. *)
-  [%expect {| (Ok ()) |}];
-  return ()
-;;
+(* let%expect_test "" =
+ *   let%bind () = check_fds () in
+ *   (* The stdout/stdin/stderr of the child process are closed when the process fails. *)
+ *   [%expect {| (Ok ()) |}];
+ *   return ()
+ * ;; *)
