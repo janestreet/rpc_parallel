@@ -972,7 +972,13 @@ module Make (S : Worker_spec) = struct
     let with_client worker init_arg ~f =
       client worker init_arg
       >>=? fun conn ->
-      let%bind result = Monitor.try_with (fun () -> f conn) in
+      let%bind result =
+        Monitor.try_with
+          ~run:
+            `Schedule
+          ~rest:`Log
+          (fun () -> f conn)
+      in
       let%map () = close conn in
       Result.map_error result ~f:(fun exn -> Error.of_exn exn)
     ;;
