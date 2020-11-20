@@ -1949,7 +1949,13 @@ module For_testing = struct
   ;;
 end
 
-let start_app ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config command =
+let start_app
+      ?rpc_max_message_size
+      ?rpc_handshake_timeout
+      ?rpc_heartbeat_config
+      ?when_parsing_succeeds
+      command
+  =
   match Utils.whoami () with
   | `Worker ->
     let worker_env = Expert.worker_init_before_async_exn () in
@@ -1965,5 +1971,5 @@ let start_app ?rpc_max_message_size ?rpc_handshake_timeout ?rpc_heartbeat_config
       ~rpc_handshake_timeout
       ~rpc_heartbeat_config
       ~worker_command_args:(Decorate decoration);
-    Command.run command
+    Command.run ?when_parsing_succeeds command
 ;;

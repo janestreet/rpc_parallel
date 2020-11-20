@@ -534,11 +534,14 @@ module type Parallel = sig
 
       [rpc_max_message_size], [rpc_handshake_timeout], [rpc_heartbeat_config] can be used
       to alter the rpc defaults. These rpc settings will be used for all connections.
-      This can be useful if you have long async jobs. *)
+      This can be useful if you have long async jobs.
+
+      [when_parsing_succeeds] will be passed to [Command.run] in the master process. *)
   val start_app
     :  ?rpc_max_message_size:int
     -> ?rpc_handshake_timeout:Time.Span.t
     -> ?rpc_heartbeat_config:Rpc.Connection.Heartbeat_config.t
+    -> ?when_parsing_succeeds:(unit -> unit)
     -> Command.t
     -> unit
 
