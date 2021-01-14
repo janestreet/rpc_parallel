@@ -1,7 +1,7 @@
 open! Core
 open! Async
 
-(** See README for more details *)
+(** See the doc/ directory for more details *)
 
 (** A [('worker, 'query, 'response) Function.t] is a type-safe function ['query ->
     'response Deferred.t] that can only be run on a ['worker]. Under the hood it
@@ -123,24 +123,35 @@ module type Worker = sig
   end
 
   module Shutdown_on (M : T1) : sig
+    (** This variant determines when a spawned worker will shut itself down.
+
+        In both the [Connection_closed] and [Heartbeater_connection_timeout] cases, the
+        worker will shut itself down when [Rpc.Connection.close_finished] is determined on
+        some established connection. The difference is which connection.
+
+        In the [Connection_closed] case, the connection is returned back to the caller.
+        The caller can call [Worker.Connection.close] to cause worker shutdown. If you
+        never intend to reconnect to your spawned worker, this is probably the variant you
+        want to choose.
+
+        In the [Heartbeater_connection_timeout] case, the connection is internal to the
+        library. The [worker] is returned so the caller is free to establish
+        connections and close them without triggering worker shutdown.
+
+        In both the above cases, worker shutdown will be triggered when the master process
+        exits. It may also result from network problems or long async cycles.
+
+        In the [Called_shutdown_function] case, the worker will only shut itself down on
+        an explicit [Worker.shutdown] call. Worker's spawned with this variant do not
+        shutdown when the master process exits. We strongly discourage use of this
+        variant. *)
     type _ t =
       | Connection_closed
         : (connection_state_init_arg:connection_state_init_arg
            -> Connection.t M.t Deferred.t)
             t
-      (** An initial connection to the worker is established. The worker shuts itself down
-          when [Rpc.Connection.close_finished] on this connection, which is likely when
-          the master process exits or explicitly calls [Rpc.Connection.close], but can
-          also result from network problems or long async cycles. *)
       | Heartbeater_connection_timeout : worker M.t Deferred.t t
-      (** A "heartbeater" connection is established between the worker and its master. The
-          worker shuts itself down when [Rpc.Connection.close_finished] on this
-          connection, which is likely when the master process exits, but can also result
-          from network problems or long async cycles. *)
       | Called_shutdown_function : worker M.t Deferred.t t
-      (** WARNING! Worker's spawned with this variant do not shutdown when the master
-          process exits. The worker only shuts itself down on an explicit shutdown
-          request. *)
   end
 
   (** The various [spawn] functions create a new worker process that implements the
