@@ -27,47 +27,6 @@ module Worker_id = Utils.Worker_id
    (Master) - Finally, return a [Worker.t] to the caller
 *)
 
-module Rpc_settings = struct
-  type t =
-    { max_message_size : int option [@sexp.option]
-    ; handshake_timeout : Time.Span.t option [@sexp.option]
-    ; heartbeat_config : Rpc.Connection.Heartbeat_config.t option [@sexp.option]
-    }
-  [@@deriving sexp, bin_io]
-
-  let env_var = "RPC_PARALLEL_RPC_SETTINGS"
-
-  let to_string_for_env_var ?max_message_size ?handshake_timeout ?heartbeat_config () =
-    let t = { max_message_size; handshake_timeout; heartbeat_config } in
-    Sexp.to_string (sexp_of_t t)
-  ;;
-
-  let%expect_test _ =
-    let heartbeat_config =
-      Rpc.Connection.Heartbeat_config.create
-        ~timeout:Time_ns.Span.hour
-        ~send_every:Time_ns.Span.minute
-        ()
-    in
-    let () = print_string (to_string_for_env_var ()) in
-    [%expect {| () |}];
-    let () = print_string (to_string_for_env_var ~heartbeat_config ()) in
-    [%expect {| ((heartbeat_config((timeout 1h)(send_every 1m)))) |}];
-    return ()
-  ;;
-
-  let create_with_env_override ~max_message_size ~handshake_timeout ~heartbeat_config =
-    match Sys.getenv env_var with
-    | None -> { max_message_size; handshake_timeout; heartbeat_config }
-    | Some value ->
-      let from_env = [%of_sexp: t] (Sexp.of_string value) in
-      { max_message_size = Option.first_some from_env.max_message_size max_message_size
-      ; handshake_timeout = Option.first_some from_env.handshake_timeout handshake_timeout
-      ; heartbeat_config = Option.first_some from_env.heartbeat_config heartbeat_config
-      }
-  ;;
-end
-
 module Worker_implementations = struct
   type t =
     | T :
@@ -91,6 +50,13 @@ module Worker_command_args = struct
   [@@deriving sexp]
 end
 
+module Server_with_rpc_settings = struct
+  type t =
+    { server : (Socket.Address.Inet.t, int) Tcp.Server.t
+    ; rpc_settings : Rpc_settings.t
+    }
+end
+
 (* All global state that is needed for a process to act as a master *)
 type master_state =
   { (* The [Host_and_port.t] corresponding to one's own master Rpc server. *)
@@ -109,7 +75,7 @@ type master_state =
 (* All global state that is not specific to worker types is collected here *)
 type worker_state =
   { (* Currently running worker servers in this process *)
-    my_worker_servers : (Socket.Address.Inet.t, int) Tcp.Server.t Worker_id.Table.t
+    my_worker_servers : Server_with_rpc_settings.t Worker_id.Table.t
   (* To facilitate process creation cleanup.*)
   ; initialized : [ `Init_started of [ `Initialized ] Or_error.t Deferred.t ] Set_once.t
   }
@@ -141,6 +107,16 @@ end
 
 module Close_server_rpc = struct
   let rpc = Rpc.One_way.create ~name:"close_server_rpc" ~version:0 ~bin_msg:Unit.bin_t
+end
+
+module Worker_server_rpc_settings_rpc = struct
+  let rpc =
+    Rpc.Rpc.create
+      ~name:"worker_server_rpc_settings_rpc"
+      ~version:0
+      ~bin_query:Unit.bin_t
+      ~bin_response:Rpc_settings.bin_t
+  ;;
 end
 
 module Async_log_rpc = struct
@@ -470,6 +446,12 @@ module Function = struct
 
   let async_log = T (Fn.id, Piped (Async_log_rpc.rpc, Type_equal.T), Fn.id)
   let close_server = T (Fn.id, One_way Close_server_rpc.rpc, Fn.id)
+
+  module For_internal_testing = struct
+    let worker_server_rpc_settings =
+      T (Fn.id, Plain Worker_server_rpc_settings_rpc.rpc, Fn.id)
+    ;;
+  end
 end
 
 module Daemonize_args = struct
@@ -487,6 +469,55 @@ module Daemonize_args = struct
   [@@deriving sexp]
 end
 
+(* We want to make sure the [Rpc_settings] used on both the client and server side of all
+   communication within a single rpc_parallel application are the same. To help prevent
+   mistakes, we write small wrappers around the [Rpc.Connection] functions. *)
+let rpc_connection_with_client ~rpc_settings ?implementations where_to_connect f =
+  let { Rpc_settings.max_message_size; handshake_timeout; heartbeat_config } =
+    rpc_settings
+  in
+  Rpc.Connection.with_client
+    ?max_message_size
+    ?handshake_timeout
+    ?heartbeat_config
+    ?implementations
+    where_to_connect
+    f
+;;
+
+let rpc_connection_client ~rpc_settings ?implementations where_to_connect =
+  let { Rpc_settings.max_message_size; handshake_timeout; heartbeat_config } =
+    rpc_settings
+  in
+  Rpc.Connection.client
+    ?max_message_size
+    ?handshake_timeout
+    ?heartbeat_config
+    ?implementations
+    where_to_connect
+;;
+
+let start_server ~rpc_settings ~where_to_listen ~implementations ~initial_connection_state
+  =
+  let { Rpc_settings.max_message_size; handshake_timeout; heartbeat_config } =
+    rpc_settings
+  in
+  let implementations =
+    Rpc.Implementations.create_exn ~implementations ~on_unknown_rpc:`Close_connection
+  in
+  let%bind server =
+    Rpc.Connection.serve
+      ~implementations
+      ~initial_connection_state
+      ?max_message_size
+      ?handshake_timeout
+      ?heartbeat_config
+      ~where_to_listen
+      ()
+  in
+  return { Server_with_rpc_settings.server; rpc_settings }
+;;
+
 module Heartbeater_master : sig
   type t [@@deriving bin_io]
 
@@ -502,12 +533,10 @@ end = struct
   let create ~host_and_port ~rpc_settings = { host_and_port; rpc_settings }
 
   let connect_and_wait_for_disconnect_exn { host_and_port; rpc_settings } =
-    let { Rpc_settings.handshake_timeout; heartbeat_config; _ } = rpc_settings in
     match%map
-      Rpc.Connection.client
+      rpc_connection_client
+        ~rpc_settings
         (Tcp.Where_to_connect.of_host_and_port host_and_port)
-        ?handshake_timeout
-        ?heartbeat_config
     with
     | Error e -> raise e
     | Ok conn ->
@@ -543,27 +572,6 @@ module type Worker_spec =
   Worker_spec
   with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
    and type ('w, 'q, 'r) _direct := ('w, 'q, 'r) Function.Direct_pipe.t
-
-let start_server
-      ~max_message_size
-      ~handshake_timeout
-      ~heartbeat_config
-      ~where_to_listen
-      ~implementations
-      ~initial_connection_state
-  =
-  let implementations =
-    Rpc.Implementations.create_exn ~implementations ~on_unknown_rpc:`Close_connection
-  in
-  Rpc.Connection.serve
-    ~implementations
-    ~initial_connection_state
-    ?max_message_size
-    ?handshake_timeout
-    ?heartbeat_config
-    ~where_to_listen
-    ()
-;;
 
 module Worker_config = struct
   type t =
@@ -652,21 +660,10 @@ let master_implementations =
 
 (* Setup some global state necessary to act as a master (i.e. spawn workers). This
    includes starting an Rpc server with [master_implementations] *)
-let init_master_state
-      ~rpc_max_message_size
-      ~rpc_handshake_timeout
-      ~rpc_heartbeat_config
-      ~worker_command_args
-  =
+let init_master_state ~rpc_settings ~worker_command_args =
   match Set_once.get global_state with
   | Some _state -> failwith "Master state must not be set up twice"
   | None ->
-    let app_rpc_settings =
-      Rpc_settings.create_with_env_override
-        ~max_message_size:rpc_max_message_size
-        ~handshake_timeout:rpc_handshake_timeout
-        ~heartbeat_config:rpc_heartbeat_config
-    in
     (* Use [size:1] so there is minimal top-level overhead linking with Rpc_parallel *)
     let pending = Worker_id.Table.create ~size:1 () in
     let on_failures = Worker_id.Table.create ~size:1 () in
@@ -676,19 +673,22 @@ let init_master_state
       lazy
         (let%map server =
            start_server
-             ~max_message_size:rpc_max_message_size
-             ~handshake_timeout:rpc_handshake_timeout
-             ~heartbeat_config:rpc_heartbeat_config
+             ~rpc_settings
              ~where_to_listen:Tcp.Where_to_listen.of_port_chosen_by_os
              ~implementations:master_implementations
              ~initial_connection_state:(fun _ _ -> ())
          in
          Host_and_port.create
            ~host:(Unix.gethostname ())
-           ~port:(Tcp.Server.listening_on server))
+           ~port:(Tcp.Server.listening_on server.server))
     in
     let as_master =
-      { my_server; app_rpc_settings; pending; worker_command_args; on_failures }
+      { my_server
+      ; app_rpc_settings = rpc_settings
+      ; pending
+      ; worker_command_args
+      ; on_failures
+      }
     in
     let as_worker = { my_worker_servers; initialized = Set_once.create () } in
     Set_once.set_exn global_state [%here] { as_master; as_worker }
@@ -710,6 +710,7 @@ module Make (S : Worker_spec) = struct
   (* Internally we use [Worker_id.t] for all worker ids, but we want to expose an [Id]
      module that is specific to each worker. *)
   let id t = t.id
+  let rpc_settings t = t.rpc_settings
 
   type worker_state =
     { (* A unique identifier for each application of the [Make] functor.
@@ -886,36 +887,29 @@ module Make (S : Worker_spec) = struct
     }
   ;;
 
-  let serve ?max_message_size ?handshake_timeout ?heartbeat_config worker_state_init_arg =
+  let serve worker_state_init_arg =
     match Hashtbl.find worker_implementations worker_state.type_ with
     | None ->
       failwith
         "Worker could not find RPC implementations. Make sure the Parallel.Make () \
          functor is applied in the worker. It is suggested to make this toplevel."
     | Some (Worker_implementations.T worker_implementations) ->
+      let rpc_settings = (get_master_state_exn ()).app_rpc_settings in
       let%bind server =
         start_server
           ~implementations:worker_implementations
           ~initial_connection_state:(fun _address connection ->
             connection, Set_once.create ())
-          ~max_message_size
-          ~handshake_timeout
-          ~heartbeat_config
+          ~rpc_settings
           ~where_to_listen:Tcp.Where_to_listen.of_port_chosen_by_os
       in
       let id = Worker_id.create () in
       let host = Unix.gethostname () in
-      let port = Tcp.Server.listening_on server in
+      let port = Tcp.Server.listening_on server.server in
       let global_state = get_worker_state_exn () in
       Hashtbl.add_exn global_state.my_worker_servers ~key:id ~data:server;
       let%map state = User_functions.init_worker_state worker_state_init_arg in
       Hashtbl.add_exn worker_state.states ~key:id ~data:state;
-      let rpc_settings =
-        Rpc_settings.create_with_env_override
-          ~max_message_size
-          ~handshake_timeout
-          ~heartbeat_config
-      in
       { host_and_port = Host_and_port.create ~host ~port; rpc_settings; id; name = None }
   ;;
 
@@ -936,14 +930,9 @@ module Make (S : Worker_spec) = struct
           { host_and_port; rpc_settings; id = worker_id; _ }
           init_arg
       =
-      let { Rpc_settings.max_message_size; handshake_timeout; heartbeat_config } =
-        rpc_settings
-      in
       match%bind
-        Rpc.Connection.client
-          ?max_message_size
-          ?handshake_timeout
-          ?heartbeat_config
+        rpc_connection_client
+          ~rpc_settings
           ~implementations:master_implementations
           (Tcp.Where_to_connect.of_host_and_port host_and_port)
       with
@@ -1117,13 +1106,8 @@ module Make (S : Worker_spec) = struct
 
   let with_client worker ~f =
     let { host_and_port; rpc_settings; _ } = worker in
-    let { Rpc_settings.max_message_size; handshake_timeout; heartbeat_config } =
-      rpc_settings
-    in
-    Rpc.Connection.with_client
-      ?max_message_size
-      ?handshake_timeout
-      ?heartbeat_config
+    rpc_connection_with_client
+      ~rpc_settings
       ~implementations:master_implementations
       (Tcp.Where_to_connect.of_host_and_port host_and_port)
       f
@@ -1611,6 +1595,7 @@ module Make (S : Worker_spec) = struct
     module Spawn_in_foreground_result = Spawn_in_foreground_aux_result
 
     let spawn_in_foreground = spawn_in_foreground_aux
+    let master_app_rpc_settings () = (get_master_state_exn ()).app_rpc_settings
   end
 
   let init_worker_state_impl =
@@ -1694,8 +1679,8 @@ module Make (S : Worker_spec) = struct
       let global_state = get_worker_state_exn () in
       match Hashtbl.find global_state.my_worker_servers worker_id with
       | None -> ()
-      | Some tcp_server ->
-        Tcp.Server.close tcp_server
+      | Some server ->
+        Tcp.Server.close server.server
         >>> fun () ->
         Hashtbl.remove global_state.my_worker_servers worker_id;
         Hashtbl.remove worker_state.states worker_id)
@@ -1723,6 +1708,19 @@ module Make (S : Worker_spec) = struct
       return (Ok r))
   ;;
 
+  let worker_server_rpc_settings_impl =
+    Rpc.Rpc.implement Worker_server_rpc_settings_rpc.rpc (fun (_conn, conn_state) () ->
+      let { Utils.Internal_connection_state.worker_id; _ } =
+        Set_once.get_exn conn_state [%here]
+      in
+      let global_state = get_worker_state_exn () in
+      match Hashtbl.find global_state.my_worker_servers worker_id with
+      | None ->
+        raise_s
+          [%message "Failed to find state associated with worker" (worker_id : Id.t)]
+      | Some server -> return server.rpc_settings)
+  ;;
+
   let () =
     worker_state.implementations
     <- [ init_worker_state_impl
@@ -1730,6 +1728,7 @@ module Make (S : Worker_spec) = struct
        ; shutdown_impl
        ; close_server_impl
        ; async_log_impl
+       ; worker_server_rpc_settings_impl
        ]
        @ worker_state.implementations;
     Hashtbl.add_exn
@@ -1743,16 +1742,12 @@ end
    for this worker type. Return a [Host_and_port.t] describing the server *)
 let worker_main ~worker_env =
   let { Worker_env.config; maybe_release_daemon } = worker_env in
-  let { Rpc_settings.max_message_size; handshake_timeout; heartbeat_config } =
-    Worker_config.app_rpc_settings config
-  in
+  let rpc_settings = Worker_config.app_rpc_settings config in
   let id = Worker_config.worker_id config in
   let register my_host_and_port =
     match%map
-      Rpc.Connection.with_client
-        ?max_message_size
-        ?handshake_timeout
-        ?heartbeat_config
+      rpc_connection_with_client
+        ~rpc_settings
         (Tcp.Where_to_connect.of_host_and_port config.master)
         (fun conn -> Rpc.Rpc.dispatch Register_rpc.rpc conn (id, my_host_and_port))
     with
@@ -1772,10 +1767,8 @@ let worker_main ~worker_env =
       Monitor.detach_and_get_next_error Monitor.main
       >>> fun exn ->
       (* We must be careful that this code here doesn't raise *)
-      Rpc.Connection.with_client
-        ?max_message_size
-        ?handshake_timeout
-        ?heartbeat_config
+      rpc_connection_with_client
+        ~rpc_settings
         (Tcp.Where_to_connect.of_host_and_port config.master)
         (fun conn ->
            Rpc.Rpc.dispatch
@@ -1813,13 +1806,11 @@ let worker_main ~worker_env =
       ~implementations:worker_implementations
       ~initial_connection_state:(fun _address connection ->
         connection, Set_once.create ())
-      ~max_message_size
-      ~handshake_timeout
-      ~heartbeat_config
+      ~rpc_settings
       ~where_to_listen:Tcp.Where_to_listen.of_port_chosen_by_os
     >>> fun server ->
     let host = Unix.gethostname () in
-    let port = Tcp.Server.listening_on server in
+    let port = Tcp.Server.listening_on server.server in
     let global_state = get_worker_state_exn () in
     Hashtbl.add_exn global_state.my_worker_servers ~key:id ~data:server;
     register (Host_and_port.create ~host ~port)
@@ -1880,17 +1871,11 @@ module Expert = struct
   ;;
 
   let start_worker_server_exn worker_env =
-    let { Rpc_settings.max_message_size; handshake_timeout; heartbeat_config } =
-      Worker_env.config worker_env |> Worker_config.app_rpc_settings
-    in
+    let rpc_settings = Worker_env.config worker_env |> Worker_config.app_rpc_settings in
     let worker_command_args =
       Worker_env.config worker_env |> Worker_config.worker_command_args
     in
-    init_master_state
-      ~rpc_max_message_size:max_message_size
-      ~rpc_handshake_timeout:handshake_timeout
-      ~rpc_heartbeat_config:heartbeat_config
-      ~worker_command_args;
+    init_master_state ~rpc_settings ~worker_command_args;
     worker_main ~worker_env
   ;;
 
@@ -1905,10 +1890,14 @@ module Expert = struct
     match Utils.whoami () with
     | `Worker -> failwith "Do not call [init_master_exn] in a spawned worker"
     | `Master ->
+      let rpc_settings =
+        Rpc_settings.create_with_env_override
+          ~max_message_size:rpc_max_message_size
+          ~handshake_timeout:rpc_handshake_timeout
+          ~heartbeat_config:rpc_heartbeat_config
+      in
       init_master_state
-        ~rpc_max_message_size
-        ~rpc_handshake_timeout
-        ~rpc_heartbeat_config
+        ~rpc_settings
         ~worker_command_args:(User_supplied { args = worker_command_args; pass_name })
   ;;
 
@@ -1962,14 +1951,16 @@ let start_app
     Expert.start_worker_server_exn worker_env;
     never_returns (Scheduler.go ())
   | `Master ->
+    let rpc_settings =
+      Rpc_settings.create_with_env_override
+        ~max_message_size:rpc_max_message_size
+        ~handshake_timeout:rpc_handshake_timeout
+        ~heartbeat_config:rpc_heartbeat_config
+    in
     let decoration =
       (* make it obvious which process the worker belongs to *)
       sprintf !"child-of-%{Pid}" (Unix.getpid ())
     in
-    init_master_state
-      ~rpc_max_message_size
-      ~rpc_handshake_timeout
-      ~rpc_heartbeat_config
-      ~worker_command_args:(Decorate decoration);
+    init_master_state ~rpc_settings ~worker_command_args:(Decorate decoration);
     Command.run ?when_parsing_succeeds command
 ;;

@@ -16,6 +16,7 @@ module How_to_run = How_to_run
 module Map_reduce = Map_reduce
 module Prog_and_args = Prog_and_args
 module Remote_executable = Remote_executable
+module Rpc_settings = Rpc_settings
 include Parallel
 
 (** [Rpc_parallel.Managed] is a wrapper around [Rpc_parallel] that attempts to make manage

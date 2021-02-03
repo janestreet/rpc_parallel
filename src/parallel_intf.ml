@@ -45,6 +45,10 @@ module type Function = sig
       server will leave a stranded worker process if no other cleanup has been setup
       (e.g. setting up [on_client_disconnect] or [Connection.close_finished] handlers) *)
   val close_server : (_, unit, unit) t
+
+  module For_internal_testing : sig
+    val worker_server_rpc_settings : (_, unit, Rpc_settings.t) t
+  end
 end
 
 module type Worker = sig
@@ -68,15 +72,11 @@ module type Worker = sig
   module Id : Identifiable
 
   val id : t -> Id.t
+  val rpc_settings : t -> Rpc_settings.t
 
   (** [serve arg] will start an Rpc server in process implementing all the functions
       of the given worker. *)
-  val serve
-    :  ?max_message_size:int
-    -> ?handshake_timeout:Time.Span.t
-    -> ?heartbeat_config:Rpc.Connection.Heartbeat_config.t
-    -> worker_state_init_arg
-    -> worker Deferred.t
+  val serve : worker_state_init_arg -> worker Deferred.t
 
   module Connection : sig
     type t [@@deriving sexp_of]
@@ -285,6 +285,8 @@ module type Worker = sig
          -> worker_state_init_arg
          -> 'a)
           with_spawn_args
+
+    val master_app_rpc_settings : unit -> Rpc_settings.t
   end
 end
 
@@ -523,21 +525,6 @@ module type Parallel = sig
     with type 'a functions := 'a S.functions
      and type worker_state_init_arg := S.Worker_state.init_arg
      and type connection_state_init_arg := S.Connection_state.init_arg
-
-  module Rpc_settings : sig
-    (** [env_var] is the name of the environment variable read by rpc-parallel on start-up
-        to inject additional rpc-settings for the application. *)
-    val env_var : string
-
-    (** [to_string_for_env_var] generates the expected string format from the arguments
-        matching the [start_app] function to be used with the [env_var] above. *)
-    val to_string_for_env_var
-      :  ?max_message_size:int
-      -> ?handshake_timeout:Time.Span.t
-      -> ?heartbeat_config:Rpc.Connection.Heartbeat_config.t
-      -> unit
-      -> string
-  end
 
   (** [start_app command] should be called from the top-level in order to start the
       parallel application. This function will parse certain environment variables and
