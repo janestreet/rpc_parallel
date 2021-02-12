@@ -1601,7 +1601,8 @@ module Make (S : Worker_spec) = struct
   let init_worker_state_impl =
     Rpc.Rpc.implement
       Init_worker_state_rpc.rpc
-      (fun _conn_state
+      (fun
+        _conn_state
         { Init_worker_state_rpc.master; worker; arg; initial_client_connection_timeout }
         ->
           let init_finished =
@@ -1641,7 +1642,8 @@ module Make (S : Worker_spec) = struct
   let init_connection_state_impl =
     Rpc.Rpc.implement
       Init_connection_state_rpc.rpc
-      (fun (connection, internal_conn_state)
+      (fun
+        (connection, internal_conn_state)
         { worker_id; worker_shutdown_on_disconnect; arg = init_arg }
         ->
           worker_state.client_has_connected <- true;
