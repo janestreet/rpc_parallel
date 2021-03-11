@@ -1,10 +1,11 @@
 open! Core
 
-(** This variant determines the where the file descriptor is redirect towards.
+(** This variant specifies how to redirect the file descriptor.
 
-    In the [`Dev_null] case it is redirected to /dev/null, ie is ignored.
+    In the [`Dev_null] case it is redirected to /dev/null, ie the output is ignored.
     
-    In both [`File_append location] and [`File_truncate location] it is redirected to [location], where [location] is the absolute path to the file. 
+    In both [`File_append location] and [`File_truncate location] it is redirected to [location], where [location] is the absolute path to the file.
+    Where [`File_append] will append to the file, while [`File_truncate] will fully overwrite it.
 *)
 type t =
   [ `Dev_null
