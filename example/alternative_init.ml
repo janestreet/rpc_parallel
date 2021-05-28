@@ -67,4 +67,4 @@ let command =
     [ "worker", worker_command; "main", main_command ]
 ;;
 
-let () = Command.run command
+let () = Command_unix.run command

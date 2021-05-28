@@ -1852,7 +1852,7 @@ module Expert = struct
       let maybe_release_daemon =
         match config.daemonize_args with
         | `Don't_daemonize ->
-          Core.Unix.chdir config.cd;
+          Core_unix.chdir config.cd;
           Fn.id
         | `Daemonize { Daemonize_args.umask; redirect_stderr; redirect_stdout } ->
           (* The worker is started via SSH. We want to go to the background so we can close
@@ -1964,5 +1964,5 @@ let start_app
       sprintf !"child-of-%{Pid}" (Unix.getpid ())
     in
     init_master_state ~rpc_settings ~worker_command_args:(Decorate decoration);
-    Command.run ?when_parsing_succeeds command
+    Command_unix.run ?when_parsing_succeeds command
 ;;
