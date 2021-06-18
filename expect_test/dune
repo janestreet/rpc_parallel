@@ -1,3 +1,4 @@
 (library (name rpc_parallel_expect_test)
- (libraries async core re rpc_parallel transaction core_kernel.uuid)
+ (libraries async core_kernel.core re rpc_parallel transaction
+  core_kernel.uuid)
  (preprocess (pps ppx_jane)))

@@ -1,15 +1,12 @@
 open! Core
 
-(** This variant specifies how to redirect the file descriptor.
-
-    In the [`Dev_null] case, it is redirected to /dev/null (i.e. the output is ignored).
-
-    In either [`File_append location] or [`File_truncate location], it is redirected to
-    [location], where [location] is the absolute path to the file. [`File_append] will
-    append to the file, while [`File_truncate] will fully overwrite it. *)
+(** A specification for where to write outputs. *)
 type t =
-  [ `Dev_null
+  [ `Dev_null (** Do not save the output anywhere. *)
   | `File_append of string
+  (** Absolute path of a file to write to, creating the file if it does not already exist.
+  *)
   | `File_truncate of string
+    (** Absolute path of a file to write to, overwriting any existing file. *)
   ]
 [@@deriving sexp]
