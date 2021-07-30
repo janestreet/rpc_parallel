@@ -143,7 +143,7 @@ module Make_rpc_parallel_worker (S : Rpc_parallel_worker_spec) = struct
   type run_input_type = S.Run_input.t
   type run_output_type = S.Run_output.t
 
-  let spawn_exn how param ?cd ~redirect_stderr ~redirect_stdout =
+  let spawn_exn how param ~cd ~redirect_stderr ~redirect_stdout =
     Parallel_worker.spawn_exn
       ~how
       ?cd
@@ -181,7 +181,7 @@ module Make_rpc_parallel_worker (S : Rpc_parallel_worker_spec) = struct
         spawn_exn
           where
           param
-          ?cd
+          ~cd
           ~redirect_stderr:(redirect_stderr :> Fd_redirection.t)
           ~redirect_stdout:(redirect_stdout :> Fd_redirection.t))
     in

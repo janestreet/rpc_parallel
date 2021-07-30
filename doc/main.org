@@ -34,11 +34,11 @@ calls to be top-level. But the real requirements are:
 
 3) Spawned workers must be able to find their function implementations when they
    start running as a worker. These implementations are gathered on the
-   application of the =Rpc_parallel.Make= functor.
-
-4) The worker implementations must be defined completely and in the same order,
-   regardless of master and worker code paths. This is necessary for the masters
-   and workers to agree on certain generated ids.
+   application of the =Rpc_parallel.Make= functor. So that masters and workers
+   agree on certain generated ids, all of the worker implementations must be
+   defined in all code paths leading up to =start_app=,
+   =start_master_server_exn=, or =worker_command=, and they should be defined in
+   the same order.
 
 * Monitoring your workers
 
