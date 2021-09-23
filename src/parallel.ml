@@ -236,11 +236,11 @@ module Function = struct
         t
         ~implement:Rpc.Pipe_rpc.implement
         ~ok:Deferred.Or_error.return
-        ~error:ident
+        ~error:Fn.id
     ;;
 
     let make_master_impl_direct t =
-      make_master t ~implement:Rpc.Pipe_rpc.implement_direct ~ok:ident ~error:const
+      make_master t ~implement:Rpc.Pipe_rpc.implement_direct ~ok:Fn.id ~error:const
     ;;
 
     let make_proto ~name ~bin_query ~bin_update ~bin_response =
