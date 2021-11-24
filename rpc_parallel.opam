@@ -11,12 +11,7 @@ build: [
 ]
 depends: [
   "ocaml" {>= "4.08.0"}
-  "async"
-  "core"
-  "core_kernel"
-  "ppx_jane"
-  "sexplib"
-  "dune"        {>= "2.0.0"}
+  "dune" {>= "2.0.0"}
 ]
 synopsis: "Type-safe parallel library built on top of Async_rpc"
 description: "

@@ -197,4 +197,4 @@ let command =
        Or_error.return ())
 ;;
 
-let () = Rpc_parallel.start_app command
+let () = Rpc_parallel_krb_public.start_app ~krb_mode:For_unit_test command

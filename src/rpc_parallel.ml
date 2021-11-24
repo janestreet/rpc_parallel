@@ -17,21 +17,12 @@ module Map_reduce = Map_reduce
 module Prog_and_args = Prog_and_args
 module Remote_executable = Remote_executable
 module Rpc_settings = Rpc_settings
-include Parallel
+module Utils = Utils
 
-(** [Rpc_parallel.Managed] is a wrapper around [Rpc_parallel] that attempts to make manage
-    connections for you, but it ended up being too magical to reason about, so you should
-    prefer to use the plain [Rpc_parallel] interface. *)
-module Managed = Parallel_managed
+module Managed = Managed
 [@@alert legacy "Prefer using the plain [Rpc_parallel] instead of [Rpc_parallel.Managed]"]
 
-(** Old [Std] style interface, which has slightly different module names. *)
-module Std = struct end
-[@@deprecated "[since 2016-11] Use [Rpc_parallel] instead of [Rpc_parallel.Std]"]
+include Parallel
 
 module Parallel = Parallel
 [@@deprecated "[since 2016-11] Use [Rpc_parallel] instead of [Rpc_parallel.Parallel]"]
-
-module Parallel_managed = Parallel_managed
-[@@deprecated
-  "[since 2016-11] Use [Rpc_parallel.Managed] instead of [Rpc_parallel.Parallel_managed]"]

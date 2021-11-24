@@ -57,49 +57,6 @@ module Server_with_rpc_settings = struct
     }
 end
 
-(* All global state that is needed for a process to act as a master *)
-type master_state =
-  { (* The [Host_and_port.t] corresponding to one's own master Rpc server. *)
-    my_server : Host_and_port.t Deferred.t lazy_t
-  (* The rpc settings used universally for all rpc connections *)
-  ; app_rpc_settings : Rpc_settings.t
-  (* Used to facilitate timeout of connecting to a spawned worker *)
-  ; pending : Host_and_port.t Ivar.t Worker_id.Table.t
-  (* Arguments used when spawning a new worker. *)
-  ; worker_command_args : Worker_command_args.t
-  (* Callbacks for spawned worker exceptions along with the monitor that was current
-     when [spawn] was called *)
-  ; on_failures : ((Error.t -> unit) * Monitor.t) Worker_id.Table.t
-  }
-
-(* All global state that is not specific to worker types is collected here *)
-type worker_state =
-  { (* Currently running worker servers in this process *)
-    my_worker_servers : Server_with_rpc_settings.t Worker_id.Table.t
-  (* To facilitate process creation cleanup.*)
-  ; initialized : [ `Init_started of [ `Initialized ] Or_error.t Deferred.t ] Set_once.t
-  }
-
-type global_state =
-  { as_master : master_state
-  ; as_worker : worker_state
-  }
-
-(* Each running instance has the capability to work as a master. This state includes
-   information needed to spawn new workers (my_server, my_rpc_settings, pending,
-   worker_command_args), information to handle existing spawned workerd (on_failures), and
-   information to handle worker servers that are running in process. *)
-let global_state : global_state Set_once.t = Set_once.create ()
-
-let get_state_exn () =
-  match Set_once.get global_state with
-  | None -> failwith "State should have been set already"
-  | Some state -> state
-;;
-
-let get_master_state_exn () = (get_state_exn ()).as_master
-let get_worker_state_exn () = (get_state_exn ()).as_worker
-
 (* Functions that are implemented by all workers *)
 module Shutdown_rpc = struct
   let rpc = Rpc.One_way.create ~name:"shutdown_rpc" ~version:0 ~bin_msg:Unit.bin_t
@@ -469,35 +426,239 @@ module Daemonize_args = struct
   [@@deriving sexp]
 end
 
+module type Backend = Backend
+module type Worker = Worker with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
+module type Functions = Functions
+
+module type Creator =
+  Creator
+  with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
+   and type ('w, 'q, 'r) _direct := ('w, 'q, 'r) Function.Direct_pipe.t
+
+module type Worker_spec =
+  Worker_spec
+  with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
+   and type ('w, 'q, 'r) _direct := ('w, 'q, 'r) Function.Direct_pipe.t
+
+module Backend_and_settings = struct
+  type t = T : (module Backend with type Settings.t = 'a) * 'a -> t
+
+  let backend (T ((module Backend), _)) = (module Backend : Backend)
+end
+
+module Backend : sig
+  module Settings : sig
+    type t [@@deriving bin_io, sexp]
+
+    val with_backend : t -> (module Backend) -> Backend_and_settings.t
+  end
+
+  val set_once_and_get_settings : Backend_and_settings.t -> Settings.t
+  val assert_already_initialized_with_same_backend : (module Backend) -> unit
+
+  val serve
+    :  ?max_message_size:int
+    -> ?handshake_timeout:Time.Span.t
+    -> ?heartbeat_config:Rpc.Connection.Heartbeat_config.t
+    -> implementations:'a Rpc.Implementations.t
+    -> initial_connection_state:(Socket.Address.Inet.t -> Rpc.Connection.t -> 'a)
+    -> where_to_listen:Tcp.Where_to_listen.inet
+    -> Settings.t
+    -> (Socket.Address.Inet.t, int) Tcp.Server.t Deferred.t
+
+  val with_client
+    :  ?implementations:'b Rpc.Connection.Client_implementations.t
+    -> ?max_message_size:int
+    -> ?handshake_timeout:Time.Span.t
+    -> ?heartbeat_config:Rpc.Connection.Heartbeat_config.t
+    -> Settings.t
+    -> Socket.Address.Inet.t Tcp.Where_to_connect.t
+    -> (Rpc.Connection.t -> 'a Deferred.t)
+    -> 'a Or_error.t Deferred.t
+
+  val client
+    :  ?implementations:'a Rpc.Connection.Client_implementations.t
+    -> ?max_message_size:int
+    -> ?handshake_timeout:Time.Span.t
+    -> ?heartbeat_config:Rpc.Connection.Heartbeat_config.t
+    -> ?description:Info.t
+    -> Settings.t
+    -> Socket.Address.Inet.t Tcp.Where_to_connect.t
+    -> Rpc.Connection.t Or_error.t Deferred.t
+end = struct
+  module Settings = struct
+    type t = Sexp.t [@@deriving bin_io, sexp]
+
+    let with_backend t (module Backend : Backend) =
+      let t = [%of_sexp: Backend.Settings.t] t in
+      Backend_and_settings.T
+        ((module Backend : Backend with type Settings.t = Backend.Settings.t), t)
+    ;;
+  end
+
+  let backend = Set_once.create ()
+
+  let set_once_and_get_settings
+        (Backend_and_settings.T ((module Backend), backend_settings))
+    : Settings.t
+    =
+    Set_once.set_exn backend [%here] (module Backend : Backend);
+    [%sexp_of: Backend.Settings.t] backend_settings
+  ;;
+
+  let get_backend_and_settings_exn backend_settings =
+    let backend = Set_once.get_exn backend [%here] in
+    Settings.with_backend backend_settings backend
+  ;;
+
+  let assert_already_initialized_with_same_backend (module Other_backend : Backend) =
+    let (module Backend : Backend) = Set_once.get_exn backend [%here] in
+    let backend = Backend.name in
+    let other_backend = Other_backend.name in
+    if not (String.equal backend other_backend)
+    then
+      raise_s
+        [%message
+          "Rpc_parallel was illegally initialized with two different backends in the \
+           same executable"
+            ~backend
+            ~other_backend]
+  ;;
+
+  let serve
+        ?max_message_size
+        ?handshake_timeout
+        ?heartbeat_config
+        ~implementations
+        ~initial_connection_state
+        ~where_to_listen
+        backend_settings
+    =
+    let (Backend_and_settings.T ((module Backend), backend_settings)) =
+      get_backend_and_settings_exn backend_settings
+    in
+    Backend.serve
+      ?max_message_size
+      ?handshake_timeout
+      ?heartbeat_config
+      ~implementations
+      ~initial_connection_state
+      ~where_to_listen
+      backend_settings
+  ;;
+
+  let with_client
+        ?implementations
+        ?max_message_size
+        ?handshake_timeout
+        ?heartbeat_config
+        backend_settings
+        where_to_connect
+        f
+    =
+    let (Backend_and_settings.T ((module Backend), backend_settings)) =
+      get_backend_and_settings_exn backend_settings
+    in
+    Backend.with_client
+      ?implementations
+      ?max_message_size
+      ?handshake_timeout
+      ?heartbeat_config
+      backend_settings
+      where_to_connect
+      f
+  ;;
+
+  let client
+        ?implementations
+        ?max_message_size
+        ?handshake_timeout
+        ?heartbeat_config
+        ?description
+        backend_settings
+        where_to_connect
+    =
+    let (Backend_and_settings.T ((module Backend), backend_settings)) =
+      get_backend_and_settings_exn backend_settings
+    in
+    Backend.client
+      ?implementations
+      ?max_message_size
+      ?handshake_timeout
+      ?heartbeat_config
+      ?description
+      backend_settings
+      where_to_connect
+  ;;
+end
+
+module Worker_config = struct
+  type t =
+    { worker_type : Worker_type_id.t
+    ; worker_id : Worker_id.t
+    ; name : string option
+    ; master : Host_and_port.t
+    ; app_rpc_settings : Rpc_settings.t
+    ; backend_settings : Backend.Settings.t
+    ; cd : string
+    ; daemonize_args : Daemonize_args.t
+    ; connection_timeout : Time.Span.t
+    ; worker_command_args : Worker_command_args.t
+    }
+  [@@deriving fields, sexp]
+end
+
+module Worker_env = struct
+  type t =
+    { config : Worker_config.t
+    ; maybe_release_daemon : unit -> unit
+    }
+  [@@deriving fields]
+end
+
 (* We want to make sure the [Rpc_settings] used on both the client and server side of all
    communication within a single rpc_parallel application are the same. To help prevent
    mistakes, we write small wrappers around the [Rpc.Connection] functions. *)
-let rpc_connection_with_client ~rpc_settings ?implementations where_to_connect f =
+let rpc_connection_with_client
+      backend_settings
+      ~rpc_settings
+      ?implementations
+      where_to_connect
+      f
+  =
   let { Rpc_settings.max_message_size; handshake_timeout; heartbeat_config } =
     rpc_settings
   in
-  Rpc.Connection.with_client
+  Backend.with_client
     ?max_message_size
     ?handshake_timeout
     ?heartbeat_config
     ?implementations
+    backend_settings
     where_to_connect
     f
 ;;
 
-let rpc_connection_client ~rpc_settings ?implementations where_to_connect =
+let rpc_connection_client backend_settings ~rpc_settings ?implementations where_to_connect
+  =
   let { Rpc_settings.max_message_size; handshake_timeout; heartbeat_config } =
     rpc_settings
   in
-  Rpc.Connection.client
+  Backend.client
     ?max_message_size
     ?handshake_timeout
     ?heartbeat_config
     ?implementations
+    backend_settings
     where_to_connect
 ;;
 
-let start_server ~rpc_settings ~where_to_listen ~implementations ~initial_connection_state
+let start_server
+      backend_settings
+      ~rpc_settings
+      ~where_to_listen
+      ~implementations
+      ~initial_connection_state
   =
   let { Rpc_settings.max_message_size; handshake_timeout; heartbeat_config } =
     rpc_settings
@@ -506,14 +667,14 @@ let start_server ~rpc_settings ~where_to_listen ~implementations ~initial_connec
     Rpc.Implementations.create_exn ~implementations ~on_unknown_rpc:`Close_connection
   in
   let%bind server =
-    Rpc.Connection.serve
+    Backend.serve
       ~implementations
       ~initial_connection_state
       ?max_message_size
       ?handshake_timeout
       ?heartbeat_config
       ~where_to_listen
-      ()
+      backend_settings
   in
   return { Server_with_rpc_settings.server; rpc_settings }
 ;;
@@ -521,24 +682,35 @@ let start_server ~rpc_settings ~where_to_listen ~implementations ~initial_connec
 module Heartbeater_master : sig
   type t [@@deriving bin_io]
 
-  val create : host_and_port:Host_and_port.t -> rpc_settings:Rpc_settings.t -> t
+  val create
+    :  host_and_port:Host_and_port.t
+    -> rpc_settings:Rpc_settings.t
+    -> backend_settings:Backend.Settings.t
+    -> t
+
   val connect_and_shutdown_on_disconnect_exn : t -> [ `Connected ] Deferred.t
 end = struct
   type t =
     { host_and_port : Host_and_port.t
     ; rpc_settings : Rpc_settings.t
+    ; backend_settings : Backend.Settings.t
     }
   [@@deriving bin_io]
 
-  let create ~host_and_port ~rpc_settings = { host_and_port; rpc_settings }
+  let create ~host_and_port ~rpc_settings ~backend_settings =
+    { host_and_port; rpc_settings; backend_settings }
+  ;;
 
-  let connect_and_wait_for_disconnect_exn { host_and_port; rpc_settings } =
+  let connect_and_wait_for_disconnect_exn
+        { host_and_port; rpc_settings; backend_settings }
+    =
     match%map
       rpc_connection_client
+        backend_settings
         ~rpc_settings
         (Tcp.Where_to_connect.of_host_and_port host_and_port)
     with
-    | Error e -> raise e
+    | Error e -> raise (Error.to_exn e)
     | Ok conn ->
       `Connected
         (let%map reason = Rpc.Connection.close_reason ~on_close:`finished conn in
@@ -560,41 +732,49 @@ end = struct
   ;;
 end
 
-module type Worker = Worker with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
-module type Functions = Functions
+(* All global state that is needed for a process to act as a master *)
+type master_state =
+  { (* The [Host_and_port.t] corresponding to one's own master Rpc server. *)
+    my_server : Host_and_port.t Deferred.t lazy_t
+  (* The rpc settings used universally for all rpc connections *)
+  ; app_rpc_settings : Rpc_settings.t
+  ; backend_settings : Backend.Settings.t
+  (* Used to facilitate timeout of connecting to a spawned worker *)
+  ; pending : Host_and_port.t Ivar.t Worker_id.Table.t
+  (* Arguments used when spawning a new worker. *)
+  ; worker_command_args : Worker_command_args.t
+  (* Callbacks for spawned worker exceptions along with the monitor that was current
+     when [spawn] was called *)
+  ; on_failures : ((Error.t -> unit) * Monitor.t) Worker_id.Table.t
+  }
 
-module type Creator =
-  Creator
-  with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
-   and type ('w, 'q, 'r) _direct := ('w, 'q, 'r) Function.Direct_pipe.t
+(* All global state that is not specific to worker types is collected here *)
+type worker_state =
+  { (* Currently running worker servers in this process *)
+    my_worker_servers : Server_with_rpc_settings.t Worker_id.Table.t
+  (* To facilitate process creation cleanup.*)
+  ; initialized : [ `Init_started of [ `Initialized ] Or_error.t Deferred.t ] Set_once.t
+  }
 
-module type Worker_spec =
-  Worker_spec
-  with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
-   and type ('w, 'q, 'r) _direct := ('w, 'q, 'r) Function.Direct_pipe.t
+type global_state =
+  { as_master : master_state
+  ; as_worker : worker_state
+  }
 
-module Worker_config = struct
-  type t =
-    { worker_type : Worker_type_id.t
-    ; worker_id : Worker_id.t
-    ; name : string option
-    ; master : Host_and_port.t
-    ; app_rpc_settings : Rpc_settings.t
-    ; cd : string
-    ; daemonize_args : Daemonize_args.t
-    ; connection_timeout : Time.Span.t
-    ; worker_command_args : Worker_command_args.t
-    }
-  [@@deriving fields, sexp]
-end
+(* Each running instance has the capability to work as a master. This state includes
+   information needed to spawn new workers (my_server, my_rpc_settings, pending,
+   worker_command_args), information to handle existing spawned workerd (on_failures), and
+   information to handle worker servers that are running in process. *)
+let global_state : global_state Set_once.t = Set_once.create ()
 
-module Worker_env = struct
-  type t =
-    { config : Worker_config.t
-    ; maybe_release_daemon : unit -> unit
-    }
-  [@@deriving fields]
-end
+let get_state_exn () =
+  match Set_once.get global_state with
+  | None -> failwith "State should have been set already"
+  | Some state -> state
+;;
+
+let get_master_state_exn () = (get_state_exn ()).as_master
+let get_worker_state_exn () = (get_state_exn ()).as_worker
 
 (* Rpcs implemented by master *)
 module Register_rpc = struct
@@ -660,7 +840,8 @@ let master_implementations =
 
 (* Setup some global state necessary to act as a master (i.e. spawn workers). This
    includes starting an Rpc server with [master_implementations] *)
-let init_master_state ~rpc_settings ~worker_command_args =
+let init_master_state backend_and_settings ~rpc_settings ~worker_command_args =
+  let backend_settings = Backend.set_once_and_get_settings backend_and_settings in
   match Set_once.get global_state with
   | Some _state -> failwith "Master state must not be set up twice"
   | None ->
@@ -673,6 +854,7 @@ let init_master_state ~rpc_settings ~worker_command_args =
       lazy
         (let%map server =
            start_server
+             backend_settings
              ~rpc_settings
              ~where_to_listen:Tcp.Where_to_listen.of_port_chosen_by_os
              ~implementations:master_implementations
@@ -680,11 +862,12 @@ let init_master_state ~rpc_settings ~worker_command_args =
          in
          Host_and_port.create
            ~host:(Unix.gethostname ())
-           ~port:(Tcp.Server.listening_on server.server))
+           ~port:(Tcp.Server.listening_on server.Server_with_rpc_settings.server))
     in
     let as_master =
       { my_server
       ; app_rpc_settings = rpc_settings
+      ; backend_settings
       ; pending
       ; worker_command_args
       ; on_failures
@@ -700,6 +883,7 @@ module Make (S : Worker_spec) = struct
   type t =
     { host_and_port : Host_and_port.t
     ; rpc_settings : Rpc_settings.t
+    ; backend_settings : Backend.Settings.t
     ; id : Worker_id.t
     ; name : string option
     }
@@ -894,9 +1078,12 @@ module Make (S : Worker_spec) = struct
         "Worker could not find RPC implementations. Make sure the Parallel.Make () \
          functor is applied in the worker. It is suggested to make this toplevel."
     | Some (Worker_implementations.T worker_implementations) ->
-      let rpc_settings = (get_master_state_exn ()).app_rpc_settings in
+      let master_state = get_master_state_exn () in
+      let rpc_settings = master_state.app_rpc_settings in
+      let backend_settings = master_state.backend_settings in
       let%bind server =
         start_server
+          backend_settings
           ~implementations:worker_implementations
           ~initial_connection_state:(fun _address connection ->
             connection, Set_once.create ())
@@ -910,7 +1097,12 @@ module Make (S : Worker_spec) = struct
       Hashtbl.add_exn global_state.my_worker_servers ~key:id ~data:server;
       let%map state = User_functions.init_worker_state worker_state_init_arg in
       Hashtbl.add_exn worker_state.states ~key:id ~data:state;
-      { host_and_port = Host_and_port.create ~host ~port; rpc_settings; id; name = None }
+      { host_and_port = Host_and_port.create ~host ~port
+      ; rpc_settings
+      ; backend_settings
+      ; id
+      ; name = None
+      }
   ;;
 
   module Connection = struct
@@ -927,16 +1119,17 @@ module Make (S : Worker_spec) = struct
 
     let client_aux
           ~worker_shutdown_on_disconnect
-          { host_and_port; rpc_settings; id = worker_id; _ }
+          { host_and_port; rpc_settings; id = worker_id; backend_settings; _ }
           init_arg
       =
       match%bind
         rpc_connection_client
+          backend_settings
           ~rpc_settings
           ~implementations:master_implementations
           (Tcp.Where_to_connect.of_host_and_port host_and_port)
       with
-      | Error exn -> return (Error (Error.of_exn exn))
+      | Error error -> return (Error error)
       | Ok connection ->
         (match%bind
            Rpc.Rpc.dispatch
@@ -1082,6 +1275,7 @@ module Make (S : Worker_spec) = struct
       ; name
       ; master = master_server
       ; app_rpc_settings = global_state.app_rpc_settings
+      ; backend_settings = global_state.backend_settings
       ; cd
       ; daemonize_args
       ; connection_timeout
@@ -1105,8 +1299,9 @@ module Make (S : Worker_spec) = struct
   ;;
 
   let with_client worker ~f =
-    let { host_and_port; rpc_settings; _ } = worker in
+    let { host_and_port; rpc_settings; backend_settings; _ } = worker in
     rpc_connection_with_client
+      backend_settings
       ~rpc_settings
       ~implementations:master_implementations
       (Tcp.Where_to_connect.of_host_and_port host_and_port)
@@ -1116,7 +1311,6 @@ module Make (S : Worker_spec) = struct
   let shutdown worker =
     with_client worker ~f:(fun conn ->
       Rpc.One_way.dispatch Shutdown_rpc.rpc conn () |> return)
-    >>| Or_error.of_exn_result
     >>| Or_error.join
   ;;
 
@@ -1150,7 +1344,12 @@ module Make (S : Worker_spec) = struct
     | `Result host_and_port ->
       Hashtbl.remove global_state.pending id;
       let worker =
-        { host_and_port; rpc_settings = global_state.app_rpc_settings; id; name }
+        { host_and_port
+        ; rpc_settings = global_state.app_rpc_settings
+        ; backend_settings = global_state.backend_settings
+        ; id
+        ; name
+        }
       in
       let%bind master_server = Lazy.force global_state.my_server in
       Hashtbl.add_exn
@@ -1165,7 +1364,8 @@ module Make (S : Worker_spec) = struct
                 setup_master_heartbeater
                 (Heartbeater_master.create
                    ~host_and_port:master_server
-                   ~rpc_settings:global_state.app_rpc_settings)
+                   ~rpc_settings:global_state.app_rpc_settings
+                   ~backend_settings:global_state.backend_settings)
             in
             Rpc.Rpc.dispatch
               Init_worker_state_rpc.rpc
@@ -1177,9 +1377,9 @@ module Make (S : Worker_spec) = struct
                   Option.some_if client_will_immediately_connect connection_timeout
               })
         with
-        | Error exn ->
+        | Error error ->
           Hashtbl.remove global_state.on_failures worker.id;
-          Error (Error.of_exn exn)
+          Error error
         | Ok (Error e) ->
           Hashtbl.remove global_state.on_failures worker.id;
           Error e
@@ -1742,19 +1942,20 @@ end
 
 (* Start an Rpc server based on the implementations defined in the [Make] functor
    for this worker type. Return a [Host_and_port.t] describing the server *)
-let worker_main ~worker_env =
+let worker_main backend_settings ~worker_env =
   let { Worker_env.config; maybe_release_daemon } = worker_env in
   let rpc_settings = Worker_config.app_rpc_settings config in
   let id = Worker_config.worker_id config in
   let register my_host_and_port =
     match%map
       rpc_connection_with_client
+        backend_settings
         ~rpc_settings
         (Tcp.Where_to_connect.of_host_and_port config.master)
         (fun conn -> Rpc.Rpc.dispatch Register_rpc.rpc conn (id, my_host_and_port))
     with
-    | Error exn ->
-      failwiths ~here:[%here] "Worker failed to register" exn [%sexp_of: Exn.t]
+    | Error error ->
+      failwiths ~here:[%here] "Worker failed to register" error [%sexp_of: Error.t]
     | Ok (Error e) ->
       failwiths ~here:[%here] "Worker failed to register" e [%sexp_of: Error.t]
     | Ok (Ok `Shutdown) -> failwith "Got [`Shutdown] on register"
@@ -1770,6 +1971,7 @@ let worker_main ~worker_env =
       >>> fun exn ->
       (* We must be careful that this code here doesn't raise *)
       rpc_connection_with_client
+        backend_settings
         ~rpc_settings
         (Tcp.Where_to_connect.of_host_and_port config.master)
         (fun conn ->
@@ -1805,6 +2007,7 @@ let worker_main ~worker_env =
        is applied in the worker. It is suggested to make this toplevel."
   | Some (Worker_implementations.T worker_implementations) ->
     start_server
+      backend_settings
       ~implementations:worker_implementations
       ~initial_connection_state:(fun _address connection ->
         connection, Set_once.create ())
@@ -1872,13 +2075,17 @@ module Expert = struct
       { Worker_env.config; maybe_release_daemon }
   ;;
 
-  let start_worker_server_exn worker_env =
+  let start_worker_server_exn backend worker_env =
     let rpc_settings = Worker_env.config worker_env |> Worker_config.app_rpc_settings in
+    let backend_settings =
+      Worker_env.config worker_env |> Worker_config.backend_settings
+    in
     let worker_command_args =
       Worker_env.config worker_env |> Worker_config.worker_command_args
     in
-    init_master_state ~rpc_settings ~worker_command_args;
-    worker_main ~worker_env
+    let backend_and_settings = Backend.Settings.with_backend backend_settings backend in
+    init_master_state backend_and_settings ~rpc_settings ~worker_command_args;
+    worker_main backend_settings ~worker_env
   ;;
 
   let start_master_server_exn
@@ -1886,6 +2093,7 @@ module Expert = struct
         ?rpc_handshake_timeout
         ?rpc_heartbeat_config
         ?(pass_name = true)
+        backend_and_settings
         ~worker_command_args
         ()
     =
@@ -1899,18 +2107,19 @@ module Expert = struct
           ~heartbeat_config:rpc_heartbeat_config
       in
       init_master_state
+        backend_and_settings
         ~rpc_settings
         ~worker_command_args:(User_supplied { args = worker_command_args; pass_name })
   ;;
 
-  let worker_command =
+  let worker_command backend_and_settings =
     let open Command.Let_syntax in
     Command.async
       ~summary:"internal use only"
       (let%map_open _name = anon (maybe ("NAME" %: string)) in
        let worker_env = worker_init_before_async_exn () in
        fun () ->
-         start_worker_server_exn worker_env;
+         start_worker_server_exn backend_and_settings worker_env;
          Deferred.never ())
   ;;
 end
@@ -1922,20 +2131,25 @@ module State = struct
 end
 
 module For_testing = struct
-  let initialize here =
+  let initialize backend_and_settings here =
     if am_running_inline_test
     then (
       match Utils.whoami () with
       | `Master ->
         For_testing_internal.set_initialize_source_code_position here;
         (match State.get () with
-         | Some `started -> ()
-         | None -> Expert.start_master_server_exn ~worker_command_args:[] ())
+         | Some `started ->
+           Backend.assert_already_initialized_with_same_backend
+             (Backend_and_settings.backend backend_and_settings)
+         | None ->
+           Expert.start_master_server_exn backend_and_settings ~worker_command_args:[] ())
       | `Worker ->
         if For_testing_internal.worker_should_initialize here
         then (
           let env = Expert.worker_init_before_async_exn () in
-          Expert.start_worker_server_exn env;
+          Expert.start_worker_server_exn
+            (Backend_and_settings.backend backend_and_settings)
+            env;
           never_returns (Scheduler.go ())))
   ;;
 end
@@ -1945,12 +2159,15 @@ let start_app
       ?rpc_handshake_timeout
       ?rpc_heartbeat_config
       ?when_parsing_succeeds
+      backend_and_settings
       command
   =
   match Utils.whoami () with
   | `Worker ->
     let worker_env = Expert.worker_init_before_async_exn () in
-    Expert.start_worker_server_exn worker_env;
+    Expert.start_worker_server_exn
+      (Backend_and_settings.backend backend_and_settings)
+      worker_env;
     never_returns (Scheduler.go ())
   | `Master ->
     let rpc_settings =
@@ -1963,6 +2180,9 @@ let start_app
       (* make it obvious which process the worker belongs to *)
       sprintf !"child-of-%{Pid}" (Unix.getpid ())
     in
-    init_master_state ~rpc_settings ~worker_command_args:(Decorate decoration);
+    init_master_state
+      backend_and_settings
+      ~rpc_settings
+      ~worker_command_args:(Decorate decoration);
     Command_unix.run ?when_parsing_succeeds command
 ;;

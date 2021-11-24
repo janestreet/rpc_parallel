@@ -86,7 +86,7 @@ let main () =
     return ()
 ;;
 
-let () = Rpc_parallel.For_testing.initialize [%here]
+let () = Rpc_parallel_krb_public.For_testing.initialize [%here]
 
 let%expect_test "" =
   let%bind () = main () in

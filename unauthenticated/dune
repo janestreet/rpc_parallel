@@ -1,0 +1,3 @@
+(library (name rpc_parallel_unauthenticated)
+ (libraries async core_kernel.core core.daemon rpc_parallel)
+ (preprocess (pps ppx_jane)))

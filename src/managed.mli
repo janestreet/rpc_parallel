@@ -2,12 +2,12 @@ open Core
 open Async
 
 (** This module is primarily meant for backwards compatibility with code that used earlier
-    versions of [Rpc_parallel]. Please consider using the [Parallel.Make()] functor
+    versions of [Rpc_parallel]. Please consider using the [Rpc_parallel.Make()] functor
     instead as the semantics are more transparent and intuitive.
 
     This functor keeps cached connections to workers and dispatches on these connections.
     The semantics of reconnect are not currently well-defined. If you expect connections
-    to drop or want multiple connections to the same worker, using [Parallel.Make()] is
+    to drop or want multiple connections to the same worker, using [Rpc_parallel.Make()] is
     probably the better choice. *)
 
 

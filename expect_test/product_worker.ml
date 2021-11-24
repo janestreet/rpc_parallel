@@ -51,7 +51,7 @@ let main max =
   Connection.run_exn conn ~f:functions.product ~arg:max
 ;;
 
-let () = Rpc_parallel.For_testing.initialize [%here]
+let () = Rpc_parallel_krb_public.For_testing.initialize [%here]
 
 let%expect_test "" =
   let%bind res = main 10 in

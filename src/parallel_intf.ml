@@ -500,9 +500,68 @@ module type Worker_spec = sig
      and type connection_state_init_arg := Connection_state.init_arg
 end
 
+(** An RPC backend. Defines how to create RPC servers and clients for a given protocol.
+    Currently, we have two backends, one in each of rpc_parallel_unauthenticated and
+    rpc_parallel_krb. These backends define how to create and connect to unencrypted and
+    kerberized RPC servers, respectively. Unless you are implementing your own
+    rpc_parallel backend, you should use one of the two libraries above instead of
+    creating your own modules with this signature. *)
+module type Backend = sig
+  (** The name of the backend -- e.g. "Unauthenticated Async RPC". Must be globally
+      unique. Used for error messages if someone initializes Rpc_parallel multiple times
+      with different backends. *)
+  val name : string
+
+  module Settings : sig
+    (** Additional settings needed to create or connect to an RPC server for this backend.
+        For unecrypted RPC, this is unit. For kerberized RPC, this is the client and
+        server krb modes. *)
+    type t [@@deriving bin_io, sexp]
+  end
+
+  val serve
+    :  ?max_message_size:int
+    -> ?handshake_timeout:Time.Span.t
+    -> ?heartbeat_config:Rpc.Connection.Heartbeat_config.t
+    -> implementations:'a Rpc.Implementations.t
+    -> initial_connection_state:(Socket.Address.Inet.t -> Rpc.Connection.t -> 'a)
+    -> where_to_listen:Tcp.Where_to_listen.inet
+    -> Settings.t
+    -> (Socket.Address.Inet.t, int) Tcp.Server.t Deferred.t
+
+  val with_client
+    :  ?implementations:'b Rpc.Connection.Client_implementations.t
+    -> ?max_message_size:int
+    -> ?handshake_timeout:Time.Span.t
+    -> ?heartbeat_config:Rpc.Connection.Heartbeat_config.t
+    -> Settings.t
+    -> Socket.Address.Inet.t Tcp.Where_to_connect.t
+    -> (Rpc.Connection.t -> 'a Deferred.t)
+    -> 'a Or_error.t Deferred.t
+
+  val client
+    :  ?implementations:'a Rpc.Connection.Client_implementations.t
+    -> ?max_message_size:int
+    -> ?handshake_timeout:Time.Span.t
+    -> ?heartbeat_config:Rpc.Connection.Heartbeat_config.t
+    -> ?description:Info.t
+    -> Settings.t
+    -> Socket.Address.Inet.t Tcp.Where_to_connect.t
+    -> Rpc.Connection.t Or_error.t Deferred.t
+end
+
+(** A backend packed together with its settings. Unless you are implementing your own
+    rpc_parallel backend, you should use either rpc_parallel_krb or
+    rpc_parallel_unauthenticated instead of constructing values of this type *)
+module type Backend_and_settings = sig
+  type t = T : (module Backend with type Settings.t = 'a) * 'a -> t
+end
+
 module type Parallel = sig
   module Function : Function
+  module Backend_and_settings : Backend_and_settings
 
+  module type Backend = Backend
   module type Worker = Worker with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
   module type Functions = Functions
 
@@ -540,6 +599,9 @@ module type Parallel = sig
     -> ?rpc_handshake_timeout:Time.Span.t
     -> ?rpc_heartbeat_config:Rpc.Connection.Heartbeat_config.t
     -> ?when_parsing_succeeds:(unit -> unit)
+    -> Backend_and_settings.t
+    (** Use rpc_parallel_krb or rpc_parallel_unauthenticated to avoid having to manually
+        construct a custom Backend *)
     -> Command.t
     -> unit
 
@@ -574,7 +636,12 @@ module type Parallel = sig
 
         ]}
     *)
-    val initialize : Source_code_position.t -> unit
+    val initialize
+      :  Backend_and_settings.t
+      (** Use rpc_parallel_krb or rpc_parallel_unauthenticated to avoid having to manually
+          construct a custom Backend *)
+      -> Source_code_position.t
+      -> unit
   end
 
   (** If you want more direct control over your executable, you can use the [Expert]
@@ -595,6 +662,9 @@ module type Parallel = sig
       -> ?rpc_handshake_timeout:Time.Span.t
       -> ?rpc_heartbeat_config:Rpc.Connection.Heartbeat_config.t
       -> ?pass_name:bool (** default: true *)
+      -> Backend_and_settings.t
+      (** Use rpc_parallel_krb or rpc_parallel_unauthenticated to avoid having to manually
+          construct a custom Backend *)
       -> worker_command_args:string list
       -> unit
       -> unit
@@ -611,7 +681,11 @@ module type Parallel = sig
         [worker_init_before_async_exn] and [start_worker_server_exn]. This option may go
         away in the future. *)
 
-    val worker_command : Command.t
+    val worker_command
+      :  (module Backend)
+      (** Use rpc_parallel_krb or rpc_parallel_unauthenticated to avoid having to manually
+          construct a custom Backend *)
+      -> Command.t
 
     module Worker_env : sig
       type t
@@ -633,6 +707,11 @@ module type Parallel = sig
         and stderr according to [redirect_stdout] and [redirect_stderr]. All writes to
         stdout before this job runs are blackholed. All writes to stderr before this job
         runs are redirected to the spawning process's stderr. *)
-    val start_worker_server_exn : Worker_env.t -> unit
+    val start_worker_server_exn
+      :  (module Backend)
+      (** Use rpc_parallel_krb or rpc_parallel_unauthenticated to avoid having to manually
+          construct a custom Backend *)
+      -> Worker_env.t
+      -> unit
   end
 end

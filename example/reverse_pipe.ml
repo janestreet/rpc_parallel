@@ -81,7 +81,8 @@ let main () =
 ;;
 
 let () =
-  Rpc_parallel.start_app
+  Rpc_parallel_krb_public.start_app
+    ~krb_mode:For_unit_test
     (Command.async
        ~summary:"Demonstrate using Rpc_parallel with reverse pipes"
        (Command.Param.return main))

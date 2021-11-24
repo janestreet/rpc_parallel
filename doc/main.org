@@ -11,6 +11,31 @@ involves sending rpc queries and receiving rpc responses. The "worker"
 already has the code to do computation because it is running the same
 binary!
 
+* Getting started
+
+If you are looking for an entry point into the library, take a look at the
+sum_worker.ml example in lib/rpc_parallel/expect_test. This is a test that
+demonstrates how to spawn a worker and run a function on it. A lot of the other
+examples are used to test specific aspects of the library, so they might not be
+as useful as a source of documentation.
+
+* Backends
+
+There are two backends for Rpc_parallel: the unauthenticated and kerberized
+backends, available in the rpc_parallel_unauthenticated and rpc_parallel_krb
+libraries respectively. They provide identical functionality, except that the
+unauthenticated library uses unencrypted RPCs and the kerberized library uses
+kerberized RPCs. The kerberized library only allows connections between masters
+and workers that have the same kerberos principal to ensure that your cluster is
+not connected to by other users.
+
+When using Rpc_parallel, you will mostly use functions and modules from the
+rpc_parallel library. However, to initialize the library, you will need to
+either implement your own Backend module (not recommended unless you have
+special needs) or use the initialization functions in rpc_parallel_krb
+(recommended) or rpc_parallel_unauthenticated (unkerberized, "legacy") which
+handle producing a Backend module for you.
+
 * Mental Model
 
 - =Worker.t= identifies a worker rpc server

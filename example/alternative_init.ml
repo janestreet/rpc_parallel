@@ -1,3 +1,5 @@
+(* Note: this example uses deprecated initialization functions which are only available in
+   the rpc_parallel_unauthenticated library, and not rpc_parallel_krb *)
 open Core
 open Async
 
@@ -37,7 +39,7 @@ let worker_command =
      fun () ->
        let worker_env = Rpc_parallel.Expert.worker_init_before_async_exn () in
        stage (fun `Scheduler_started ->
-         Rpc_parallel.Expert.start_worker_server_exn worker_env;
+         Rpc_parallel_unauthenticated.Expert.start_worker_server_exn worker_env;
          Deferred.never ()))
 ;;
 
@@ -48,7 +50,9 @@ let main_command =
     (let%map_open () = return () in
      fun () ->
        let open Deferred.Let_syntax in
-       Rpc_parallel.Expert.start_master_server_exn ~worker_command_args:[ "worker" ] ();
+       Rpc_parallel_unauthenticated.Expert.start_master_server_exn
+         ~worker_command_args:[ "worker" ]
+         ();
        let%map (_connection : Worker.Connection.t) =
          Worker.spawn_exn
            ~on_failure:Error.raise

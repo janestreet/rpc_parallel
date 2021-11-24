@@ -1,8 +1,9 @@
 open Core
 open Async
 
-(* This demonstrates how to take advantage of the feature in the [Rpc_parallel]
-   library that a [Worker.t] type is defined [with bin_io]. *)
+(* This demonstrates how to take advantage of the feature in the
+   [Rpc_parallel] library that a [Worker.t] type is defined [with bin_io].
+*)
 
 module Worker = struct
   module T = struct
@@ -136,4 +137,4 @@ let command =
        Deferred.Or_error.ok_unit)
 ;;
 
-let () = Rpc_parallel.start_app command
+let () = Rpc_parallel_krb_public.start_app ~krb_mode:For_unit_test command
