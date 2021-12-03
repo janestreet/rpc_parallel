@@ -2,6 +2,6 @@
  (names add_numbers alternative_init async_log number_stats
   reverse_direct_pipe reverse_pipe rpc_direct_pipe serve side_arg
   spawn_in_foreground stream_workers worker_binprot workers_as_masters)
- (libraries async core.command_unix core_kernel.core jane
-  rpc_parallel_krb_public rpc_parallel_unauthenticated sexplib)
+ (libraries async core_unix.command_unix core jane rpc_parallel_krb_public
+  rpc_parallel_unauthenticated sexplib)
  (preprocess (pps ppx_jane)))
