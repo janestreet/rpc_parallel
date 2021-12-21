@@ -59,7 +59,7 @@ let assert_fds here ~listen ~established =
     match%bind
       Process.run_lines
         ~accept_nonzero_exit
-        ~prog:"/usr/sbin/lsof"
+        ~prog:"/usr/bin/lsof"
         ~args:[ "-ap"; Pid.to_string pid; "-iTCP" ]
         ()
     with

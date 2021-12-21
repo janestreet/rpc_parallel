@@ -39,10 +39,11 @@ end
 
 let main ~host ~wrapper =
   let open Deferred.Or_error.Let_syntax in
+  let executable_dir = Filename.temp_dir_name in
   let%bind remote_exec =
     Rpc_parallel.Remote_executable.copy_to_host
       ~strict_host_key_checking:`No
-      ~executable_dir:"~"
+      ~executable_dir
       host
   in
   let how =

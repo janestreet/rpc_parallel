@@ -40,10 +40,11 @@ let spawn ?env ~host () =
     match host with
     | None -> return (Rpc_parallel.How_to_run.local, fun () -> return ())
     | Some host ->
+      let executable_dir = Filename.temp_dir_name in
       let%map remote_executable =
         Rpc_parallel.Remote_executable.copy_to_host
           ~strict_host_key_checking:`No
-          ~executable_dir:"~"
+          ~executable_dir
           host
         >>| ok_exn
       in

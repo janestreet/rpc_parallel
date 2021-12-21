@@ -1,3 +1,2 @@
 (library (name rpc_parallel_unauthenticated)
- (libraries async core core_unix.daemon rpc_parallel)
- (preprocess (pps ppx_jane)))
+ (libraries async core rpc_parallel) (preprocess (pps ppx_jane)))
