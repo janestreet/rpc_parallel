@@ -42,7 +42,7 @@ let worker_implementations = Worker_type_id.Table.create ~size:1 ()
 
 module Worker_command_args = struct
   type t =
-    | Decorate of string
+    | Add_master_pid
     | User_supplied of
         { args : string list
         ; pass_name : bool
@@ -1286,7 +1286,10 @@ module Make (S : Worker_spec) = struct
     let pending_ivar = Ivar.create () in
     let worker_command_args =
       match global_state.worker_command_args with
-      | Decorate token -> "RPC_PARALLEL_WORKER" :: token :: Option.to_list name
+      | Add_master_pid ->
+        "RPC_PARALLEL_WORKER"
+        :: sprintf !"child-of-%{Pid}@%s" (Unix.getpid ()) (Unix.gethostname ())
+        :: Option.to_list name
       | User_supplied { args; pass_name } ->
         if pass_name then args @ Option.to_list name else args
     in
@@ -2142,7 +2145,10 @@ module For_testing = struct
            Backend.assert_already_initialized_with_same_backend
              (Backend_and_settings.backend backend_and_settings)
          | None ->
-           Expert.start_master_server_exn backend_and_settings ~worker_command_args:[] ())
+           init_master_state
+             backend_and_settings
+             ~rpc_settings:Rpc_settings.default
+             ~worker_command_args:Add_master_pid)
       | `Worker ->
         if For_testing_internal.worker_should_initialize here
         then (
@@ -2176,13 +2182,9 @@ let start_app
         ~handshake_timeout:rpc_handshake_timeout
         ~heartbeat_config:rpc_heartbeat_config
     in
-    let decoration =
-      (* make it obvious which process the worker belongs to *)
-      sprintf !"child-of-%{Pid}" (Unix.getpid ())
-    in
     init_master_state
       backend_and_settings
       ~rpc_settings
-      ~worker_command_args:(Decorate decoration);
+      ~worker_command_args:Add_master_pid;
     Command_unix.run ?when_parsing_succeeds command
 ;;
