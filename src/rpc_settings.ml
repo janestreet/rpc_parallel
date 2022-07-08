@@ -3,7 +3,7 @@ open! Async
 
 type t =
   { max_message_size : int option [@sexp.option]
-  ; handshake_timeout : Time.Span.t option [@sexp.option]
+  ; handshake_timeout : Time_float.Span.t option [@sexp.option]
   ; heartbeat_config : Rpc.Connection.Heartbeat_config.t option [@sexp.option]
   }
 [@@deriving sexp, bin_io]

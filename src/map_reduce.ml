@@ -500,18 +500,18 @@ let map_reduce (type param a accum) config input_reader ~m ~(param : param) =
     =
     match dir with
     | (`Left | `Left_nothing_right) as dir' ->
-      (match H.Map.closest_key !acc_map `Less_than key with
+      (match Map.closest_key (!acc_map : _ H.Map.t) `Less_than key with
        | Some (left_key, left_acc) when H.ubound left_key = H.lbound key ->
          (* combine acc_{left_lbound, left_ubound} acc_{this_lbound, this_ubound}
             -> acc_{left_lbound, this_ubound} *)
          (* We need to remove both nodes from the tree to indicate that we are working on
             combining them. *)
-         acc_map := H.Map.remove (H.Map.remove !acc_map key) left_key;
+         acc_map := Map.remove (Map.remove (!acc_map : _ H.Map.t) key : _ H.Map.t) left_key;
          let%bind new_acc =
            Map_reduce_function.Worker.run_exn worker (`Combine (left_acc, acc))
          in
          let new_key = H.create_exn (H.lbound left_key) (H.ubound key) in
-         acc_map := H.Map.set !acc_map ~key:new_key ~data:new_acc;
+         acc_map := Map.set (!acc_map : _ H.Map.t) ~key:new_key ~data:new_acc;
          (* Continue searching in the same direction. (See above comment.) *)
          combine_loop worker new_key new_acc `Left
        | _ ->
@@ -519,16 +519,17 @@ let map_reduce (type param a accum) config input_reader ~m ~(param : param) =
           | `Left -> combine_loop worker key acc `Right_nothing_left
           | `Left_nothing_right -> Deferred.unit))
     | (`Right | `Right_nothing_left) as dir' ->
-      (match H.Map.closest_key !acc_map `Greater_than key with
+      (match Map.closest_key (!acc_map : _ H.Map.t) `Greater_than key with
        | Some (right_key, right_acc) when H.lbound right_key = H.ubound key ->
          (* combine acc_{this_lbound, this_ubound} acc_{right_lbound, right_ubound}
             -> acc_{this_lbound, right_ubound} *)
-         acc_map := H.Map.remove (H.Map.remove !acc_map key) right_key;
+         acc_map
+         := Map.remove (Map.remove (!acc_map : _ H.Map.t) key : _ H.Map.t) right_key;
          let%bind new_acc =
            Map_reduce_function.Worker.run_exn worker (`Combine (acc, right_acc))
          in
          let new_key = H.create_exn (H.lbound key) (H.ubound right_key) in
-         acc_map := H.Map.set !acc_map ~key:new_key ~data:new_acc;
+         acc_map := Map.set (!acc_map : _ H.Map.t) ~key:new_key ~data:new_acc;
          combine_loop worker new_key new_acc `Right
        | _ ->
          (match dir' with
@@ -541,23 +542,23 @@ let map_reduce (type param a accum) config input_reader ~m ~(param : param) =
     | `Ok (input, index) ->
       let key = H.create_exn index (index + 1) in
       let%bind () =
-        match H.Map.closest_key !acc_map `Less_than key with
+        match Map.closest_key (!acc_map : _ H.Map.t) `Less_than key with
         | Some (left_key, left_acc) when H.ubound left_key = H.lbound key ->
           (* combine acc_{left_lbound, left_ubound} (map a_index)
              -> acc_{left_lbound, index + 1} *)
-          acc_map := H.Map.remove !acc_map left_key;
+          acc_map := Map.remove (!acc_map : _ H.Map.t) left_key;
           let%bind acc =
             Map_reduce_function.Worker.run_exn
               worker
               (`Map_right_combine (left_acc, input))
           in
           let key = H.create_exn (H.lbound left_key) (H.ubound key) in
-          acc_map := H.Map.set !acc_map ~key ~data:acc;
+          acc_map := Map.set (!acc_map : _ H.Map.t) ~key ~data:acc;
           combine_loop worker key acc `Left
         | _ ->
           (* map a_index -> acc_{index, index + 1} *)
           let%bind acc = Map_reduce_function.Worker.run_exn worker (`Map input) in
-          acc_map := H.Map.set !acc_map ~key ~data:acc;
+          acc_map := Map.set (!acc_map : _ H.Map.t) ~key ~data:acc;
           combine_loop worker key acc `Left
       in
       map_and_combine_loop worker

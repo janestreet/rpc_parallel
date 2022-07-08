@@ -31,7 +31,7 @@ module type Worker = sig
     :  ?how:How_to_run.t
     -> ?name:string
     -> ?env:(string * string) list
-    -> ?connection_timeout:Time.Span.t
+    -> ?connection_timeout:Time_float.Span.t
     -> ?cd:string (** default / *)
     -> ?umask:int (** defaults to use existing umask *)
     -> redirect_stdout:Fd_redirection.t
@@ -49,7 +49,7 @@ module type Worker = sig
     :  ?how:How_to_run.t
     -> ?name:string
     -> ?env:(string * string) list
-    -> ?connection_timeout:Time.Span.t
+    -> ?connection_timeout:Time_float.Span.t
     -> ?cd:string
     -> ?umask:int
     -> redirect_stdout:Fd_redirection.t

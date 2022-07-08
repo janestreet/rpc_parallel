@@ -10,10 +10,14 @@ module type Function = sig
   type ('worker, 'query, +'response) t
 
   module Direct_pipe : sig
+    module Id : sig
+      type 'worker t
+    end
+
     type nonrec ('worker, 'query, 'response) t =
       ( 'worker
       , 'query * ('response Rpc.Pipe_rpc.Pipe_message.t -> Rpc.Pipe_rpc.Pipe_response.t)
-      , Rpc.Pipe_rpc.Id.t )
+      , 'worker Id.t )
         t
   end
 
@@ -53,6 +57,7 @@ end
 
 module type Worker = sig
   type ('worker, 'query, 'response) _function
+  type 'worker _id_direct
 
   (** A [Worker.t] type is defined [with bin_io] so it is possible to create functions
       that take a worker as an argument. *)
@@ -96,6 +101,9 @@ module type Worker = sig
       -> f:(worker, 'query, 'response) _function
       -> arg:'query
       -> 'response Deferred.t
+
+    (** Can be used to abort a direct pipe function in progress. *)
+    val abort : t -> id:worker _id_direct -> unit
 
     (** Connect to a given worker, returning a type wrapped [Rpc.Connection.t] that can be
         used to run functions. *)
@@ -182,7 +190,7 @@ module type Worker = sig
     ?how:How_to_run.t (** default [How_to_run.local] *)
     -> ?name:string
     -> ?env:(string * string) list
-    -> ?connection_timeout:Time.Span.t (** default 10 sec *)
+    -> ?connection_timeout:Time_float.Span.t (** default 10 sec *)
     -> ?cd:string (** default / *)
     -> on_failure:(Error.t -> unit)
     -> 'a
@@ -521,7 +529,7 @@ module type Backend = sig
 
   val serve
     :  ?max_message_size:int
-    -> ?handshake_timeout:Time.Span.t
+    -> ?handshake_timeout:Time_float.Span.t
     -> ?heartbeat_config:Rpc.Connection.Heartbeat_config.t
     -> implementations:'a Rpc.Implementations.t
     -> initial_connection_state:(Socket.Address.Inet.t -> Rpc.Connection.t -> 'a)
@@ -532,7 +540,7 @@ module type Backend = sig
   val with_client
     :  ?implementations:'b Rpc.Connection.Client_implementations.t
     -> ?max_message_size:int
-    -> ?handshake_timeout:Time.Span.t
+    -> ?handshake_timeout:Time_float.Span.t
     -> ?heartbeat_config:Rpc.Connection.Heartbeat_config.t
     -> Settings.t
     -> Socket.Address.Inet.t Tcp.Where_to_connect.t
@@ -542,7 +550,7 @@ module type Backend = sig
   val client
     :  ?implementations:'a Rpc.Connection.Client_implementations.t
     -> ?max_message_size:int
-    -> ?handshake_timeout:Time.Span.t
+    -> ?handshake_timeout:Time_float.Span.t
     -> ?heartbeat_config:Rpc.Connection.Heartbeat_config.t
     -> ?description:Info.t
     -> Settings.t
@@ -562,7 +570,12 @@ module type Parallel = sig
   module Backend_and_settings : Backend_and_settings
 
   module type Backend = Backend
-  module type Worker = Worker with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
+
+  module type Worker =
+    Worker
+    with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
+     and type 'w _id_direct := 'w Function.Direct_pipe.Id.t
+
   module type Functions = Functions
 
   module type Creator =
@@ -593,12 +606,15 @@ module type Parallel = sig
       to alter the rpc defaults. These rpc settings will be used for all connections.
       This can be useful if you have long async jobs.
 
-      [when_parsing_succeeds] will be passed to [Command.run] in the master process. *)
+      [when_parsing_succeeds] and [complete_subcommands] will be passed to [Command.run]
+      in the master process. *)
   val start_app
     :  ?rpc_max_message_size:int
-    -> ?rpc_handshake_timeout:Time.Span.t
+    -> ?rpc_handshake_timeout:Time_float.Span.t
     -> ?rpc_heartbeat_config:Rpc.Connection.Heartbeat_config.t
     -> ?when_parsing_succeeds:(unit -> unit)
+    -> ?complete_subcommands:
+         (path:string list -> part:string -> string list list -> string list option)
     -> Backend_and_settings.t
     (** Use rpc_parallel_krb or rpc_parallel_unauthenticated to avoid having to manually
         construct a custom Backend *)
@@ -659,7 +675,7 @@ module type Parallel = sig
         the "deprecated option" for implementing worker commands described below. *)
     val start_master_server_exn
       :  ?rpc_max_message_size:int
-      -> ?rpc_handshake_timeout:Time.Span.t
+      -> ?rpc_handshake_timeout:Time_float.Span.t
       -> ?rpc_heartbeat_config:Rpc.Connection.Heartbeat_config.t
       -> ?pass_name:bool (** default: true *)
       -> Backend_and_settings.t

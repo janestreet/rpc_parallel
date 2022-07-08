@@ -69,6 +69,20 @@
   Sum_worker.sum: 36
   Sum_worker.sum: 45
 
+  $ run example/abort_direct_pipe.exe
+  Ping: 0
+  Pong: 0
+  Ping: 1
+  Pong: 1
+  Ping: 2
+  Pong: 2
+  Ping: 3
+  Pong: 3
+  Ping: 4
+  Pong: 4
+  Closed: By_remote_side
+  Worker reports pongs closed
+
   $ run example/async_log.exe
   (V2
    ((time (*)) (level (Info)) (glob)

@@ -79,7 +79,7 @@ let main () =
   (* By setting [connection_timeout] to [Time.Span.zero], we force a failure in the part
      of the worker initialization where the master waits for the recently spawned worker
      to connect back. *)
-  let%bind () = test ~connection_timeout:Time.Span.zero () in
+  let%bind () = test ~connection_timeout:Time_float.Span.zero () in
   let%bind () = test () in
   Deferred.unit
 ;;

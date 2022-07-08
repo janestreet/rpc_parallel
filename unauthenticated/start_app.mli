@@ -6,9 +6,11 @@ open Async
 (** See lib/rpc_parallel/src/parallel_intf.ml for documentation. *)
 val start_app
   :  ?rpc_max_message_size:int
-  -> ?rpc_handshake_timeout:Time.Span.t
+  -> ?rpc_handshake_timeout:Time_float.Span.t
   -> ?rpc_heartbeat_config:Rpc.Connection.Heartbeat_config.t
   -> ?when_parsing_succeeds:(unit -> unit)
+  -> ?complete_subcommands:
+       (path:string list -> part:string -> string list list -> string list option)
   -> Command.t
   -> unit
 
@@ -21,7 +23,7 @@ module Expert : sig
   (** See lib/rpc_parallel/src/parallel_intf.ml for documentation. *)
   val start_master_server_exn
     :  ?rpc_max_message_size:int
-    -> ?rpc_handshake_timeout:Time.Span.t
+    -> ?rpc_handshake_timeout:Time_float.Span.t
     -> ?rpc_heartbeat_config:Rpc.Connection.Heartbeat_config.t
     -> ?pass_name:bool (** default: true *)
     -> worker_command_args:string list

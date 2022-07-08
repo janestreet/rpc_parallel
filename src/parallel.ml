@@ -250,6 +250,12 @@ module Function = struct
     ;;
   end
 
+  module Id_directly_piped = struct
+    type 'worker t = T : _ Rpc.Pipe_rpc.t * Rpc.Pipe_rpc.Id.t -> 'worker t
+
+    let abort (T (proto, id)) connection = Rpc.Pipe_rpc.abort proto connection id
+  end
+
   type ('worker, 'query, 'response) t_internal =
     | Plain of ('worker, 'query, 'response) Function_plain.t
     | Piped :
@@ -261,7 +267,7 @@ module Function = struct
         -> ( 'worker
            , 'query
              * ('response Rpc.Pipe_rpc.Pipe_message.t -> Rpc.Pipe_rpc.Pipe_response.t)
-           , Rpc.Pipe_rpc.Id.t )
+           , 'worker Id_directly_piped.t )
              t_internal
     | One_way : ('worker, 'query) Function_one_way.t -> ('worker, 'query, unit) t_internal
     | Reverse_piped :
@@ -277,10 +283,12 @@ module Function = struct
         -> ('worker, 'query, 'response) t
 
   module Direct_pipe = struct
+    module Id = Id_directly_piped
+
     type nonrec ('worker, 'query, 'response) t =
       ( 'worker
       , 'query * ('response Rpc.Pipe_rpc.Pipe_message.t -> Rpc.Pipe_rpc.Pipe_response.t)
-      , Rpc.Pipe_rpc.Id.t )
+      , 'worker Id.t )
         t
   end
 
@@ -373,8 +381,8 @@ module Function = struct
   ;;
 
   let run_internal
-        (type query response)
-        (t_internal : (_, query, response) t_internal)
+        (type worker query response)
+        (t_internal : (worker, query, response) t_internal)
         connection
         ~(arg : query)
     : response Or_error.t Deferred.t
@@ -394,7 +402,8 @@ module Function = struct
       result
     | Directly_piped proto ->
       let arg, f = arg in
-      Rpc.Pipe_rpc.dispatch_iter proto connection arg ~f >>| Or_error.join
+      let%map result = Rpc.Pipe_rpc.dispatch_iter proto connection arg ~f in
+      Or_error.join result |> Or_error.map ~f:(fun id -> Id_directly_piped.T (proto, id))
   ;;
 
   let run (T (query_f, t_internal, response_f)) connection ~arg =
@@ -427,7 +436,12 @@ module Daemonize_args = struct
 end
 
 module type Backend = Backend
-module type Worker = Worker with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
+
+module type Worker =
+  Worker
+  with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
+   and type 'w _id_direct := 'w Function.Direct_pipe.Id.t
+
 module type Functions = Functions
 
 module type Creator =
@@ -458,7 +472,7 @@ module Backend : sig
 
   val serve
     :  ?max_message_size:int
-    -> ?handshake_timeout:Time.Span.t
+    -> ?handshake_timeout:Time_float.Span.t
     -> ?heartbeat_config:Rpc.Connection.Heartbeat_config.t
     -> implementations:'a Rpc.Implementations.t
     -> initial_connection_state:(Socket.Address.Inet.t -> Rpc.Connection.t -> 'a)
@@ -469,7 +483,7 @@ module Backend : sig
   val with_client
     :  ?implementations:'b Rpc.Connection.Client_implementations.t
     -> ?max_message_size:int
-    -> ?handshake_timeout:Time.Span.t
+    -> ?handshake_timeout:Time_float.Span.t
     -> ?heartbeat_config:Rpc.Connection.Heartbeat_config.t
     -> Settings.t
     -> Socket.Address.Inet.t Tcp.Where_to_connect.t
@@ -479,7 +493,7 @@ module Backend : sig
   val client
     :  ?implementations:'a Rpc.Connection.Client_implementations.t
     -> ?max_message_size:int
-    -> ?handshake_timeout:Time.Span.t
+    -> ?handshake_timeout:Time_float.Span.t
     -> ?heartbeat_config:Rpc.Connection.Heartbeat_config.t
     -> ?description:Info.t
     -> Settings.t
@@ -602,7 +616,7 @@ module Worker_config = struct
     ; backend_settings : Backend.Settings.t
     ; cd : string
     ; daemonize_args : Daemonize_args.t
-    ; connection_timeout : Time.Span.t
+    ; connection_timeout : Time_float.Span.t
     ; worker_command_args : Worker_command_args.t
     }
   [@@deriving fields, sexp]
@@ -936,7 +950,7 @@ module Make (S : Worker_spec) = struct
         master : Heartbeater_master.t option (* The process that got spawned *)
       ; worker : Worker_id.t
       ; arg : S.Worker_state.init_arg
-      ; initial_client_connection_timeout : Time.Span.t option
+      ; initial_client_connection_timeout : Time_float.Span.t option
       }
     [@@deriving bin_io]
 
@@ -1156,8 +1170,7 @@ module Make (S : Worker_spec) = struct
       >>=? fun conn ->
       let%bind result =
         Monitor.try_with
-          ~run:
-            `Schedule
+          ~run:`Schedule
           ~rest:`Log
           (fun () -> f conn)
       in
@@ -1167,6 +1180,7 @@ module Make (S : Worker_spec) = struct
 
     let run t ~f ~arg = Function.run f t.connection ~arg
     let run_exn t ~f ~arg = run t ~f ~arg >>| Or_error.ok_exn
+    let abort t ~id = Function.Direct_pipe.Id.abort id t.connection
   end
 
   module Shutdown_on (M : T1) = struct
@@ -1200,7 +1214,7 @@ module Make (S : Worker_spec) = struct
     ?how:How_to_run.t
     -> ?name:string
     -> ?env:(string * string) list
-    -> ?connection_timeout:Time.Span.t
+    -> ?connection_timeout:Time_float.Span.t
     -> ?cd:string
     -> on_failure:(Error.t -> unit)
     -> 'a
@@ -2165,6 +2179,7 @@ let start_app
       ?rpc_handshake_timeout
       ?rpc_heartbeat_config
       ?when_parsing_succeeds
+      ?complete_subcommands
       backend_and_settings
       command
   =
@@ -2186,5 +2201,5 @@ let start_app
       backend_and_settings
       ~rpc_settings
       ~worker_command_args:Add_master_pid;
-    Command_unix.run ?when_parsing_succeeds command
+    Command_unix.run ?when_parsing_succeeds ?complete_subcommands command
 ;;

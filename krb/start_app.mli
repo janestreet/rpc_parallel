@@ -7,7 +7,7 @@ open Async
     specialized to expose the krb server and client modes. *)
 val start_app
   :  ?rpc_max_message_size:int
-  -> ?rpc_handshake_timeout:Time.Span.t
+  -> ?rpc_handshake_timeout:Time_float.Span.t
   -> ?rpc_heartbeat_config:Rpc.Connection.Heartbeat_config.t
   -> ?when_parsing_succeeds:(unit -> unit)
   -> krb_mode:Mode.t
@@ -26,7 +26,7 @@ module Expert : sig
       is specialized to expose the krb server and client modes. *)
   val start_master_server_exn
     :  ?rpc_max_message_size:int
-    -> ?rpc_handshake_timeout:Time.Span.t
+    -> ?rpc_handshake_timeout:Time_float.Span.t
     -> ?rpc_heartbeat_config:Rpc.Connection.Heartbeat_config.t
     -> ?pass_name:bool (** default: true *)
     -> krb_mode:Mode.t

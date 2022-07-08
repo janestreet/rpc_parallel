@@ -26,8 +26,7 @@ end
 
 (* We enforce that the master and worker must have matching kerberos principals *)
 let authorize_current_principal () =
-  Username_async.unix_effective ()
-  >>| Username_async.to_string
+  Unix.getlogin ()
   >>| (fun x -> Krb_public.Principal.Name.User x)
   >>| Krb_public.Authorize.accept_single
 ;;

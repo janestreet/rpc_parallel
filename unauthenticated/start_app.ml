@@ -9,6 +9,7 @@ let start_app
       ?rpc_handshake_timeout
       ?rpc_heartbeat_config
       ?when_parsing_succeeds
+      ?complete_subcommands
       command
   =
   Rpc_parallel.start_app
@@ -16,6 +17,7 @@ let start_app
     ?rpc_handshake_timeout
     ?rpc_heartbeat_config
     ?when_parsing_succeeds
+    ?complete_subcommands
     backend_and_settings
     command
 ;;

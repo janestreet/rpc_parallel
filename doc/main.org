@@ -1,4 +1,4 @@
-#+TITLE: Rpc\_parallel
+#+TITLE: Rpc_parallel
 
 =Rpc_parallel= is a library that uses processes to achieve
 parallelism. Because of the garbage collector and async locks,

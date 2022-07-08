@@ -70,7 +70,9 @@ let command =
          if remaining = 0
          then return ()
          else (
-           let start = Time.to_span_since_epoch (Time.now ()) |> Time.Span.to_sec in
+           let start =
+             Time_float.to_span_since_epoch (Time_float.now ()) |> Time_float.Span.to_sec
+           in
            let%bind () =
              Deferred.all_unit
                (List.map (List.range 0 num_workers) ~f:(fun _i ->
@@ -86,7 +88,9 @@ let command =
                   in
                   Worker.Connection.run_exn conn ~f:Worker.functions.ping ~arg:()))
            in
-           let end_ = Time.to_span_since_epoch (Time.now ()) |> Time.Span.to_sec in
+           let end_ =
+             Time_float.to_span_since_epoch (Time_float.now ()) |> Time_float.Span.to_sec
+           in
            Core.Printf.printf "%f\n%!" (end_ -. start);
            loop (remaining - 1))
        in
