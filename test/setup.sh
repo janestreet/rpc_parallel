@@ -60,3 +60,8 @@ function run_absolute_path() {
   do_run false "$exe" "$@"
 }
 export -f run_absolute_path
+
+#  We must set the TESTING_FRAMEWORK environment variable so the am_running_test
+#  function returns true. The rpc_parallel_krb library bypasses kerberos when
+#  that function returns true.
+export TESTING_FRAMEWORK=

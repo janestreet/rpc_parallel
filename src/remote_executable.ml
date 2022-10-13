@@ -47,6 +47,11 @@ let delete executable =
 ;;
 
 let env_for_ssh env =
+  let env =
+    (* If we are running a test, we should propagate the relevant environment variable
+       through ssh so the spawned workers know they are running a test. *)
+    if am_running_test then ("TESTING_FRAMEWORK", "") :: env else env
+  in
   let cheesy_escape str = Sexp.to_string (String.sexp_of_t str) in
   List.map env ~f:(fun (key, data) -> key ^ "=" ^ cheesy_escape data)
 ;;

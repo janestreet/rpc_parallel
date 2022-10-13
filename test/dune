@@ -6,4 +6,5 @@
   procfs_async qtest_deprecated sexplib)
  (preprocess (pps ppx_jane)))
 
-(alias (name runtest) (deps qtest.exe) (action (bash ./qtest.exe)))
+(alias (name runtest) (deps qtest.exe)
+ (action (bash "TESTING_FRAMEWORK= ./qtest.exe")))

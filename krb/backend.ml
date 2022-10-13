@@ -24,11 +24,20 @@ module Settings = struct
   ;;
 end
 
-(* We enforce that the master and worker must have matching kerberos principals *)
 let authorize_current_principal () =
-  Unix.getlogin ()
-  >>| (fun x -> Krb_public.Principal.Name.User x)
-  >>| Krb_public.Authorize.accept_single
+  let%map principal_to_authorize =
+    if am_running_test
+    then
+      (* There isn't a cred cache in the testing environment, so just use the current
+         username. *)
+      Unix.getlogin () >>| fun x -> Krb_public.Principal.Name.User x
+    else
+      Krb_public.Cred_cache.default_principal ()
+      (* This will raise if there is the default credential cache doesn't exist. If this
+         is the case, we'd expect [Krb.Rpc.Connection.serve] to have already failed. *)
+      >>| Or_error.ok_exn
+  in
+  Krb_public.Authorize.accept_single principal_to_authorize
 ;;
 
 let serve
