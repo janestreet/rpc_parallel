@@ -678,7 +678,9 @@ let start_server
     rpc_settings
   in
   let implementations =
-    Rpc.Implementations.create_exn ~implementations ~on_unknown_rpc:`Close_connection
+    Rpc.Implementations.create_exn
+      ~implementations:(Versioned_rpc.Menu.add implementations)
+      ~on_unknown_rpc:`Close_connection
   in
   let%bind server =
     Backend.serve
@@ -1080,7 +1082,7 @@ module Make (S : Worker_spec) = struct
     { connection_state = const ()
     ; implementations =
         Rpc.Implementations.create_exn
-          ~implementations:worker_state.master_implementations
+          ~implementations:(Versioned_rpc.Menu.add worker_state.master_implementations)
           ~on_unknown_rpc:`Close_connection
     }
   ;;
