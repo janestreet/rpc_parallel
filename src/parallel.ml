@@ -1240,7 +1240,7 @@ module Make (S : Worker_spec) = struct
        tests are defined. See lib/rpc_parallel/src/parallel_intf.ml for more \
        information."
     in
-    if am_running_inline_test then Error.tag ~tag error else error
+    if Ppx_inline_test_lib.am_running then Error.tag ~tag error else error
   ;;
 
   (* Specific environment variables that influence process execution that a child should
@@ -2140,6 +2140,7 @@ module Expert = struct
        fun () ->
          start_worker_server_exn backend_and_settings worker_env;
          Deferred.never ())
+      ~behave_nicely_in_pipeline:false
   ;;
 end
 
@@ -2151,7 +2152,7 @@ end
 
 module For_testing = struct
   let initialize backend_and_settings here =
-    if am_running_inline_test
+    if Ppx_inline_test_lib.am_running
     then (
       match Utils.whoami () with
       | `Master ->

@@ -59,7 +59,9 @@ let main_command =
        in
        let%map () = Connection.run_exn conn ~f:functions.f ~arg:() in
        print_endline "Success.")
+    ~behave_nicely_in_pipeline:false
 ;;
+
 
 let command =
   Command.group

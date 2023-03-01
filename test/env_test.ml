@@ -86,7 +86,9 @@ let basic_test =
        >>=? fun () ->
        print_worker_env conn ~key:"SHOULD_NOT_EXIST"
        >>=? fun () -> Deferred.Or_error.ok_unit)
+    ~behave_nicely_in_pipeline:false
 ;;
+
 
 let special_var =
   Command.async_spec_or_error
@@ -103,7 +105,9 @@ let special_var =
        spawn ~host ~env:[ envvar, "foo=user-supplied" ] ()
        >>=? fun conn ->
        print_worker_env conn ~key:envvar >>=? fun () -> Deferred.Or_error.ok_unit)
+    ~behave_nicely_in_pipeline:false
 ;;
+
 
 let () =
   Command.group

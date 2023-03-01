@@ -153,6 +153,8 @@ let command =
        let%map new_count = get_count (dir ^/ filename) in
        assert (old_count = new_count);
        Ok (printf "Ok\n"))
+    ~behave_nicely_in_pipeline:false
 ;;
+
 
 let () = Rpc_parallel_krb_public.start_app ~krb_mode:For_unit_test command

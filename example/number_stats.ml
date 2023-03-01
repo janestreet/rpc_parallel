@@ -110,6 +110,8 @@ let command =
          printf "Variance: %f\n" (Rstats.var stats);
          Deferred.unit
        | None -> Deferred.unit)
+    ~behave_nicely_in_pipeline:false
 ;;
+
 
 let () = Rpc_parallel_krb_public.start_app ~krb_mode:For_unit_test command

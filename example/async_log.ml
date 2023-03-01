@@ -37,7 +37,7 @@ module Worker = struct
 end
 
 let expect_log_entry readers =
-  Deferred.List.iter readers ~f:(fun reader ->
+  Deferred.List.iter ~how:`Sequential readers ~f:(fun reader ->
     match%map Pipe.read reader with
     | `Eof -> failwith "Unexpected EOF"
     | `Ok entry -> printf !"%{sexp:Log.Message.Stable.V2.t}\n" entry)
@@ -72,6 +72,8 @@ let command =
   Command.async
     ~summary:"Using the built in log redirection function"
     (Command.Param.return main)
+    ~behave_nicely_in_pipeline:false
 ;;
+
 
 let () = Rpc_parallel_krb_public.start_app ~krb_mode:For_unit_test command

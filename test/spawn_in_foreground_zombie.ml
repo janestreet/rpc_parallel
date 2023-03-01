@@ -1,5 +1,4 @@
 open Core
-open Poly
 open Async
 
 module Worker = struct
@@ -51,10 +50,17 @@ let pgrep_children ~pid (f : Procfs_async.Process.t -> bool) =
     return ([%compare.equal: Pid.t option] process.stat.ppid (Some pid) && f process))
 ;;
 
+let is_zombie process =
+  process
+  |> Procfs_async.Process.stat
+  |> Procfs_async.Process.Stat.state
+  |> Procfs_async.Process.Stat.State.equal Zombie
+;;
+
 let wait_until_no_running_children ~pid =
   Deferred.repeat_until_finished () (fun () ->
     let%bind non_zombie_processes =
-      pgrep_children ~pid (fun process -> process.stat.state <> 'Z')
+      pgrep_children ~pid (fun process -> not (is_zombie process))
     in
     if List.is_empty non_zombie_processes
     then return (`Finished ())
@@ -62,7 +68,7 @@ let wait_until_no_running_children ~pid =
 ;;
 
 let print_zombies ~pid =
-  match%map pgrep_children ~pid (fun process -> process.stat.state = 'Z') with
+  match%map pgrep_children ~pid is_zombie with
   | [] -> print_s [%message "No zombies"]
   | zombies -> print_s [%message "Zombies" (zombies : Procfs_async.Process.t list)]
 ;;
@@ -88,6 +94,8 @@ let command =
   Command.async
     ~summary:"[spawn_in_foreground]: ensure no zombies"
     (Command.Param.return main)
+    ~behave_nicely_in_pipeline:false
 ;;
+
 
 let () = Rpc_parallel_krb_public.start_app ~krb_mode:For_unit_test command

@@ -62,7 +62,9 @@ let timeout_command =
        with
        | Error e -> printf !"%{sexp:Error.t}\n" e
        | Ok () -> printf "unresponsive worker returned\n")
+    ~behave_nicely_in_pipeline:false
 ;;
+
 
 let report_rpc_settings_command =
   Command.async
@@ -104,7 +106,9 @@ let report_rpc_settings_command =
        let%bind () = print_worker_rpc_settings ~which:"spawned" spawned_worker in
        let%bind () = print_worker_rpc_settings ~which:"served" served_worker in
        return ())
+    ~behave_nicely_in_pipeline:false
 ;;
+
 
 let app_rpc_settings =
   Rpc_settings.For_internal_testing.create_with_env_override

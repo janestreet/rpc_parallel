@@ -77,6 +77,8 @@ let command =
     ~summary:"Use of the in process [serve] functionality"
     Command.Spec.empty
     main
+    ~behave_nicely_in_pipeline:false
 ;;
+
 
 let () = Rpc_parallel_krb_public.start_app ~krb_mode:For_unit_test command

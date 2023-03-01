@@ -14,8 +14,8 @@ let local ~env ~worker_command_args ~wrap =
   Process.create ~prog ~argv0:(Sys.get_argv ()).(0) ~args ~env:(`Extend env) ()
 ;;
 
-let remote exec ~env ~worker_command_args ~wrap =
-  Remote_executable.run exec ~env ~args:worker_command_args ~wrap
+let remote ?assert_binary_hash exec ~env ~worker_command_args ~wrap =
+  Remote_executable.run ?assert_binary_hash exec ~env ~args:worker_command_args ~wrap
 ;;
 
 let wrap t ~f ~env ~worker_command_args ~wrap =

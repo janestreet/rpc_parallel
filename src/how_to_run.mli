@@ -9,8 +9,9 @@ type t
 val local : t
 
 (** In order to run a worker remotely, you must ensure that the executable is available on
-    the remote host. *)
-val remote : _ Remote_executable.t -> t
+    the remote host. If [~assert_binary_hash:false] is provided, the check that the remote
+    binary's hash matches the currently running binary's hash is skipped. *)
+val remote : ?assert_binary_hash:bool -> _ Remote_executable.t -> t
 
 (** [wrap] allows you to customize how the executable is launched. For example, you can
     run the worker via some wrapper command. *)

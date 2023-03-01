@@ -84,6 +84,8 @@ let command =
       +> flag "max" (required int) ~doc:""
       +> flag "log-dir" (optional string) ~doc:" Folder to write worker logs to")
     main
+    ~behave_nicely_in_pipeline:false
 ;;
+
 
 let () = Rpc_parallel_krb_public.start_app ~krb_mode:For_unit_test command

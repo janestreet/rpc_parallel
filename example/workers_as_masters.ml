@@ -148,7 +148,9 @@ let command =
          >>|? fun ping_results ->
          List.map ping_results ~f:(fun s -> sprintf "Primary worker #%i: %s" worker_id s))
        >>|? fun l -> List.iter (List.join l) ~f:(printf "%s\n%!"))
+    ~behave_nicely_in_pipeline:false
 ;;
+
 
 (* This call to [Rpc_parallel.start_app] must be top level *)
 let () = Rpc_parallel_krb_public.start_app ~krb_mode:For_unit_test command

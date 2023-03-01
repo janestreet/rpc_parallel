@@ -56,13 +56,22 @@ module Config = struct
     { local : int
     ; remote : (packed_remote * int) list
     ; cd : string option
+    ; connection_timeout : Time_float.Span.t option
     ; redirect_stderr : [ `Dev_null | `File_append of string ]
     ; redirect_stdout : [ `Dev_null | `File_append of string ]
     }
 
   let default_cores () = (ok_exn Linux_ext.cores) ()
 
-  let create ?(local = 0) ?(remote = []) ?cd ~redirect_stderr ~redirect_stdout () =
+  let create
+        ?(local = 0)
+        ?(remote = [])
+        ?cd
+        ?connection_timeout
+        ~redirect_stderr
+        ~redirect_stdout
+        ()
+    =
     let local, remote =
       if local = 0 && List.is_empty remote
       then default_cores (), remote
@@ -71,6 +80,7 @@ module Config = struct
     { local
     ; remote = List.map remote ~f:(fun (remote, n) -> Packed_remote remote, n)
     ; cd
+    ; connection_timeout
     ; redirect_stderr
     ; redirect_stdout
     }
@@ -143,9 +153,10 @@ module Make_rpc_parallel_worker (S : Rpc_parallel_worker_spec) = struct
   type run_input_type = S.Run_input.t
   type run_output_type = S.Run_output.t
 
-  let spawn_exn how param ~cd ~redirect_stderr ~redirect_stdout =
+  let spawn_exn how param ~cd ~connection_timeout ~redirect_stderr ~redirect_stdout =
     Parallel_worker.spawn_exn
       ~how
+      ?connection_timeout
       ?cd
       ~shutdown_on:Connection_closed
       ~redirect_stderr
@@ -156,7 +167,7 @@ module Make_rpc_parallel_worker (S : Rpc_parallel_worker_spec) = struct
   ;;
 
   let spawn_config_exn
-        { Config.local; remote; cd; redirect_stderr; redirect_stdout }
+        { Config.local; remote; cd; connection_timeout; redirect_stderr; redirect_stdout }
         param
     =
     if local < 0
@@ -177,11 +188,12 @@ module Make_rpc_parallel_worker (S : Rpc_parallel_worker_spec) = struct
         (local, List.map remote ~f:snd)
         [%sexp_of: int * int list];
     let spawn_n where n =
-      Deferred.List.init n ~f:(fun _i ->
+      Deferred.List.init ~how:`Sequential n ~f:(fun _i ->
         spawn_exn
           where
           param
           ~cd
+          ~connection_timeout
           ~redirect_stderr:(redirect_stderr :> Fd_redirection.t)
           ~redirect_stdout:(redirect_stdout :> Fd_redirection.t))
     in

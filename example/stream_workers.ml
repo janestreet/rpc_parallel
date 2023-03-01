@@ -167,7 +167,7 @@ let command =
          ~on_failure:(handle_error "stream worker")
        >>=? fun stream_worker ->
        (* Spawn workers and tell them about the stream worker  *)
-       Deferred.Or_error.List.init num_workers ~f:(fun i ->
+       Deferred.Or_error.List.init ~how:`Sequential num_workers ~f:(fun i ->
          Worker.spawn
            ~shutdown_on:Connection_closed
            ~connection_state_init_arg:()
@@ -195,6 +195,8 @@ let command =
        let%map () = Deferred.all_unit (List.map elements ~f:Ivar.read) in
        printf "Ok.\n";
        Or_error.return ())
+    ~behave_nicely_in_pipeline:false
 ;;
+
 
 let () = Rpc_parallel_krb_public.start_app ~krb_mode:For_unit_test command

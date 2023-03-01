@@ -85,5 +85,7 @@ let () =
     ~krb_mode:For_unit_test
     (Command.async
        ~summary:"Demonstrate using Rpc_parallel with reverse pipes"
-       (Command.Param.return main))
+       (Command.Param.return main)
+       ~behave_nicely_in_pipeline:false
+       )
 ;;

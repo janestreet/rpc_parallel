@@ -88,7 +88,7 @@ let validate_env env =
    [Rpc_parallel.For_testing.initialize] will initialize the worker and start the
    Async scheduler. *)
 let force_drop_inline_test =
-  if am_running_inline_test then [ "FORCE_DROP_INLINE_TEST", "" ] else []
+  if Ppx_inline_test_lib.am_running then [ "FORCE_DROP_INLINE_TEST", "" ] else []
 ;;
 
 let create_worker_env ~extra =

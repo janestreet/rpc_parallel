@@ -110,7 +110,9 @@ let command =
          ~connection_state_init_arg:()
          ()
        >>=? fun dispatcher_conn ->
-       let repeat job n = Deferred.List.iter (List.range 0 n) ~f:(fun _i -> job ()) in
+       let repeat job n =
+         Deferred.List.iter ~how:`Sequential (List.range 0 n) ~f:(fun _i -> job ())
+       in
        let%bind () =
          Deferred.all_unit
            [ repeat
@@ -135,6 +137,8 @@ let command =
            ]
        in
        Deferred.Or_error.ok_unit)
+    ~behave_nicely_in_pipeline:false
 ;;
+
 
 let () = Rpc_parallel_krb_public.start_app ~krb_mode:For_unit_test command

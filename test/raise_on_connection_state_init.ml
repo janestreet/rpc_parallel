@@ -49,6 +49,8 @@ let command =
          printf !"expected failure:\n%{sexp:Error.t}\n" e;
          let%bind () = Worker.shutdown worker >>| ok_exn in
          Deferred.unit)
+    ~behave_nicely_in_pipeline:false
 ;;
+
 
 let () = Rpc_parallel_krb_public.start_app ~krb_mode:For_unit_test command

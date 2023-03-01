@@ -9,12 +9,14 @@ module Config : sig
 
 
   (** Default is to create the same number of local workers as the cores in local
-      machine. All spawned workers will their redirect stdout and stderr to the same
+      machine. All spawned workers will redirect their stdout and stderr to the same
       file. *)
   val create
     :  ?local:int
     -> ?remote:(_ Remote_executable.t * int) list
     -> ?cd:string (** default / *)
+    -> ?connection_timeout:Time_float.Span.t
+    (** see [with_spawn_args] in parallel_intf.ml *)
     -> redirect_stderr:[ `Dev_null | `File_append of string ]
     -> redirect_stdout:[ `Dev_null | `File_append of string ]
     -> unit

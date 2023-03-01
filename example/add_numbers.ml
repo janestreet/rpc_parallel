@@ -68,6 +68,8 @@ let command =
            assert (index = mf_index);
            printf "%i:%i: %i\n" mf_index index sum;
            Deferred.unit)))
+    ~behave_nicely_in_pipeline:false
 ;;
+
 
 let () = Rpc_parallel_krb_public.start_app ~krb_mode:For_unit_test command

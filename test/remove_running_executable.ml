@@ -100,6 +100,8 @@ let command =
        | true, true | false, false -> failwith "specify -spawn-local or -spawn-remote"
        | true, false -> spawn_local ()
        | false, true -> spawn_remote ())
+    ~behave_nicely_in_pipeline:false
 ;;
+
 
 let () = Rpc_parallel_krb_public.start_app ~krb_mode:For_unit_test command

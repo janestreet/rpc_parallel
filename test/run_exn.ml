@@ -53,6 +53,8 @@ let command =
        | Error e ->
          printf !"expected failure:\n%{sexp:Error.t}\n" e;
          Deferred.Or_error.ok_unit)
+    ~behave_nicely_in_pipeline:false
 ;;
+
 
 let () = Rpc_parallel_krb_public.start_app ~krb_mode:For_unit_test command

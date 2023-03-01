@@ -41,7 +41,9 @@ let worker_command =
        stage (fun `Scheduler_started ->
          Rpc_parallel_unauthenticated.Expert.start_worker_server_exn worker_env;
          Deferred.never ()))
+    ~behave_nicely_in_pipeline:false
 ;;
+
 
 let main_command =
   let open Command.Let_syntax in
@@ -63,7 +65,9 @@ let main_command =
            ()
        in
        printf "Success.\n")
+    ~behave_nicely_in_pipeline:false
 ;;
+
 
 let command =
   Command.group

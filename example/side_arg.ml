@@ -50,6 +50,8 @@ let command =
        Pipe.iter output_reader ~f:(fun (message, index) ->
          printf "%i: %s\n" index message;
          Deferred.unit))
+    ~behave_nicely_in_pipeline:false
 ;;
+
 
 let () = Rpc_parallel_krb_public.start_app ~krb_mode:For_unit_test command

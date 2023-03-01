@@ -77,5 +77,6 @@ let () =
     (let%map_open.Command host = flag "host" (required string) ~doc:" host to connect to"
      and wrapper = flag "wrapper" (required string) ~doc:" wrapper command" in
      fun () -> main ~host ~wrapper)
+    ~behave_nicely_in_pipeline:false
   |> Rpc_parallel_krb_public.start_app ~krb_mode:For_unit_test
 ;;

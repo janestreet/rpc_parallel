@@ -56,7 +56,7 @@ let env_for_ssh env =
   List.map env ~f:(fun (key, data) -> key ^ "=" ^ cheesy_escape data)
 ;;
 
-let run exec ~env ~args ~wrap =
+let run ?(assert_binary_hash = true) exec ~env ~args ~wrap =
   Utils.our_md5 ()
   >>=? fun md5 ->
   Process.run
@@ -65,7 +65,7 @@ let run exec ~env ~args ~wrap =
     ()
   >>=? fun remote_md5 ->
   let remote_md5, _ = String.lsplit2_exn ~on:' ' remote_md5 in
-  if md5 <> remote_md5
+  if assert_binary_hash && md5 <> remote_md5
   then
     Deferred.Or_error.errorf
       "The remote executable %s:%s does not match the local executable"
