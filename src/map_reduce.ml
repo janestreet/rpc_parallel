@@ -367,10 +367,12 @@ module Make_map_reduce_function (S : Map_reduce_function_spec) =
   end)
 
 let map_unordered (type param a b) config input_reader ~m ~(param : param) =
-  let module Map_function = (val m : Map_function
-                             with type Param.t = param
-                              and type Input.t = a
-                              and type Output.t = b)
+  let module Map_function =
+    (val m
+      : Map_function
+     with type Param.t = param
+      and type Input.t = a
+      and type Output.t = b)
   in
   let%bind workers = Map_function.Worker.spawn_config_exn config param in
   let input_with_index_reader = append_index input_reader in
@@ -429,10 +431,12 @@ let map config input_reader ~m ~param =
 ;;
 
 let find_map (type param a b) config input_reader ~m ~(param : param) =
-  let module Map_function = (val m : Map_function
-                             with type Param.t = param
-                              and type Input.t = a
-                              and type Output.t = b option)
+  let module Map_function =
+    (val m
+      : Map_function
+     with type Param.t = param
+      and type Input.t = a
+      and type Output.t = b option)
   in
   let%bind workers = Map_function.Worker.spawn_config_exn config param in
   let found_value = ref None in
@@ -455,10 +459,12 @@ let find_map (type param a b) config input_reader ~m ~(param : param) =
 ;;
 
 let map_reduce_commutative (type param a accum) config input_reader ~m ~(param : param) =
-  let module Map_reduce_function = (val m : Map_reduce_function
-                                    with type Param.t = param
-                                     and type Input.t = a
-                                     and type Accum.t = accum)
+  let module Map_reduce_function =
+    (val m
+      : Map_reduce_function
+     with type Param.t = param
+      and type Input.t = a
+      and type Accum.t = accum)
   in
   let%bind workers = Map_reduce_function.Worker.spawn_config_exn config param in
   let rec map_and_combine_loop worker acc =
@@ -495,10 +501,12 @@ let map_reduce_commutative (type param a accum) config input_reader ~m ~(param :
 ;;
 
 let map_reduce (type param a accum) config input_reader ~m ~(param : param) =
-  let module Map_reduce_function = (val m : Map_reduce_function
-                                    with type Param.t = param
-                                     and type Input.t = a
-                                     and type Accum.t = accum)
+  let module Map_reduce_function =
+    (val m
+      : Map_reduce_function
+     with type Param.t = param
+      and type Input.t = a
+      and type Accum.t = accum)
   in
   let%bind workers = Map_reduce_function.Worker.spawn_config_exn config param in
   let input_with_index_reader = append_index input_reader in
@@ -518,7 +526,8 @@ let map_reduce (type param a accum) config input_reader ~m ~(param : param) =
             -> acc_{left_lbound, this_ubound} *)
          (* We need to remove both nodes from the tree to indicate that we are working on
             combining them. *)
-         acc_map := Map.remove (Map.remove (!acc_map : _ H.Map.t) key : _ H.Map.t) left_key;
+         acc_map
+         := Map.remove (Map.remove (!acc_map : _ H.Map.t) key : _ H.Map.t) left_key;
          let%bind new_acc =
            Map_reduce_function.Worker.run_exn worker (`Combine (left_acc, acc))
          in

@@ -352,6 +352,7 @@ module type Creator = sig
       Notice that [aborted] is not exposed. The pipe is closed upon aborted. *)
   val create_pipe
     :  ?name:string
+    -> ?client_pushes_back:unit
     -> f:
          (worker_state:worker_state
           -> conn_state:connection_state
@@ -366,6 +367,7 @@ module type Creator = sig
       [Rpc.Pipe_rpc.t] with [name] if specified. *)
   val create_direct_pipe
     :  ?name:string
+    -> ?client_pushes_back:unit
     -> f:
          (worker_state:worker_state
           -> conn_state:connection_state
@@ -392,6 +394,7 @@ module type Creator = sig
       before or after finishing with the pipe; Rpc_parallel doesn't care. *)
   val create_reverse_pipe
     :  ?name:string
+    -> ?client_pushes_back:unit
     -> f:
          (worker_state:worker_state
           -> conn_state:connection_state
@@ -410,6 +413,7 @@ module type Creator = sig
       a [response] before or after finishing with the pipe; Rpc_parallel doesn't care. *)
   val create_reverse_direct_pipe
     :  ?name:string
+    -> ?client_pushes_back:unit
     -> f:
          (worker_state:worker_state
           -> conn_state:connection_state

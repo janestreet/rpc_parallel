@@ -120,9 +120,10 @@ module Function = struct
            Utils.try_within ~monitor (fun () -> f ~worker_state ~conn_state arg writer))
     ;;
 
-    let make_proto ~name ~bin_input ~bin_output =
+    let make_proto ~name ~bin_input ~bin_output ~client_pushes_back =
       let name = maybe_generate_name ~prefix:"rpc_parallel_piped" ~name in
       Rpc.Pipe_rpc.create
+        ?client_pushes_back
         ~name
         ~version:0
         ~bin_query:bin_input
@@ -200,7 +201,7 @@ module Function = struct
       make_master t ~implement:Rpc.Pipe_rpc.implement_direct ~ok:Fn.id ~error:const
     ;;
 
-    let make_proto ~name ~bin_query ~bin_update ~bin_response =
+    let make_proto ~name ~bin_query ~bin_update ~bin_response ~client_pushes_back =
       let name = maybe_generate_name ~prefix:"rpc_parallel_reverse_piped" ~name in
       let worker_rpc =
         let module With_id = struct
@@ -211,6 +212,7 @@ module Function = struct
       in
       let master_rpc =
         Rpc.Pipe_rpc.create
+          ?client_pushes_back
           ~name
           ~version:0
           ~bin_query:Id.bin_t
@@ -301,14 +303,18 @@ module Function = struct
     T (Fn.id, Plain proto, Fn.id), impl
   ;;
 
-  let create_pipe ~monitor ~name ~f ~bin_input ~bin_output =
-    let proto = Function_piped.make_proto ~name ~bin_input ~bin_output in
+  let create_pipe ~monitor ~name ~f ~bin_input ~bin_output ~client_pushes_back =
+    let proto =
+      Function_piped.make_proto ~name ~bin_input ~bin_output ~client_pushes_back
+    in
     let impl = Function_piped.make_impl ~monitor ~f proto in
     T (Fn.id, Piped (proto, Type_equal.T), Fn.id), impl
   ;;
 
-  let create_direct_pipe ~monitor ~name ~f ~bin_input ~bin_output =
-    let proto = Function_piped.make_proto ~name ~bin_input ~bin_output in
+  let create_direct_pipe ~monitor ~name ~f ~bin_input ~bin_output ~client_pushes_back =
+    let proto =
+      Function_piped.make_proto ~name ~bin_input ~bin_output ~client_pushes_back
+    in
     let impl = Function_piped.make_direct_impl ~monitor ~f proto in
     T (Fn.id, Directly_piped proto, Fn.id), impl
   ;;
@@ -327,9 +333,15 @@ module Function = struct
         ~bin_query
         ~bin_update
         ~bin_response
+        ~client_pushes_back
     =
     let proto =
-      Function_reverse_piped.make_proto ~name ~bin_query ~bin_update ~bin_response
+      Function_reverse_piped.make_proto
+        ~name
+        ~bin_query
+        ~bin_update
+        ~bin_response
+        ~client_pushes_back
     in
     let worker_impl = Function_reverse_piped.make_worker_impl ~monitor ~f proto in
     let master_impl = make_master_impl proto in
@@ -922,7 +934,8 @@ module Make (S : Worker_spec) = struct
     (* To facilitate cleanup in the [Shutdown_on.Connection_closed] case *)
     ; mutable client_has_connected : bool
     (* Build up a list of all implementations for this worker type *)
-    ; mutable implementations :
+    ; mutable
+      implementations :
         (S.Worker_state.t, S.Connection_state.t) Utils.Internal_connection_state.t
           Rpc.Implementation.t
           list
@@ -1011,23 +1024,45 @@ module Make (S : Worker_spec) = struct
         Function.create_rpc ~monitor ~name ~f ~bin_input ~bin_output)
     ;;
 
-    let create_pipe ?name ~f ~bin_input ~bin_output () =
+    let create_pipe ?name ?client_pushes_back ~f ~bin_input ~bin_output () =
       with_add_impl (fun () ->
-        Function.create_pipe ~monitor ~name ~f ~bin_input ~bin_output)
+        Function.create_pipe ~monitor ~name ~f ~bin_input ~bin_output ~client_pushes_back)
     ;;
 
-    let create_direct_pipe ?name ~f ~bin_input ~bin_output () =
+    let create_direct_pipe ?name ?client_pushes_back ~f ~bin_input ~bin_output () =
       with_add_impl (fun () ->
-        Function.create_direct_pipe ~monitor ~name ~f ~bin_input ~bin_output)
+        Function.create_direct_pipe
+          ~monitor
+          ~name
+          ~f
+          ~bin_input
+          ~bin_output
+          ~client_pushes_back)
     ;;
 
     let create_one_way ?name ~f ~bin_input () =
       with_add_impl (fun () -> Function.create_one_way ~monitor ~name ~f ~bin_input)
     ;;
 
-    let reverse_pipe ~create_function ?name ~f ~bin_query ~bin_update ~bin_response () =
+    let reverse_pipe
+          ~create_function
+          ?name
+          ?client_pushes_back
+          ~f
+          ~bin_query
+          ~bin_update
+          ~bin_response
+          ()
+      =
       let func, `Worker worker_impl, `Master master_impl =
-        create_function ~monitor ~name ~f ~bin_query ~bin_update ~bin_response
+        create_function
+          ~monitor
+          ~name
+          ~f
+          ~bin_query
+          ~bin_update
+          ~bin_response
+          ~client_pushes_back
       in
       worker_state.implementations <- worker_impl :: worker_state.implementations;
       worker_state.master_implementations
@@ -1035,10 +1070,19 @@ module Make (S : Worker_spec) = struct
       func
     ;;
 
-    let create_reverse_pipe ?name ~f ~bin_query ~bin_update ~bin_response () =
+    let create_reverse_pipe
+          ?name
+          ?client_pushes_back
+          ~f
+          ~bin_query
+          ~bin_update
+          ~bin_response
+          ()
+      =
       reverse_pipe
         ~create_function:Function.create_reverse_pipe
         ?name
+        ?client_pushes_back
         ~f
         ~bin_query
         ~bin_update
@@ -1046,10 +1090,19 @@ module Make (S : Worker_spec) = struct
         ()
     ;;
 
-    let create_reverse_direct_pipe ?name ~f ~bin_query ~bin_update ~bin_response () =
+    let create_reverse_direct_pipe
+          ?name
+          ?client_pushes_back
+          ~f
+          ~bin_query
+          ~bin_update
+          ~bin_response
+          ()
+      =
       reverse_pipe
         ~create_function:Function.create_reverse_direct_pipe
         ?name
+        ?client_pushes_back
         ~f
         ~bin_query
         ~bin_update
@@ -1852,8 +1905,8 @@ module Make (S : Worker_spec) = struct
                if not worker_state.client_has_connected
                then (
                  Log.Global.error
-                   "Rpc_parallel: worker timed out waiting for client connection... \
-                    Shutting down";
+                   "Rpc_parallel: worker timed out waiting for client connection... Shutting \
+                    down";
                  Shutdown.shutdown 254));
             Hashtbl.add_exn worker_state.states ~key:worker ~data:state)
   ;;

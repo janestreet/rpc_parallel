@@ -139,10 +139,7 @@ let command =
            ~connection_state_init_arg:()
            ()
          >>=? fun conn ->
-         Primary_worker.Connection.run
-           conn
-           ~f:Primary_worker.functions.run
-           ~arg:secondary
+         Primary_worker.Connection.run conn ~f:Primary_worker.functions.run ~arg:secondary
          >>=? fun () ->
          Primary_worker.Connection.run conn ~f:Primary_worker.functions.ping ~arg:()
          >>|? fun ping_results ->
