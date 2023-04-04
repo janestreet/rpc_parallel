@@ -57,24 +57,29 @@ let env_for_ssh env =
 ;;
 
 let run ?(assert_binary_hash = true) exec ~env ~args ~wrap =
-  Utils.our_md5 ()
-  >>=? fun md5 ->
-  Process.run
+  let%bind.Deferred.Or_error () =
+    match assert_binary_hash with
+    | false -> Deferred.Or_error.ok_unit
+    | true ->
+      Utils.our_md5 ()
+      >>=? fun md5 ->
+      Process.run
+        ~prog:"ssh"
+        ~args:(exec.host_key_checking @ [ exec.host; "md5sum"; exec.path ])
+        ()
+      >>=? fun remote_md5 ->
+      let remote_md5, _ = String.lsplit2_exn ~on:' ' remote_md5 in
+      if md5 <> remote_md5
+      then
+        Deferred.Or_error.errorf
+          "The remote executable %s:%s does not match the local executable"
+          exec.host
+          exec.path
+      else Deferred.Or_error.ok_unit
+  in
+  let { Prog_and_args.prog; args } = wrap { Prog_and_args.prog = exec.path; args } in
+  Process.create
     ~prog:"ssh"
-    ~args:(exec.host_key_checking @ [ exec.host; "md5sum"; exec.path ])
+    ~args:(exec.host_key_checking @ [ exec.host ] @ env_for_ssh env @ [ prog ] @ args)
     ()
-  >>=? fun remote_md5 ->
-  let remote_md5, _ = String.lsplit2_exn ~on:' ' remote_md5 in
-  if assert_binary_hash && md5 <> remote_md5
-  then
-    Deferred.Or_error.errorf
-      "The remote executable %s:%s does not match the local executable"
-      exec.host
-      exec.path
-  else (
-    let { Prog_and_args.prog; args } = wrap { Prog_and_args.prog = exec.path; args } in
-    Process.create
-      ~prog:"ssh"
-      ~args:(exec.host_key_checking @ [ exec.host ] @ env_for_ssh env @ [ prog ] @ args)
-      ())
 ;;
