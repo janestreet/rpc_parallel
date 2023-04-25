@@ -1,3 +1,24 @@
+## Release v0.16.0
+
+- `How_to_run.remote` now accepts an optional `assert_binary_hash` parameter
+  * If set to false, skips the remote binary's hash check against the currently running
+    binary's hash
+
+- Add `connection_timeout` parameter in `Map_reduce.Config.create`, with the same
+  semantics as in `with_spawn_args`
+
+- Add support for `Async_rpc`'s direct pipe rpcs
+
+- Add support for client pushback on pipe rpcs
+
+- Add `complete_subcommands` pass-through argument to `start_app` for `Command.run`
+
+- `Remote_executable.run` now accepts an optional `assert_binary_hash` parameter
+  * Allows disabling the check for matching currently running executable with the provided
+    `Remote_executable.t` by setting `assert_binary_hash` to false
+
+## Old pre-v0.15 changelogs (very likely stale and incomplete)
+
 ## git version
 
 - Added `create_reverse_direct_pipe` to `Parallel_intf`.
