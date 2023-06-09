@@ -42,6 +42,7 @@ let authorize_current_principal () =
 
 let serve
       ?max_message_size
+      ?buffer_age_limit
       ?handshake_timeout
       ?heartbeat_config
       ~implementations
@@ -58,6 +59,7 @@ let serve
     ~authorize
     ~krb_mode
     ?max_message_size
+    ?buffer_age_limit
     ?handshake_timeout
     ?heartbeat_config
     ~where_to_listen
@@ -68,6 +70,7 @@ let serve
 let with_client
       ?implementations
       ?max_message_size
+      ?buffer_age_limit
       ?handshake_timeout
       ?heartbeat_config
       settings
@@ -79,6 +82,7 @@ let with_client
   Krb_public.Rpc.Connection.with_client
     ?implementations:(Option.map ~f:Fn.const implementations)
     ?max_message_size
+    ?buffer_age_limit
     ?handshake_timeout
     ?heartbeat_config
     ~krb_mode
@@ -90,6 +94,7 @@ let with_client
 let client
       ?implementations
       ?max_message_size
+      ?buffer_age_limit
       ?handshake_timeout
       ?heartbeat_config
       ?description
@@ -101,6 +106,7 @@ let client
   Krb_public.Rpc.Connection.client
     ?implementations:(Option.map ~f:Fn.const implementations)
     ?max_message_size
+    ?buffer_age_limit
     ?handshake_timeout
     ?heartbeat_config
     ?description

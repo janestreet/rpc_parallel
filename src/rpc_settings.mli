@@ -3,6 +3,7 @@ open! Async
 
 type t =
   { max_message_size : int option
+  ; buffer_age_limit : Writer.buffer_age_limit option
   ; handshake_timeout : Time_float.Span.t option
   ; heartbeat_config : Rpc.Connection.Heartbeat_config.t option
   }
@@ -19,6 +20,7 @@ val default : t
     matching the [start_app] function to be used with the [env_var] above. *)
 val to_string_for_env_var
   :  ?max_message_size:int
+  -> ?buffer_age_limit:Writer.buffer_age_limit
   -> ?handshake_timeout:Time_float.Span.t
   -> ?heartbeat_config:Rpc.Connection.Heartbeat_config.t
   -> unit
@@ -26,6 +28,7 @@ val to_string_for_env_var
 
 val create_with_env_override
   :  max_message_size:int option
+  -> buffer_age_limit:Writer.buffer_age_limit option
   -> handshake_timeout:Time_float.Span.t option
   -> heartbeat_config:Rpc.Connection.Heartbeat_config.t option
   -> t
@@ -34,6 +37,7 @@ module For_internal_testing : sig
   val create_with_env_override
     :  env_var:string
     -> max_message_size:int option
+    -> buffer_age_limit:Writer.buffer_age_limit option
     -> handshake_timeout:Time_float.Span.t option
     -> heartbeat_config:Rpc.Connection.Heartbeat_config.t option
     -> t

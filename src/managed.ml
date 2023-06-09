@@ -92,11 +92,11 @@ module Make (S : Parallel.Worker_spec) = struct
       Hashtbl.add_exn workers ~key:id ~data:(`Pending ivar);
       (match%map Unmanaged.Connection.client t connection_state_init_arg with
        | Error e ->
-         Ivar.fill ivar (Error e);
+         Ivar.fill_exn ivar (Error e);
          Hashtbl.remove workers id;
          Error e
        | Ok conn ->
-         Ivar.fill ivar (Ok conn);
+         Ivar.fill_exn ivar (Ok conn);
          Hashtbl.set workers ~key:id ~data:(`Connected conn);
          (Unmanaged.Connection.close_finished conn >>> fun () -> Hashtbl.remove workers id);
          Ok conn)

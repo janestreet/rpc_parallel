@@ -9,6 +9,7 @@ let backend_and_settings krb_mode =
 
 let start_app
       ?rpc_max_message_size
+      ?rpc_buffer_age_limit
       ?rpc_handshake_timeout
       ?rpc_heartbeat_config
       ?when_parsing_succeeds
@@ -17,6 +18,7 @@ let start_app
   =
   Rpc_parallel.start_app
     ?rpc_max_message_size
+    ?rpc_buffer_age_limit
     ?rpc_handshake_timeout
     ?rpc_heartbeat_config
     ?when_parsing_succeeds
@@ -33,6 +35,7 @@ end
 module Expert = struct
   let start_master_server_exn
         ?rpc_max_message_size
+        ?rpc_buffer_age_limit
         ?rpc_handshake_timeout
         ?rpc_heartbeat_config
         ?pass_name
@@ -42,6 +45,7 @@ module Expert = struct
     =
     Rpc_parallel.Expert.start_master_server_exn
       ?rpc_max_message_size
+      ?rpc_buffer_age_limit
       ?rpc_handshake_timeout
       ?rpc_heartbeat_config
       ?pass_name

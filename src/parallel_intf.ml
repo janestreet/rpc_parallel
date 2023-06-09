@@ -364,7 +364,14 @@ module type Creator = sig
     -> (worker, 'query, 'response Pipe.Reader.t) _function
 
   (** [create_direct_pipe ?name ~f ~bin_input ~bin_output ()] will create an
-      [Rpc.Pipe_rpc.t] with [name] if specified. *)
+      [Rpc.Pipe_rpc.t] with [name] if specified.
+
+      As per the documentation at lib/async_rpc_kernel/src/rpc.mli:
+
+      Though the implementation function is given a writer immediately, the result of the
+      client's call to [dispatch] will not be determined until after the implementation
+      function returns. Elements written before the function returns will be queued up to
+      be written after the function returns. *)
   val create_direct_pipe
     :  ?name:string
     -> ?client_pushes_back:unit
@@ -533,6 +540,7 @@ module type Backend = sig
 
   val serve
     :  ?max_message_size:int
+    -> ?buffer_age_limit:Writer.buffer_age_limit
     -> ?handshake_timeout:Time_float.Span.t
     -> ?heartbeat_config:Rpc.Connection.Heartbeat_config.t
     -> implementations:'a Rpc.Implementations.t
@@ -544,6 +552,7 @@ module type Backend = sig
   val with_client
     :  ?implementations:'b Rpc.Connection.Client_implementations.t
     -> ?max_message_size:int
+    -> ?buffer_age_limit:Writer.buffer_age_limit
     -> ?handshake_timeout:Time_float.Span.t
     -> ?heartbeat_config:Rpc.Connection.Heartbeat_config.t
     -> Settings.t
@@ -554,6 +563,7 @@ module type Backend = sig
   val client
     :  ?implementations:'a Rpc.Connection.Client_implementations.t
     -> ?max_message_size:int
+    -> ?buffer_age_limit:Writer.buffer_age_limit
     -> ?handshake_timeout:Time_float.Span.t
     -> ?heartbeat_config:Rpc.Connection.Heartbeat_config.t
     -> ?description:Info.t
@@ -614,6 +624,7 @@ module type Parallel = sig
       in the master process. *)
   val start_app
     :  ?rpc_max_message_size:int
+    -> ?rpc_buffer_age_limit:Writer.buffer_age_limit
     -> ?rpc_handshake_timeout:Time_float.Span.t
     -> ?rpc_heartbeat_config:Rpc.Connection.Heartbeat_config.t
     -> ?when_parsing_succeeds:(unit -> unit)
@@ -679,6 +690,7 @@ module type Parallel = sig
         the "deprecated option" for implementing worker commands described below. *)
     val start_master_server_exn
       :  ?rpc_max_message_size:int
+      -> ?rpc_buffer_age_limit:Writer.buffer_age_limit
       -> ?rpc_handshake_timeout:Time_float.Span.t
       -> ?rpc_heartbeat_config:Rpc.Connection.Heartbeat_config.t
       -> ?pass_name:bool (** default: true *)

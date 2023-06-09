@@ -61,7 +61,7 @@ module Worker = struct
                   with
                   | `Ok -> `Repeat ()
                   | `Closed -> `Finished ())
-                >>> Ivar.fill pongs_closed;
+                >>> Ivar.fill_exn pongs_closed;
                 return ())
               ~bin_input:[%bin_type_class: unit]
               ~bin_output:[%bin_type_class: int]
@@ -127,7 +127,7 @@ let command =
                     Worker.Connection.abort
                       connection
                       ~id:(Set_once.get_exn the_id [%here])
-                | Closed reason -> Ivar.fill closed reason);
+                | Closed reason -> Ivar.fill_exn closed reason);
                Continue )
        in
        Set_once.set_exn the_id [%here] id;

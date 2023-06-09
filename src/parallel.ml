@@ -484,6 +484,7 @@ module Backend : sig
 
   val serve
     :  ?max_message_size:int
+    -> ?buffer_age_limit:Writer.buffer_age_limit
     -> ?handshake_timeout:Time_float.Span.t
     -> ?heartbeat_config:Rpc.Connection.Heartbeat_config.t
     -> implementations:'a Rpc.Implementations.t
@@ -495,6 +496,7 @@ module Backend : sig
   val with_client
     :  ?implementations:'b Rpc.Connection.Client_implementations.t
     -> ?max_message_size:int
+    -> ?buffer_age_limit:Writer.buffer_age_limit
     -> ?handshake_timeout:Time_float.Span.t
     -> ?heartbeat_config:Rpc.Connection.Heartbeat_config.t
     -> Settings.t
@@ -505,6 +507,7 @@ module Backend : sig
   val client
     :  ?implementations:'a Rpc.Connection.Client_implementations.t
     -> ?max_message_size:int
+    -> ?buffer_age_limit:Writer.buffer_age_limit
     -> ?handshake_timeout:Time_float.Span.t
     -> ?heartbeat_config:Rpc.Connection.Heartbeat_config.t
     -> ?description:Info.t
@@ -553,6 +556,7 @@ end = struct
 
   let serve
         ?max_message_size
+        ?buffer_age_limit
         ?handshake_timeout
         ?heartbeat_config
         ~implementations
@@ -565,6 +569,7 @@ end = struct
     in
     Backend.serve
       ?max_message_size
+      ?buffer_age_limit
       ?handshake_timeout
       ?heartbeat_config
       ~implementations
@@ -576,6 +581,7 @@ end = struct
   let with_client
         ?implementations
         ?max_message_size
+        ?buffer_age_limit
         ?handshake_timeout
         ?heartbeat_config
         backend_settings
@@ -588,6 +594,7 @@ end = struct
     Backend.with_client
       ?implementations
       ?max_message_size
+      ?buffer_age_limit
       ?handshake_timeout
       ?heartbeat_config
       backend_settings
@@ -598,6 +605,7 @@ end = struct
   let client
         ?implementations
         ?max_message_size
+        ?buffer_age_limit
         ?handshake_timeout
         ?heartbeat_config
         ?description
@@ -610,6 +618,7 @@ end = struct
     Backend.client
       ?implementations
       ?max_message_size
+      ?buffer_age_limit
       ?handshake_timeout
       ?heartbeat_config
       ?description
@@ -652,11 +661,17 @@ let rpc_connection_with_client
       where_to_connect
       f
   =
-  let { Rpc_settings.max_message_size; handshake_timeout; heartbeat_config } =
+  let { Rpc_settings.max_message_size
+      ; buffer_age_limit
+      ; handshake_timeout
+      ; heartbeat_config
+      }
+    =
     rpc_settings
   in
   Backend.with_client
     ?max_message_size
+    ?buffer_age_limit
     ?handshake_timeout
     ?heartbeat_config
     ?implementations
@@ -667,11 +682,17 @@ let rpc_connection_with_client
 
 let rpc_connection_client backend_settings ~rpc_settings ?implementations where_to_connect
   =
-  let { Rpc_settings.max_message_size; handshake_timeout; heartbeat_config } =
+  let { Rpc_settings.max_message_size
+      ; buffer_age_limit
+      ; handshake_timeout
+      ; heartbeat_config
+      }
+    =
     rpc_settings
   in
   Backend.client
     ?max_message_size
+    ?buffer_age_limit
     ?handshake_timeout
     ?heartbeat_config
     ?implementations
@@ -686,7 +707,12 @@ let start_server
       ~implementations
       ~initial_connection_state
   =
-  let { Rpc_settings.max_message_size; handshake_timeout; heartbeat_config } =
+  let { Rpc_settings.max_message_size
+      ; buffer_age_limit
+      ; handshake_timeout
+      ; heartbeat_config
+      }
+    =
     rpc_settings
   in
   let implementations =
@@ -699,6 +725,7 @@ let start_server
       ~implementations
       ~initial_connection_state
       ?max_message_size
+      ?buffer_age_limit
       ?handshake_timeout
       ?heartbeat_config
       ~where_to_listen
@@ -826,7 +853,7 @@ module Register_rpc = struct
         (* We already returned a failure to the [spawn_worker] caller *)
         return `Shutdown
       | Some ivar ->
-        Ivar.fill ivar worker_hp;
+        Ivar.fill_exn ivar worker_hp;
         return `Registered)
   ;;
 end
@@ -2162,6 +2189,7 @@ module Expert = struct
 
   let start_master_server_exn
         ?rpc_max_message_size
+        ?rpc_buffer_age_limit
         ?rpc_handshake_timeout
         ?rpc_heartbeat_config
         ?(pass_name = true)
@@ -2175,6 +2203,7 @@ module Expert = struct
       let rpc_settings =
         Rpc_settings.create_with_env_override
           ~max_message_size:rpc_max_message_size
+          ~buffer_age_limit:rpc_buffer_age_limit
           ~handshake_timeout:rpc_handshake_timeout
           ~heartbeat_config:rpc_heartbeat_config
       in
@@ -2232,6 +2261,7 @@ end
 
 let start_app
       ?rpc_max_message_size
+      ?rpc_buffer_age_limit
       ?rpc_handshake_timeout
       ?rpc_heartbeat_config
       ?when_parsing_succeeds
@@ -2250,6 +2280,7 @@ let start_app
     let rpc_settings =
       Rpc_settings.create_with_env_override
         ~max_message_size:rpc_max_message_size
+        ~buffer_age_limit:rpc_buffer_age_limit
         ~handshake_timeout:rpc_handshake_timeout
         ~heartbeat_config:rpc_heartbeat_config
     in

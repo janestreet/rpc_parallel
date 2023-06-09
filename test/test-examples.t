@@ -57,7 +57,7 @@
   8: 4950
   9: 4950
 
-  $ run example/rpc_direct_pipe.exe -max 10
+  $ run example/rpc_direct_pipe.exe -max 10 -delay 0.01s
   Sum_worker.sum: 0
   Sum_worker.sum: 1
   Sum_worker.sum: 3

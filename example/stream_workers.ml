@@ -191,7 +191,7 @@ let command =
        don't_wait_for
          (Deferred.List.iter ~how:`Parallel workers ~f:(fun worker ->
             Pipe.iter worker ~f:(fun num ->
-              Ivar.fill (List.nth_exn elements num) () |> return)));
+              Ivar.fill_exn (List.nth_exn elements num) () |> return)));
        let%map () = Deferred.all_unit (List.map elements ~f:Ivar.read) in
        printf "Ok.\n";
        Or_error.return ())

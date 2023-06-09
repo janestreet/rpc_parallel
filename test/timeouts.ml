@@ -114,12 +114,14 @@ let app_rpc_settings =
   Rpc_settings.For_internal_testing.create_with_env_override
     ~env_var:"APP_RPC_SETTINGS_FOR_TEST"
     ~max_message_size:None
+    ~buffer_age_limit:None
     ~handshake_timeout:None
     ~heartbeat_config:None
 ;;
 
 let () =
   let { Rpc_settings.max_message_size = rpc_max_message_size
+      ; buffer_age_limit = rpc_buffer_age_limit
       ; handshake_timeout = rpc_handshake_timeout
       ; heartbeat_config = rpc_heartbeat_config
       }
@@ -131,6 +133,7 @@ let () =
     [ "timeout", timeout_command; "rpc-settings", report_rpc_settings_command ]
   |> Rpc_parallel_krb_public.start_app
        ?rpc_max_message_size
+       ?rpc_buffer_age_limit
        ?rpc_handshake_timeout
        ?rpc_heartbeat_config
        ~krb_mode:For_unit_test

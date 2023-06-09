@@ -9,6 +9,7 @@ end
 
 let serve
       ?max_message_size
+      ?buffer_age_limit
       ?handshake_timeout
       ?heartbeat_config
       ~implementations
@@ -16,8 +17,12 @@ let serve
       ~where_to_listen
       ()
   =
+  let make_transport fd ~max_message_size =
+    Rpc.Transport.of_fd ?buffer_age_limit fd ~max_message_size
+  in
   Rpc.Connection.serve
     ?max_message_size
+    ~make_transport
     ?handshake_timeout
     ?heartbeat_config
     ~implementations
@@ -29,15 +34,20 @@ let serve
 let client
       ?implementations
       ?max_message_size
+      ?buffer_age_limit
       ?handshake_timeout
       ?heartbeat_config
       ?description
       ()
       where_to_connect
   =
+  let make_transport fd ~max_message_size =
+    Rpc.Transport.of_fd ?buffer_age_limit fd ~max_message_size
+  in
   Rpc.Connection.client
     ?implementations
     ?max_message_size
+    ~make_transport
     ?handshake_timeout
     ?heartbeat_config
     ?description
@@ -48,15 +58,20 @@ let client
 let with_client
       ?implementations
       ?max_message_size
+      ?buffer_age_limit
       ?handshake_timeout
       ?heartbeat_config
       ()
       where_to_connect
       f
   =
+  let make_transport fd ~max_message_size =
+    Rpc.Transport.of_fd ?buffer_age_limit fd ~max_message_size
+  in
   Rpc.Connection.with_client
     ?implementations
     ?max_message_size
+    ~make_transport
     ?handshake_timeout
     ?heartbeat_config
     where_to_connect
