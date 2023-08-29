@@ -640,7 +640,7 @@ module Worker_config = struct
     ; connection_timeout : Time_float.Span.t
     ; worker_command_args : Worker_command_args.t
     }
-  [@@deriving fields, sexp]
+  [@@deriving fields ~getters, sexp]
 end
 
 module Worker_env = struct
@@ -648,7 +648,7 @@ module Worker_env = struct
     { config : Worker_config.t
     ; maybe_release_daemon : unit -> unit
     }
-  [@@deriving fields]
+  [@@deriving fields ~getters]
 end
 
 (* We want to make sure the [Rpc_settings] used on both the client and server side of all
@@ -1206,7 +1206,7 @@ module Make (S : Worker_spec) = struct
       { connection : Rpc.Connection.t
       ; worker_id : Id.t
       }
-    [@@deriving fields, sexp_of]
+    [@@deriving fields ~getters, sexp_of]
 
     let close t = Rpc.Connection.close t.connection
     let close_finished t = Rpc.Connection.close_finished t.connection

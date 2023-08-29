@@ -7,7 +7,7 @@ type 'a t =
   ; path : string
   ; host_key_checking : string list
   }
-[@@deriving fields]
+[@@deriving fields ~getters]
 
 let hostkey_checking_options opt =
   match opt with
