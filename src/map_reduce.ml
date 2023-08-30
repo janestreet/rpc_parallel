@@ -64,13 +64,13 @@ module Config = struct
   let default_cores () = (ok_exn Linux_ext.cores) ()
 
   let create
-        ?(local = 0)
-        ?(remote = [])
-        ?cd
-        ?connection_timeout
-        ~redirect_stderr
-        ~redirect_stdout
-        ()
+    ?(local = 0)
+    ?(remote = [])
+    ?cd
+    ?connection_timeout
+    ~redirect_stderr
+    ~redirect_stdout
+    ()
     =
     let local, remote =
       if local = 0 && List.is_empty remote
@@ -127,9 +127,9 @@ module Make_rpc_parallel_worker (S : Rpc_parallel_worker_spec) = struct
       end
 
       module Functions
-          (C : Parallel.Creator
-           with type worker_state := Worker_state.t
-            and type connection_state := Connection_state.t) =
+        (C : Parallel.Creator
+               with type worker_state := Worker_state.t
+                and type connection_state := Connection_state.t) =
       struct
         let execute =
           C.create_rpc
@@ -167,8 +167,8 @@ module Make_rpc_parallel_worker (S : Rpc_parallel_worker_spec) = struct
   ;;
 
   let spawn_config_exn
-        { Config.local; remote; cd; connection_timeout; redirect_stderr; redirect_stdout }
-        param
+    { Config.local; remote; cd; connection_timeout; redirect_stderr; redirect_stdout }
+    param
     =
     if local < 0
     then failwiths ~here:[%here] "config.local must be nonnegative" local Int.sexp_of_t;
@@ -224,9 +224,9 @@ module type Map_function = sig
 
   module Worker :
     Worker
-    with type param_type = Param.t
-    with type run_input_type = Input.t
-    with type run_output_type = Output.t
+      with type param_type = Param.t
+      with type run_input_type = Input.t
+      with type run_output_type = Output.t
 end
 
 module type Map_function_with_init_spec = sig
@@ -246,15 +246,15 @@ module Make_map_function_with_init (S : Map_function_with_init_spec) = struct
   module Output = S.Output
 
   module Worker = Make_rpc_parallel_worker (struct
-      type state_type = S.state_type
+    type state_type = S.state_type
 
-      module Param = Param
-      module Run_input = Input
-      module Run_output = Output
+    module Param = Param
+    module Run_input = Input
+    module Run_output = Output
 
-      let init = S.init
-      let execute = S.map
-    end)
+    let init = S.init
+    let execute = S.map
+  end)
 end
 
 module type Map_function_spec = sig
@@ -265,18 +265,18 @@ module type Map_function_spec = sig
 end
 
 module Make_map_function (S : Map_function_spec) = Make_map_function_with_init (struct
-    type state_type = unit
+  type state_type = unit
 
-    module Param = struct
-      type t = unit [@@deriving bin_io]
-    end
+  module Param = struct
+    type t = unit [@@deriving bin_io]
+  end
 
-    module Input = S.Input
-    module Output = S.Output
+  module Input = S.Input
+  module Output = S.Output
 
-    let init = return
-    let map () = S.map
-  end)
+  let init = return
+  let map () = S.map
+end)
 
 (* Map-combine *)
 
@@ -287,13 +287,13 @@ module type Map_reduce_function = sig
 
   module Worker :
     Worker
-    with type param_type = Param.t
-    with type run_input_type =
-           [ `Map of Input.t
-           | `Combine of Accum.t * Accum.t
-           | `Map_right_combine of Accum.t * Input.t (* combine accum (map input) *)
-           ]
-    with type run_output_type = Accum.t
+      with type param_type = Param.t
+      with type run_input_type =
+        [ `Map of Input.t
+        | `Combine of Accum.t * Accum.t
+        | `Map_right_combine of Accum.t * Input.t (* combine accum (map input) *)
+        ]
+      with type run_output_type = Accum.t
 end
 
 module type Map_reduce_function_with_init_spec = sig
@@ -315,31 +315,31 @@ struct
   module Input = S.Input
 
   module Worker = Make_rpc_parallel_worker (struct
-      type state_type = S.state_type
+    type state_type = S.state_type
 
-      module Param = Param
+    module Param = Param
 
-      module Run_input = struct
-        type t =
-          [ `Map of Input.t
-          | `Combine of Accum.t * Accum.t
-          | `Map_right_combine of Accum.t * Input.t
-          ]
-        [@@deriving bin_io]
-      end
+    module Run_input = struct
+      type t =
+        [ `Map of Input.t
+        | `Combine of Accum.t * Accum.t
+        | `Map_right_combine of Accum.t * Input.t
+        ]
+      [@@deriving bin_io]
+    end
 
-      module Run_output = Accum
+    module Run_output = Accum
 
-      let init = S.init
+    let init = S.init
 
-      let execute state = function
-        | `Map input -> S.map state input
-        | `Combine (accum1, accum2) -> S.combine state accum1 accum2
-        | `Map_right_combine (accum1, input) ->
-          let%bind accum2 = S.map state input in
-          S.combine state accum1 accum2
-      ;;
-    end)
+    let execute state = function
+      | `Map input -> S.map state input
+      | `Combine (accum1, accum2) -> S.combine state accum1 accum2
+      | `Map_right_combine (accum1, input) ->
+        let%bind accum2 = S.map state input in
+        S.combine state accum1 accum2
+    ;;
+  end)
 end
 
 module type Map_reduce_function_spec = sig
@@ -351,28 +351,28 @@ module type Map_reduce_function_spec = sig
 end
 
 module Make_map_reduce_function (S : Map_reduce_function_spec) =
-  Make_map_reduce_function_with_init (struct
-    type state_type = unit
+Make_map_reduce_function_with_init (struct
+  type state_type = unit
 
-    module Param = struct
-      type t = unit [@@deriving bin_io]
-    end
+  module Param = struct
+    type t = unit [@@deriving bin_io]
+  end
 
-    module Accum = S.Accum
-    module Input = S.Input
+  module Accum = S.Accum
+  module Input = S.Input
 
-    let init = return
-    let map () = S.map
-    let combine () = S.combine
-  end)
+  let init = return
+  let map () = S.map
+  let combine () = S.combine
+end)
 
 let map_unordered (type param a b) config input_reader ~m ~(param : param) =
   let module Map_function =
     (val m
-      : Map_function
-     with type Param.t = param
-      and type Input.t = a
-      and type Output.t = b)
+        : Map_function
+        with type Param.t = param
+         and type Input.t = a
+         and type Output.t = b)
   in
   let%bind workers = Map_function.Worker.spawn_config_exn config param in
   let input_with_index_reader = append_index input_reader in
@@ -433,10 +433,10 @@ let map config input_reader ~m ~param =
 let find_map (type param a b) config input_reader ~m ~(param : param) =
   let module Map_function =
     (val m
-      : Map_function
-     with type Param.t = param
-      and type Input.t = a
-      and type Output.t = b option)
+        : Map_function
+        with type Param.t = param
+         and type Input.t = a
+         and type Output.t = b option)
   in
   let%bind workers = Map_function.Worker.spawn_config_exn config param in
   let found_value = ref None in
@@ -461,10 +461,10 @@ let find_map (type param a b) config input_reader ~m ~(param : param) =
 let map_reduce_commutative (type param a accum) config input_reader ~m ~(param : param) =
   let module Map_reduce_function =
     (val m
-      : Map_reduce_function
-     with type Param.t = param
-      and type Input.t = a
-      and type Accum.t = accum)
+        : Map_reduce_function
+        with type Param.t = param
+         and type Input.t = a
+         and type Accum.t = accum)
   in
   let%bind workers = Map_reduce_function.Worker.spawn_config_exn config param in
   let rec map_and_combine_loop worker acc =
@@ -503,20 +503,20 @@ let map_reduce_commutative (type param a accum) config input_reader ~m ~(param :
 let map_reduce (type param a accum) config input_reader ~m ~(param : param) =
   let module Map_reduce_function =
     (val m
-      : Map_reduce_function
-     with type Param.t = param
-      and type Input.t = a
-      and type Accum.t = accum)
+        : Map_reduce_function
+        with type Param.t = param
+         and type Input.t = a
+         and type Accum.t = accum)
   in
   let%bind workers = Map_reduce_function.Worker.spawn_config_exn config param in
   let input_with_index_reader = append_index input_reader in
   let module H = Half_open_interval in
   let acc_map = ref H.Map.empty in
   let rec combine_loop
-            worker
-            key
-            acc
-            (dir : [ `Left | `Left_nothing_right | `Right | `Right_nothing_left ])
+    worker
+    key
+    acc
+    (dir : [ `Left | `Left_nothing_right | `Right | `Right_nothing_left ])
     =
     match dir with
     | (`Left | `Left_nothing_right) as dir' ->
@@ -527,7 +527,7 @@ let map_reduce (type param a accum) config input_reader ~m ~(param : param) =
          (* We need to remove both nodes from the tree to indicate that we are working on
             combining them. *)
          acc_map
-         := Map.remove (Map.remove (!acc_map : _ H.Map.t) key : _ H.Map.t) left_key;
+           := Map.remove (Map.remove (!acc_map : _ H.Map.t) key : _ H.Map.t) left_key;
          let%bind new_acc =
            Map_reduce_function.Worker.run_exn worker (`Combine (left_acc, acc))
          in
@@ -545,7 +545,7 @@ let map_reduce (type param a accum) config input_reader ~m ~(param : param) =
          (* combine acc_{this_lbound, this_ubound} acc_{right_lbound, right_ubound}
             -> acc_{this_lbound, right_ubound} *)
          acc_map
-         := Map.remove (Map.remove (!acc_map : _ H.Map.t) key : _ H.Map.t) right_key;
+           := Map.remove (Map.remove (!acc_map : _ H.Map.t) key : _ H.Map.t) right_key;
          let%bind new_acc =
            Map_reduce_function.Worker.run_exn worker (`Combine (acc, right_acc))
          in

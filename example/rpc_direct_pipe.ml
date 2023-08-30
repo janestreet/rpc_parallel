@@ -25,9 +25,9 @@ module Sum_worker = struct
     end
 
     module Functions
-        (C : Rpc_parallel.Creator
-         with type worker_state := Worker_state.t
-          and type connection_state := Connection_state.t) =
+      (C : Rpc_parallel.Creator
+             with type worker_state := Worker_state.t
+              and type connection_state := Connection_state.t) =
     struct
       let sum_impl ~worker_state:() ~conn_state:() { Sum_arg.max; delay } writer =
         (* We make sure to write to the direct stream writer in a [don't_wait_for] because
@@ -124,6 +124,5 @@ let command =
      in
      fun () -> main ~max ~delay ~log_dir)
 ;;
-
 
 let () = Rpc_parallel_krb_public.start_app ~krb_mode:For_unit_test command

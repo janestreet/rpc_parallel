@@ -19,9 +19,9 @@ module Worker = struct
     end
 
     module Functions
-        (C : Rpc_parallel.Creator
-         with type worker_state := Worker_state.t
-          and type connection_state := Connection_state.t) =
+      (C : Rpc_parallel.Creator
+             with type worker_state := Worker_state.t
+              and type connection_state := Connection_state.t) =
     struct
       let ping =
         C.create_rpc
@@ -123,38 +123,37 @@ let command =
       +> flag "-worker" (required string) ~doc:"worker to run copy test on"
       +> flag "-dir" (required string) ~doc:"directory to copy executable to")
     (fun worker dir () ->
-       let get_count path =
-         let%map res_or_err =
-           Process.run
-             ~prog:"ssh"
-             ~args:
-               [ "-o"
-               ; "StrictHostKeyChecking=no"
-               ; worker
-               ; sprintf "find %s* | wc -l" path
-               ]
-             ()
-         in
-         Or_error.ok_exn res_or_err |> String.strip |> Int.of_string
-       in
-       let%bind our_binary =
-         Unix.readlink (sprintf "/proc/%d/exe" (Pid.to_int (Unix.getpid ())))
-       in
-       let filename = Filename.basename our_binary in
-       let%bind old_count = get_count (dir ^/ filename) in
-       copy_to_host_test worker dir
-       >>=? fun executable ->
-       existing_on_host_test worker (Rpc_parallel.Remote_executable.path executable)
-       >>=? fun () ->
-       mismatching_executable_test worker dir
-       >>=? fun () ->
-       delete_test executable
-       >>=? fun () ->
-       let%map new_count = get_count (dir ^/ filename) in
-       assert (old_count = new_count);
-       Ok (printf "Ok\n"))
+      let get_count path =
+        let%map res_or_err =
+          Process.run
+            ~prog:"ssh"
+            ~args:
+              [ "-o"
+              ; "StrictHostKeyChecking=no"
+              ; worker
+              ; sprintf "find %s* | wc -l" path
+              ]
+            ()
+        in
+        Or_error.ok_exn res_or_err |> String.strip |> Int.of_string
+      in
+      let%bind our_binary =
+        Unix.readlink (sprintf "/proc/%d/exe" (Pid.to_int (Unix.getpid ())))
+      in
+      let filename = Filename.basename our_binary in
+      let%bind old_count = get_count (dir ^/ filename) in
+      copy_to_host_test worker dir
+      >>=? fun executable ->
+      existing_on_host_test worker (Rpc_parallel.Remote_executable.path executable)
+      >>=? fun () ->
+      mismatching_executable_test worker dir
+      >>=? fun () ->
+      delete_test executable
+      >>=? fun () ->
+      let%map new_count = get_count (dir ^/ filename) in
+      assert (old_count = new_count);
+      Ok (printf "Ok\n"))
     ~behave_nicely_in_pipeline:false
 ;;
-
 
 let () = Rpc_parallel_krb_public.start_app ~krb_mode:For_unit_test command

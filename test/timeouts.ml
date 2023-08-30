@@ -2,7 +2,6 @@ open Core
 open Async
 module Rpc_settings = Rpc_parallel.Rpc_settings
 
-
 module Unresponsive_worker = struct
   module T = struct
     (* An [Unresponsive_worker.t] implements a single function [wait : int ->
@@ -21,9 +20,9 @@ module Unresponsive_worker = struct
     end
 
     module Functions
-        (C : Rpc_parallel.Creator
-         with type worker_state := Worker_state.t
-          and type connection_state := Connection_state.t) =
+      (C : Rpc_parallel.Creator
+             with type worker_state := Worker_state.t
+              and type connection_state := Connection_state.t) =
     struct
       let wait_impl ~worker_state:() ~conn_state:() seconds =
         Core_unix.sleep seconds;
@@ -45,26 +44,25 @@ let timeout_command =
     ~summary:"Exercise timeouts in Rpc parallel"
     Command.Spec.(empty +> flag "sleep-for" (required int) ~doc:"")
     (fun sleep_for () ->
-       let%bind conn =
-         Unresponsive_worker.spawn_exn
-           ~shutdown_on:Connection_closed
-           ~redirect_stdout:`Dev_null
-           ~redirect_stderr:`Dev_null
-           ~on_failure:(fun e -> Error.raise (Error.tag e ~tag:"spawn_exn"))
-           ~connection_state_init_arg:()
-           ()
-       in
-       match%map
-         Unresponsive_worker.Connection.run
-           conn
-           ~f:Unresponsive_worker.functions.wait
-           ~arg:sleep_for
-       with
-       | Error e -> printf !"%{sexp:Error.t}\n" e
-       | Ok () -> printf "unresponsive worker returned\n")
+      let%bind conn =
+        Unresponsive_worker.spawn_exn
+          ~shutdown_on:Connection_closed
+          ~redirect_stdout:`Dev_null
+          ~redirect_stderr:`Dev_null
+          ~on_failure:(fun e -> Error.raise (Error.tag e ~tag:"spawn_exn"))
+          ~connection_state_init_arg:()
+          ()
+      in
+      match%map
+        Unresponsive_worker.Connection.run
+          conn
+          ~f:Unresponsive_worker.functions.wait
+          ~arg:sleep_for
+      with
+      | Error e -> printf !"%{sexp:Error.t}\n" e
+      | Ok () -> printf "unresponsive worker returned\n")
     ~behave_nicely_in_pipeline:false
 ;;
-
 
 let report_rpc_settings_command =
   Command.async
@@ -108,7 +106,6 @@ let report_rpc_settings_command =
        return ())
     ~behave_nicely_in_pipeline:false
 ;;
-
 
 let app_rpc_settings =
   Rpc_settings.For_internal_testing.create_with_env_override

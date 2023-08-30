@@ -41,14 +41,14 @@ let authorize_current_principal () =
 ;;
 
 let serve
-      ?max_message_size
-      ?buffer_age_limit
-      ?handshake_timeout
-      ?heartbeat_config
-      ~implementations
-      ~initial_connection_state
-      ~where_to_listen
-      settings
+  ?max_message_size
+  ?buffer_age_limit
+  ?handshake_timeout
+  ?heartbeat_config
+  ~implementations
+  ~initial_connection_state
+  ~where_to_listen
+  settings
   =
   let%bind authorize = authorize_current_principal () in
   let%bind krb_mode = Settings.server_mode settings in
@@ -68,14 +68,14 @@ let serve
 ;;
 
 let with_client
-      ?implementations
-      ?max_message_size
-      ?buffer_age_limit
-      ?handshake_timeout
-      ?heartbeat_config
-      settings
-      where_to_connect
-      f
+  ?implementations
+  ?max_message_size
+  ?buffer_age_limit
+  ?handshake_timeout
+  ?heartbeat_config
+  settings
+  where_to_connect
+  f
   =
   let%bind authorize = authorize_current_principal () in
   let krb_mode = Settings.client_mode settings in
@@ -92,14 +92,14 @@ let with_client
 ;;
 
 let client
-      ?implementations
-      ?max_message_size
-      ?buffer_age_limit
-      ?handshake_timeout
-      ?heartbeat_config
-      ?description
-      settings
-      where_to_connect
+  ?implementations
+  ?max_message_size
+  ?buffer_age_limit
+  ?handshake_timeout
+  ?heartbeat_config
+  ?description
+  settings
+  where_to_connect
   =
   let%bind authorize = authorize_current_principal () in
   let krb_mode = Settings.client_mode settings in

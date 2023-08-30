@@ -23,9 +23,9 @@ module T = struct
   end
 
   module Functions
-      (C : Rpc_parallel.Creator
-       with type worker_state := Worker_state.t
-        and type connection_state := Connection_state.t) =
+    (C : Rpc_parallel.Creator
+           with type worker_state := Worker_state.t
+            and type connection_state := Connection_state.t) =
   struct
     (* Define the implementation for the [sum] function *)
     let sum_impl ~worker_state:() ~conn_state:() arg =

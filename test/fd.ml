@@ -15,9 +15,9 @@ module Spec = struct
   end
 
   module Functions
-      (C : Rpc_parallel.Creator
-       with type worker_state := Worker_state.t
-        and type connection_state := Connection_state.t) =
+    (C : Rpc_parallel.Creator
+           with type worker_state := Worker_state.t
+            and type connection_state := Connection_state.t) =
   struct
     let ping =
       C.create_rpc
@@ -155,14 +155,13 @@ let command =
     ~summary:"Fd testing Rpc parallel"
     Command.Spec.empty
     (fun () ->
-       (* make sure we are not starting servers until we need them *)
-       let%bind () = assert_fds [%here] ~listen:0 ~established:0 in
-       let%bind () = test_serve () in
-       let%bind () = test_unmanaged () in
-       let%map () = test_managed () in
-       printf "Ok\n")
+      (* make sure we are not starting servers until we need them *)
+      let%bind () = assert_fds [%here] ~listen:0 ~established:0 in
+      let%bind () = test_serve () in
+      let%bind () = test_unmanaged () in
+      let%map () = test_managed () in
+      printf "Ok\n")
     ~behave_nicely_in_pipeline:false
 ;;
-
 
 let () = Rpc_parallel_krb_public.start_app ~krb_mode:For_unit_test command

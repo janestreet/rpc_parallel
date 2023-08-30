@@ -52,5 +52,4 @@ let command =
     ~behave_nicely_in_pipeline:false
 ;;
 
-
 let () = Rpc_parallel_krb_public.start_app ~krb_mode:For_unit_test command

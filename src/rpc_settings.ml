@@ -20,11 +20,11 @@ let default =
 ;;
 
 let to_string_for_env_var
-      ?max_message_size
-      ?buffer_age_limit
-      ?handshake_timeout
-      ?heartbeat_config
-      ()
+  ?max_message_size
+  ?buffer_age_limit
+  ?handshake_timeout
+  ?heartbeat_config
+  ()
   =
   let t = { max_message_size; buffer_age_limit; handshake_timeout; heartbeat_config } in
   Sexp.to_string (sexp_of_t t)
@@ -45,11 +45,11 @@ let%expect_test _ =
 ;;
 
 let create_with_env_override'
-      ~env_var
-      ~max_message_size
-      ~buffer_age_limit
-      ~handshake_timeout
-      ~heartbeat_config
+  ~env_var
+  ~max_message_size
+  ~buffer_age_limit
+  ~handshake_timeout
+  ~heartbeat_config
   =
   match Sys.getenv env_var with
   | None -> { max_message_size; buffer_age_limit; handshake_timeout; heartbeat_config }

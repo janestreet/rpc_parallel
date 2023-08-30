@@ -16,9 +16,9 @@ module Worker = struct
     end
 
     module Functions
-        (C : Rpc_parallel.Creator
-         with type worker_state := Worker_state.t
-          and type connection_state := Connection_state.t) =
+      (C : Rpc_parallel.Creator
+             with type worker_state := Worker_state.t
+              and type connection_state := Connection_state.t) =
     struct
       let inc =
         C.create_rpc
@@ -79,6 +79,5 @@ let command =
     main
     ~behave_nicely_in_pipeline:false
 ;;
-
 
 let () = Rpc_parallel_krb_public.start_app ~krb_mode:For_unit_test command

@@ -17,9 +17,9 @@ module Shard = struct
     end
 
     module Functions
-        (Creator : Rpc_parallel.Creator
-         with type worker_state = Worker_state.t
-          and type connection_state = Connection_state.t) =
+      (Creator : Rpc_parallel.Creator
+                   with type worker_state = Worker_state.t
+                    and type connection_state = Connection_state.t) =
     struct
       let functions =
         Creator.create_reverse_pipe
@@ -86,6 +86,5 @@ let () =
     (Command.async
        ~summary:"Demonstrate using Rpc_parallel with reverse pipes"
        (Command.Param.return main)
-       ~behave_nicely_in_pipeline:false
-       )
+       ~behave_nicely_in_pipeline:false)
 ;;

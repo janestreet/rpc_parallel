@@ -4,43 +4,43 @@ open Async
 open Qtest_deprecated.Std
 
 module Add_map_function = Rpc_parallel.Map_reduce.Make_map_function_with_init (struct
-    module Param = Int
-    module Input = Int
-    module Output = Int
+  module Param = Int
+  module Input = Int
+  module Output = Int
 
-    type state_type = int
+  type state_type = int
 
-    let init = return
-    let map state x = return (x + state)
-  end)
+  let init = return
+  let map state x = return (x + state)
+end)
 
 module Count_map_reduce_function =
-  Rpc_parallel.Map_reduce.Make_map_reduce_function_with_init (struct
-    module Param = Int
-    module Accum = Int
+Rpc_parallel.Map_reduce.Make_map_reduce_function_with_init (struct
+  module Param = Int
+  module Accum = Int
 
-    module Input = struct
-      type t = int list [@@deriving bin_io]
-    end
+  module Input = struct
+    type t = int list [@@deriving bin_io]
+  end
 
-    type state_type = int
+  type state_type = int
 
-    let init = return
-    let map state l = return (state * List.fold l ~init:0 ~f:( + ))
-    let combine _state x y = return (x + y)
-  end)
+  let init = return
+  let map state l = return (state * List.fold l ~init:0 ~f:( + ))
+  let combine _state x y = return (x + y)
+end)
 
 module Concat_map_reduce_function =
-  Rpc_parallel.Map_reduce.Make_map_reduce_function (struct
-    module Accum = struct
-      type t = int list [@@deriving bin_io]
-    end
+Rpc_parallel.Map_reduce.Make_map_reduce_function (struct
+  module Accum = struct
+    type t = int list [@@deriving bin_io]
+  end
 
-    module Input = Int
+  module Input = Int
 
-    let map x = return [ x ]
-    let combine l1 l2 = return (l1 @ l2)
-  end)
+  let map x = return [ x ]
+  let combine l1 l2 = return (l1 @ l2)
+end)
 
 let test_map_unordered () =
   let n = 1000 in

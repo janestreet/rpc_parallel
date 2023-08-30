@@ -5,12 +5,12 @@ let backend = (module Backend : Rpc_parallel.Backend)
 let backend_and_settings = Rpc_parallel.Backend_and_settings.T ((module Backend), ())
 
 let start_app
-      ?rpc_max_message_size
-      ?rpc_handshake_timeout
-      ?rpc_heartbeat_config
-      ?when_parsing_succeeds
-      ?complete_subcommands
-      command
+  ?rpc_max_message_size
+  ?rpc_handshake_timeout
+  ?rpc_heartbeat_config
+  ?when_parsing_succeeds
+  ?complete_subcommands
+  command
   =
   Rpc_parallel.start_app
     ?rpc_max_message_size
@@ -28,10 +28,10 @@ end
 
 module Expert = struct
   let start_master_server_exn
-        ?rpc_max_message_size
-        ?rpc_handshake_timeout
-        ?rpc_heartbeat_config
-        ?pass_name
+    ?rpc_max_message_size
+    ?rpc_handshake_timeout
+    ?rpc_heartbeat_config
+    ?pass_name
     =
     Rpc_parallel.Expert.start_master_server_exn
       ?rpc_max_message_size

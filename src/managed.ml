@@ -111,18 +111,18 @@ module Make (S : Parallel.Worker_spec) = struct
   ;;
 
   let spawn
-        ?how
-        ?name
-        ?env
-        ?connection_timeout
-        ?cd
-        ?umask
-        ~redirect_stdout
-        ~redirect_stderr
-        worker_state_init_arg
-        connection_state_init_arg
-        ~on_failure
-        ~on_connection_to_worker_closed
+    ?how
+    ?name
+    ?env
+    ?connection_timeout
+    ?cd
+    ?umask
+    ~redirect_stdout
+    ~redirect_stderr
+    worker_state_init_arg
+    connection_state_init_arg
+    ~on_failure
+    ~on_connection_to_worker_closed
     =
     Unmanaged.spawn
       ?how
@@ -156,18 +156,18 @@ module Make (S : Parallel.Worker_spec) = struct
   ;;
 
   let spawn_exn
-        ?how
-        ?name
-        ?env
-        ?connection_timeout
-        ?cd
-        ?umask
-        ~redirect_stdout
-        ~redirect_stderr
-        worker_state_init_arg
-        connection_init_arg
-        ~on_failure
-        ~on_connection_to_worker_closed
+    ?how
+    ?name
+    ?env
+    ?connection_timeout
+    ?cd
+    ?umask
+    ~redirect_stdout
+    ~redirect_stderr
+    worker_state_init_arg
+    connection_init_arg
+    ~on_failure
+    ~on_connection_to_worker_closed
     =
     spawn
       ?how

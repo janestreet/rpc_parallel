@@ -15,9 +15,9 @@ module Pre_worker = struct
   end
 
   module Functions
-      (C : Rpc_parallel.Creator
-       with type worker_state := Worker_state.t
-        and type connection_state := Connection_state.t) =
+    (C : Rpc_parallel.Creator
+           with type worker_state := Worker_state.t
+            and type connection_state := Connection_state.t) =
   struct
     let getenv =
       C.create_rpc
@@ -78,36 +78,34 @@ let basic_test =
     ~summary:"Using environment variables for great good"
     Command.Spec.(empty +> flag "host" (optional string) ~doc:"HOST run worker on HOST")
     (fun host () ->
-       let key = "TEST_ENV_KEY" in
-       let data = "potentially \"problematic\" \\\"test\\\" string ()!" in
-       spawn ~env:[ key, data ] ~host ()
-       >>=? fun conn ->
-       print_worker_env conn ~key
-       >>=? fun () ->
-       print_worker_env conn ~key:"SHOULD_NOT_EXIST"
-       >>=? fun () -> Deferred.Or_error.ok_unit)
+      let key = "TEST_ENV_KEY" in
+      let data = "potentially \"problematic\" \\\"test\\\" string ()!" in
+      spawn ~env:[ key, data ] ~host ()
+      >>=? fun conn ->
+      print_worker_env conn ~key
+      >>=? fun () ->
+      print_worker_env conn ~key:"SHOULD_NOT_EXIST"
+      >>=? fun () -> Deferred.Or_error.ok_unit)
     ~behave_nicely_in_pipeline:false
 ;;
-
 
 let special_var =
   Command.async_spec_or_error
     ~summary:"Child inherits variables that influence process execution"
     Command.Spec.(empty +> flag "host" (optional string) ~doc:"HOST run worker on HOST")
     (fun host () ->
-       let envvar = "OCAMLRUNPARAM" in
-       let envval = "foo=bar" in
-       Unix.putenv ~key:envvar ~data:envval;
-       spawn ~host ()
-       >>=? fun conn ->
-       print_worker_env conn ~key:envvar
-       >>=? fun () ->
-       spawn ~host ~env:[ envvar, "foo=user-supplied" ] ()
-       >>=? fun conn ->
-       print_worker_env conn ~key:envvar >>=? fun () -> Deferred.Or_error.ok_unit)
+      let envvar = "OCAMLRUNPARAM" in
+      let envval = "foo=bar" in
+      Unix.putenv ~key:envvar ~data:envval;
+      spawn ~host ()
+      >>=? fun conn ->
+      print_worker_env conn ~key:envvar
+      >>=? fun () ->
+      spawn ~host ~env:[ envvar, "foo=user-supplied" ] ()
+      >>=? fun conn ->
+      print_worker_env conn ~key:envvar >>=? fun () -> Deferred.Or_error.ok_unit)
     ~behave_nicely_in_pipeline:false
 ;;
-
 
 let () =
   Command.group

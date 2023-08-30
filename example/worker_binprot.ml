@@ -24,9 +24,9 @@ module Worker = struct
     end
 
     module Functions
-        (C : Rpc_parallel.Creator
-         with type worker_state := Worker_state.t
-          and type connection_state := Connection_state.t) =
+      (C : Rpc_parallel.Creator
+             with type worker_state := Worker_state.t
+              and type connection_state := Connection_state.t) =
     struct
       (* When a worker gets a [ping ()] call, increment its counter and return the current
          value *)
@@ -61,9 +61,9 @@ module Dispatcher = struct
     end
 
     module Functions
-        (C : Rpc_parallel.Creator
-         with type worker_state := Worker_state.t
-          and type connection_state := Connection_state.t) =
+      (C : Rpc_parallel.Creator
+             with type worker_state := Worker_state.t
+              and type connection_state := Connection_state.t) =
     struct
       (* When a worker gets a [dispatch worker] call, call [ping] on the supplied worker
          and return the same result. *)
@@ -93,52 +93,51 @@ let command =
        functions"
     Command.Spec.(empty)
     (fun () ->
-       Worker.spawn
-         ~shutdown_on:Heartbeater_connection_timeout
-         ~redirect_stdout:`Dev_null
-         ~redirect_stderr:`Dev_null
-         ~on_failure:Error.raise
-         ()
-       >>=? fun worker ->
-       Worker.Connection.client worker ()
-       >>=? fun worker_conn ->
-       Dispatcher.spawn
-         ~shutdown_on:Connection_closed
-         ~redirect_stdout:`Dev_null
-         ~redirect_stderr:`Dev_null
-         ~on_failure:Error.raise
-         ~connection_state_init_arg:()
-         ()
-       >>=? fun dispatcher_conn ->
-       let repeat job n =
-         Deferred.List.iter ~how:`Sequential (List.range 0 n) ~f:(fun _i -> job ())
-       in
-       let%bind () =
-         Deferred.all_unit
-           [ repeat
-               (fun () ->
-                  let%bind count =
-                    Dispatcher.Connection.run_exn
-                      dispatcher_conn
-                      ~f:Dispatcher.functions.dispatch
-                      ~arg:worker
-                  in
-                  Core.Printf.printf "worker pinged from dispatcher: %d\n%!" count;
-                  return ())
-               10
-           ; repeat
-               (fun () ->
-                  let%bind count =
-                    Worker.Connection.run_exn worker_conn ~f:Worker.functions.ping ~arg:()
-                  in
-                  Core.Printf.printf "worker pinged from master: %d\n%!" count;
-                  return ())
-               10
-           ]
-       in
-       Deferred.Or_error.ok_unit)
+      Worker.spawn
+        ~shutdown_on:Heartbeater_connection_timeout
+        ~redirect_stdout:`Dev_null
+        ~redirect_stderr:`Dev_null
+        ~on_failure:Error.raise
+        ()
+      >>=? fun worker ->
+      Worker.Connection.client worker ()
+      >>=? fun worker_conn ->
+      Dispatcher.spawn
+        ~shutdown_on:Connection_closed
+        ~redirect_stdout:`Dev_null
+        ~redirect_stderr:`Dev_null
+        ~on_failure:Error.raise
+        ~connection_state_init_arg:()
+        ()
+      >>=? fun dispatcher_conn ->
+      let repeat job n =
+        Deferred.List.iter ~how:`Sequential (List.range 0 n) ~f:(fun _i -> job ())
+      in
+      let%bind () =
+        Deferred.all_unit
+          [ repeat
+              (fun () ->
+                let%bind count =
+                  Dispatcher.Connection.run_exn
+                    dispatcher_conn
+                    ~f:Dispatcher.functions.dispatch
+                    ~arg:worker
+                in
+                Core.Printf.printf "worker pinged from dispatcher: %d\n%!" count;
+                return ())
+              10
+          ; repeat
+              (fun () ->
+                let%bind count =
+                  Worker.Connection.run_exn worker_conn ~f:Worker.functions.ping ~arg:()
+                in
+                Core.Printf.printf "worker pinged from master: %d\n%!" count;
+                return ())
+              10
+          ]
+      in
+      Deferred.Or_error.ok_unit)
     ~behave_nicely_in_pipeline:false
 ;;
-
 
 let () = Rpc_parallel_krb_public.start_app ~krb_mode:For_unit_test command

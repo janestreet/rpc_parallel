@@ -18,9 +18,9 @@ module Worker = struct
     end
 
     module Functions
-        (_ : Rpc_parallel.Creator
-         with type worker_state := Worker_state.t
-          and type connection_state := Connection_state.t) =
+      (_ : Rpc_parallel.Creator
+             with type worker_state := Worker_state.t
+              and type connection_state := Connection_state.t) =
     struct
       let functions = ()
       let init_worker_state () = Deferred.unit
@@ -44,7 +44,6 @@ let worker_command =
     ~behave_nicely_in_pipeline:false
 ;;
 
-
 let main_command =
   let open Command.Let_syntax in
   Command.async
@@ -67,7 +66,6 @@ let main_command =
        printf "Success.\n")
     ~behave_nicely_in_pipeline:false
 ;;
-
 
 let command =
   Command.group

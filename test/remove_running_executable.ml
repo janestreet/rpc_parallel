@@ -15,9 +15,9 @@ module Worker_impl = struct
   end
 
   module Functions
-      (_ : Rpc_parallel.Creator
-       with type worker_state := Worker_state.t
-        and type connection_state := Connection_state.t) =
+    (_ : Rpc_parallel.Creator
+           with type worker_state := Worker_state.t
+            and type connection_state := Connection_state.t) =
   struct
     let functions = ()
     let init_worker_state () = Deferred.unit
@@ -102,6 +102,5 @@ let command =
        | false, true -> spawn_remote ())
     ~behave_nicely_in_pipeline:false
 ;;
-
 
 let () = Rpc_parallel_krb_public.start_app ~krb_mode:For_unit_test command

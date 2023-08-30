@@ -20,9 +20,9 @@ module Secondary_worker = struct
     end
 
     module Functions
-        (C : Rpc_parallel.Creator
-         with type worker_state := Worker_state.t
-          and type connection_state := Connection_state.t) =
+      (C : Rpc_parallel.Creator
+             with type worker_state := Worker_state.t
+              and type connection_state := Connection_state.t) =
     struct
       let ping_impl ~worker_state:() ~conn_state:() () = return "pong"
 
@@ -62,9 +62,9 @@ module Primary_worker = struct
     end
 
     module Functions
-        (C : Rpc_parallel.Creator
-         with type worker_state := Worker_state.t
-          and type connection_state := Connection_state.t) =
+      (C : Rpc_parallel.Creator
+             with type worker_state := Worker_state.t
+              and type connection_state := Connection_state.t) =
     struct
       let run_impl ~worker_state:() ~conn_state:() num_workers =
         Deferred.List.init ~how:`Parallel num_workers ~f:(fun _i ->
@@ -78,7 +78,7 @@ module Primary_worker = struct
           in
           ignore
             (Bag.add workers (next_worker_name (), secondary_worker)
-             : (string * Secondary_worker.worker) Bag.Elt.t))
+              : (string * Secondary_worker.worker) Bag.Elt.t))
         >>| ignore
       ;;
 
@@ -130,24 +130,23 @@ let command =
            (required int)
            ~doc:" Number of secondary workers each primary worker should spawn")
     (fun primary secondary () ->
-       Deferred.Or_error.List.init ~how:`Parallel primary ~f:(fun worker_id ->
-         Primary_worker.spawn
-           ~shutdown_on:Connection_closed
-           ~redirect_stdout:`Dev_null
-           ~redirect_stderr:`Dev_null
-           ~on_failure:Error.raise
-           ~connection_state_init_arg:()
-           ()
-         >>=? fun conn ->
-         Primary_worker.Connection.run conn ~f:Primary_worker.functions.run ~arg:secondary
-         >>=? fun () ->
-         Primary_worker.Connection.run conn ~f:Primary_worker.functions.ping ~arg:()
-         >>|? fun ping_results ->
-         List.map ping_results ~f:(fun s -> sprintf "Primary worker #%i: %s" worker_id s))
-       >>|? fun l -> List.iter (List.join l) ~f:(printf "%s\n%!"))
+      Deferred.Or_error.List.init ~how:`Parallel primary ~f:(fun worker_id ->
+        Primary_worker.spawn
+          ~shutdown_on:Connection_closed
+          ~redirect_stdout:`Dev_null
+          ~redirect_stderr:`Dev_null
+          ~on_failure:Error.raise
+          ~connection_state_init_arg:()
+          ()
+        >>=? fun conn ->
+        Primary_worker.Connection.run conn ~f:Primary_worker.functions.run ~arg:secondary
+        >>=? fun () ->
+        Primary_worker.Connection.run conn ~f:Primary_worker.functions.ping ~arg:()
+        >>|? fun ping_results ->
+        List.map ping_results ~f:(fun s -> sprintf "Primary worker #%i: %s" worker_id s))
+      >>|? fun l -> List.iter (List.join l) ~f:(printf "%s\n%!"))
     ~behave_nicely_in_pipeline:false
 ;;
-
 
 (* This call to [Rpc_parallel.start_app] must be top level *)
 let () = Rpc_parallel_krb_public.start_app ~krb_mode:For_unit_test command

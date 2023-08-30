@@ -15,9 +15,9 @@ module T = struct
   end
 
   module Functions
-      (C : Rpc_parallel.Creator
-       with type worker_state := Worker_state.t
-        and type connection_state := Connection_state.t) =
+    (C : Rpc_parallel.Creator
+           with type worker_state := Worker_state.t
+            and type connection_state := Connection_state.t) =
   struct
     let product_impl ~worker_state:() ~conn_state:() arg =
       let product = List.fold ~init:1 ~f:( * ) (List.init arg ~f:(( + ) 1)) in

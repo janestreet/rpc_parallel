@@ -53,9 +53,9 @@ end = struct
     end
 
     module Functions
-        (C : Rpc_parallel.Creator
-         with type worker_state := Worker_state.t
-          and type connection_state := Connection_state.t) =
+      (C : Rpc_parallel.Creator
+             with type worker_state := Worker_state.t
+              and type connection_state := Connection_state.t) =
     struct
       let functions =
         { get_master_and_worker_chain =
@@ -82,9 +82,9 @@ end = struct
       ;;
 
       let init_connection_state
-            ~connection:(_ : Rpc.Connection.t)
-            ~worker_state:(_ : Worker_state.t)
-            ()
+        ~connection:(_ : Rpc.Connection.t)
+        ~worker_state:(_ : Worker_state.t)
+        ()
         =
         return ()
       ;;

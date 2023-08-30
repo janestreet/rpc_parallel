@@ -7,7 +7,6 @@ open! Async
 module Config : sig
   type t
 
-
   (** Default is to create the same number of local workers as the cores in local
       machine. All spawned workers will redirect their stdout and stderr to the same
       file. *)
@@ -16,7 +15,7 @@ module Config : sig
     -> ?remote:(_ Remote_executable.t * int) list
     -> ?cd:string (** default / *)
     -> ?connection_timeout:Time_float.Span.t
-    (** see [with_spawn_args] in parallel_intf.ml *)
+         (** see [with_spawn_args] in parallel_intf.ml *)
     -> redirect_stderr:[ `Dev_null | `File_append of string ]
     -> redirect_stdout:[ `Dev_null | `File_append of string ]
     -> unit
@@ -50,9 +49,9 @@ module type Map_function = sig
 
   module Worker :
     Worker
-    with type param_type = Param.t
-     and type run_input_type = Input.t
-     and type run_output_type = Output.t
+      with type param_type = Param.t
+       and type run_input_type = Input.t
+       and type run_output_type = Output.t
 end
 
 module type Map_function_with_init_spec = sig
@@ -62,16 +61,15 @@ module type Map_function_with_init_spec = sig
   module Input : Binable
   module Output : Binable
 
-
   val init : Param.t -> state_type Deferred.t
   val map : state_type -> Input.t -> Output.t Deferred.t
 end
 
 module Make_map_function_with_init (S : Map_function_with_init_spec) :
   Map_function
-  with type Param.t = S.Param.t
-   and type Input.t = S.Input.t
-   and type Output.t = S.Output.t
+    with type Param.t = S.Param.t
+     and type Input.t = S.Input.t
+     and type Output.t = S.Output.t
 
 module type Map_function_spec = sig
   module Input : Binable
@@ -82,9 +80,9 @@ end
 
 module Make_map_function (S : Map_function_spec) :
   Map_function
-  with type Param.t = unit
-   and type Input.t = S.Input.t
-   and type Output.t = S.Output.t
+    with type Param.t = unit
+     and type Input.t = S.Input.t
+     and type Output.t = S.Output.t
 
 (** The [map_unordered] operation takes ['a Pipe.Reader.t] along with a [Map_function] and
     sends the ['a] values to workers for mapping. Each pair in the resulting [('b * int)
@@ -95,9 +93,9 @@ val map_unordered
   -> 'a Pipe.Reader.t
   -> m:
        (module Map_function
-         with type Param.t = 'param
-          and type Input.t = 'a
-          and type Output.t = 'b)
+          with type Param.t = 'param
+           and type Input.t = 'a
+           and type Output.t = 'b)
   -> param:'param
   -> ('b * int) Pipe.Reader.t Deferred.t
 
@@ -109,9 +107,9 @@ val map
   -> 'a Pipe.Reader.t
   -> m:
        (module Map_function
-         with type Param.t = 'param
-          and type Input.t = 'a
-          and type Output.t = 'b)
+          with type Param.t = 'param
+           and type Input.t = 'a
+           and type Output.t = 'b)
   -> param:'param
   -> 'b Pipe.Reader.t Deferred.t
 
@@ -125,9 +123,9 @@ val find_map
   -> 'a Pipe.Reader.t
   -> m:
        (module Map_function
-         with type Param.t = 'param
-          and type Input.t = 'a
-          and type Output.t = 'b option)
+          with type Param.t = 'param
+           and type Input.t = 'a
+           and type Output.t = 'b option)
   -> param:'param
   -> 'b option Deferred.t
 
@@ -140,13 +138,13 @@ module type Map_reduce_function = sig
 
   module Worker :
     Worker
-    with type param_type = Param.t
-     and type run_input_type =
-           [ `Map of Input.t
-           | `Combine of Accum.t * Accum.t
-           | `Map_right_combine of Accum.t * Input.t (* combine accum (map input) *)
-           ]
-     and type run_output_type = Accum.t
+      with type param_type = Param.t
+       and type run_input_type =
+        [ `Map of Input.t
+        | `Combine of Accum.t * Accum.t
+        | `Map_right_combine of Accum.t * Input.t (* combine accum (map input) *)
+        ]
+       and type run_output_type = Accum.t
 end
 
 module type Map_reduce_function_with_init_spec = sig
@@ -163,9 +161,9 @@ end
 
 module Make_map_reduce_function_with_init (S : Map_reduce_function_with_init_spec) :
   Map_reduce_function
-  with type Param.t = S.Param.t
-   and type Accum.t = S.Accum.t
-   and type Input.t = S.Input.t
+    with type Param.t = S.Param.t
+     and type Accum.t = S.Accum.t
+     and type Input.t = S.Input.t
 
 module type Map_reduce_function_spec = sig
   module Accum : Binable
@@ -177,9 +175,9 @@ end
 
 module Make_map_reduce_function (S : Map_reduce_function_spec) :
   Map_reduce_function
-  with type Param.t = unit
-   and type Accum.t = S.Accum.t
-   and type Input.t = S.Input.t
+    with type Param.t = unit
+     and type Accum.t = S.Accum.t
+     and type Input.t = S.Input.t
 
 (** The [map_reduce_commutative] operation takes ['a Pipe.Reader.t] along with a
     [Map_reduce_function] and applies the [map] function to ['a] values (in an unspecified
@@ -192,9 +190,9 @@ val map_reduce_commutative
   -> 'a Pipe.Reader.t
   -> m:
        (module Map_reduce_function
-         with type Param.t = 'param
-          and type Accum.t = 'accum
-          and type Input.t = 'a)
+          with type Param.t = 'param
+           and type Accum.t = 'accum
+           and type Input.t = 'a)
   -> param:'param
   -> 'accum option Deferred.t
 
@@ -211,8 +209,8 @@ val map_reduce
   -> 'a Pipe.Reader.t
   -> m:
        (module Map_reduce_function
-         with type Param.t = 'param
-          and type Accum.t = 'accum
-          and type Input.t = 'a)
+          with type Param.t = 'param
+           and type Accum.t = 'accum
+           and type Input.t = 'a)
   -> param:'param
   -> 'accum option Deferred.t

@@ -28,9 +28,9 @@ module Stream_worker = struct
     end
 
     module Functions
-        (C : Rpc_parallel.Creator
-         with type connection_state := unit
-          and type worker_state := Worker_state.t) =
+      (C : Rpc_parallel.Creator
+             with type connection_state := unit
+              and type worker_state := Worker_state.t) =
     struct
       let init_connection_state ~connection:_ ~worker_state:_ = return
       let init_worker_state num_elts = return { Worker_state.num_elts; workers = [] }
@@ -40,8 +40,8 @@ module Stream_worker = struct
         (Pipe.closed w
          >>> fun () ->
          worker_state.Worker_state.workers
-         <- List.filter worker_state.Worker_state.workers ~f:(fun worker ->
-           not (Pipe.equal worker w)));
+           <- List.filter worker_state.Worker_state.workers ~f:(fun worker ->
+                not (Pipe.equal worker w)));
         worker_state.Worker_state.workers <- w :: worker_state.Worker_state.workers;
         return r
       ;;
@@ -58,18 +58,18 @@ module Stream_worker = struct
              Deferred.repeat_until_finished
                worker_state.Worker_state.num_elts
                (fun count ->
-                  let%bind () = Clock.after (sec 0.05) in
-                  if count = 0
-                  then return (`Finished ())
-                  else (
-                    let elt = get_element () in
-                    let to_worker =
-                      List.nth_exn
-                        worker_state.workers
-                        (Random.int (List.length worker_state.workers))
-                    in
-                    let%map () = Pipe.write to_worker elt in
-                    `Repeat (count - 1)))
+               let%bind () = Clock.after (sec 0.05) in
+               if count = 0
+               then return (`Finished ())
+               else (
+                 let elt = get_element () in
+                 let to_worker =
+                   List.nth_exn
+                     worker_state.workers
+                     (Random.int (List.length worker_state.workers))
+                 in
+                 let%map () = Pipe.write to_worker elt in
+                 `Repeat (count - 1)))
            in
            List.iter worker_state.workers ~f:(fun writer -> Pipe.close writer));
         return ()
@@ -108,9 +108,9 @@ module Worker = struct
     end
 
     module Functions
-        (C : Rpc_parallel.Creator
-         with type worker_state := Worker_state.t
-          and type connection_state := Connection_state.t) =
+      (C : Rpc_parallel.Creator
+             with type worker_state := Worker_state.t
+              and type connection_state := Connection_state.t) =
     struct
       let process_elts_impl ~worker_state:() ~conn_state:() stream_worker =
         let check_r, check_w = Pipe.create () in
@@ -158,45 +158,44 @@ let command =
            (optional_with_default 50 int)
            ~doc:" number of elements to process")
     (fun num_workers num_elements () ->
-       (* Spawn a stream worker *)
-       Stream_worker.spawn
-         ~shutdown_on:Heartbeater_connection_timeout
-         ~redirect_stdout:`Dev_null
-         ~redirect_stderr:`Dev_null
-         num_elements
-         ~on_failure:(handle_error "stream worker")
-       >>=? fun stream_worker ->
-       (* Spawn workers and tell them about the stream worker  *)
-       Deferred.Or_error.List.init ~how:`Sequential num_workers ~f:(fun i ->
-         Worker.spawn
-           ~shutdown_on:Connection_closed
-           ~connection_state_init_arg:()
-           ~redirect_stdout:`Dev_null
-           ~redirect_stderr:`Dev_null
-           ()
-           ~on_failure:(handle_error (sprintf "worker %d" i))
-         >>=? fun worker_conn ->
-         Worker.Connection.run
-           worker_conn
-           ~f:Worker.functions.process_elts
-           ~arg:stream_worker)
-       >>=? fun workers ->
-       (* Start the stream *)
-       Stream_worker.Connection.client stream_worker ()
-       >>=? fun stream_conn ->
-       Stream_worker.Connection.run stream_conn ~f:Stream_worker.functions.start ~arg:()
-       >>=? fun () ->
-       (* Collect the results *)
-       let elements = List.init num_elements ~f:(fun _i -> Ivar.create ()) in
-       don't_wait_for
-         (Deferred.List.iter ~how:`Parallel workers ~f:(fun worker ->
-            Pipe.iter worker ~f:(fun num ->
-              Ivar.fill_exn (List.nth_exn elements num) () |> return)));
-       let%map () = Deferred.all_unit (List.map elements ~f:Ivar.read) in
-       printf "Ok.\n";
-       Or_error.return ())
+      (* Spawn a stream worker *)
+      Stream_worker.spawn
+        ~shutdown_on:Heartbeater_connection_timeout
+        ~redirect_stdout:`Dev_null
+        ~redirect_stderr:`Dev_null
+        num_elements
+        ~on_failure:(handle_error "stream worker")
+      >>=? fun stream_worker ->
+      (* Spawn workers and tell them about the stream worker  *)
+      Deferred.Or_error.List.init ~how:`Sequential num_workers ~f:(fun i ->
+        Worker.spawn
+          ~shutdown_on:Connection_closed
+          ~connection_state_init_arg:()
+          ~redirect_stdout:`Dev_null
+          ~redirect_stderr:`Dev_null
+          ()
+          ~on_failure:(handle_error (sprintf "worker %d" i))
+        >>=? fun worker_conn ->
+        Worker.Connection.run
+          worker_conn
+          ~f:Worker.functions.process_elts
+          ~arg:stream_worker)
+      >>=? fun workers ->
+      (* Start the stream *)
+      Stream_worker.Connection.client stream_worker ()
+      >>=? fun stream_conn ->
+      Stream_worker.Connection.run stream_conn ~f:Stream_worker.functions.start ~arg:()
+      >>=? fun () ->
+      (* Collect the results *)
+      let elements = List.init num_elements ~f:(fun _i -> Ivar.create ()) in
+      don't_wait_for
+        (Deferred.List.iter ~how:`Parallel workers ~f:(fun worker ->
+           Pipe.iter worker ~f:(fun num ->
+             Ivar.fill_exn (List.nth_exn elements num) () |> return)));
+      let%map () = Deferred.all_unit (List.map elements ~f:Ivar.read) in
+      printf "Ok.\n";
+      Or_error.return ())
     ~behave_nicely_in_pipeline:false
 ;;
-
 
 let () = Rpc_parallel_krb_public.start_app ~krb_mode:For_unit_test command

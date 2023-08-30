@@ -24,18 +24,18 @@ module Worker = struct
     end
 
     module Functions
-        (C : Rpc_parallel.Creator
-         with type worker_state := Worker_state.t
-          and type connection_state := Connection_state.t) =
+      (C : Rpc_parallel.Creator
+             with type worker_state := Worker_state.t
+              and type connection_state := Connection_state.t) =
     struct
       let init_worker_state () =
         return { Worker_state.ping = Mvar.create (); pongs_closed = Ivar.create () }
       ;;
 
       let init_connection_state
-            ~connection:(_ : Rpc.Connection.t)
-            ~worker_state:(_ : Worker_state.t)
-            ()
+        ~connection:(_ : Rpc.Connection.t)
+        ~worker_state:(_ : Worker_state.t)
+        ()
         =
         return ()
       ;;
@@ -117,18 +117,18 @@ let command =
            ~arg:
              ( ()
              , fun message ->
-               (match message with
-                | Update i ->
-                  printf "Pong: %d\n" i;
-                  let i = succ i in
-                  if i < n
-                  then don't_wait_for (ping i)
-                  else
-                    Worker.Connection.abort
-                      connection
-                      ~id:(Set_once.get_exn the_id [%here])
-                | Closed reason -> Ivar.fill_exn closed reason);
-               Continue )
+                 (match message with
+                  | Update i ->
+                    printf "Pong: %d\n" i;
+                    let i = succ i in
+                    if i < n
+                    then don't_wait_for (ping i)
+                    else
+                      Worker.Connection.abort
+                        connection
+                        ~id:(Set_once.get_exn the_id [%here])
+                  | Closed reason -> Ivar.fill_exn closed reason);
+                 Continue )
        in
        Set_once.set_exn the_id [%here] id;
        let%bind () = ping 0 in
@@ -141,6 +141,5 @@ let command =
        Worker.Connection.close connection)
     ~behave_nicely_in_pipeline:false
 ;;
-
 
 let () = Rpc_parallel_krb_public.start_app ~krb_mode:For_unit_test command

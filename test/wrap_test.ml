@@ -16,9 +16,9 @@ module Worker = struct
     end
 
     module Functions
-        (C : Rpc_parallel.Creator
-         with type worker_state := Worker_state.t
-          and type connection_state := Connection_state.t) =
+      (C : Rpc_parallel.Creator
+             with type worker_state := Worker_state.t
+              and type connection_state := Connection_state.t) =
     struct
       let ping =
         C.create_rpc
@@ -49,7 +49,7 @@ let main ~host ~wrapper =
   let how =
     Rpc_parallel.How_to_run.remote remote_exec
     |> Rpc_parallel.How_to_run.wrap ~f:(fun { prog; args } ->
-      { prog = wrapper; args = prog :: args })
+         { prog = wrapper; args = prog :: args })
   in
   let%bind conn, process =
     Worker.spawn_in_foreground
