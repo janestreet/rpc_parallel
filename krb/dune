@@ -1,2 +1,2 @@
-(library (name rpc_parallel_krb_public) (public_name rpc_parallel.krb)
- (libraries async core krb.public rpc_parallel) (preprocess (pps ppx_jane)))
+(library (name rpc_parallel_krb_public)
+ (libraries async core krb_public rpc_parallel) (preprocess (pps ppx_jane)))
