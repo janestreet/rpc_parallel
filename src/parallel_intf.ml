@@ -549,7 +549,7 @@ module type Backend = sig
     -> (Socket.Address.Inet.t, int) Tcp.Server.t Deferred.t
 
   val with_client
-    :  ?implementations:'b Rpc.Connection.Client_implementations.t
+    :  ?implementations:Rpc.Connection.Client_implementations.t
     -> ?max_message_size:int
     -> ?buffer_age_limit:Writer.buffer_age_limit
     -> ?handshake_timeout:Time_float.Span.t
@@ -560,7 +560,7 @@ module type Backend = sig
     -> 'a Or_error.t Deferred.t
 
   val client
-    :  ?implementations:'a Rpc.Connection.Client_implementations.t
+    :  ?implementations:Rpc.Connection.Client_implementations.t
     -> ?max_message_size:int
     -> ?buffer_age_limit:Writer.buffer_age_limit
     -> ?handshake_timeout:Time_float.Span.t

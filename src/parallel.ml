@@ -494,7 +494,7 @@ module Backend : sig
     -> (Socket.Address.Inet.t, int) Tcp.Server.t Deferred.t
 
   val with_client
-    :  ?implementations:'b Rpc.Connection.Client_implementations.t
+    :  ?implementations:Rpc.Connection.Client_implementations.t
     -> ?max_message_size:int
     -> ?buffer_age_limit:Writer.buffer_age_limit
     -> ?handshake_timeout:Time_float.Span.t
@@ -505,7 +505,7 @@ module Backend : sig
     -> 'a Or_error.t Deferred.t
 
   val client
-    :  ?implementations:'a Rpc.Connection.Client_implementations.t
+    :  ?implementations:Rpc.Connection.Client_implementations.t
     -> ?max_message_size:int
     -> ?buffer_age_limit:Writer.buffer_age_limit
     -> ?handshake_timeout:Time_float.Span.t
@@ -1158,13 +1158,14 @@ module Make (S : Worker_spec) = struct
 
   let functions = User_functions.functions
 
-  let master_implementations : _ Rpc.Connection.Client_implementations.t =
-    { connection_state = const ()
-    ; implementations =
-        Rpc.Implementations.create_exn
-          ~implementations:(Versioned_rpc.Menu.add worker_state.master_implementations)
-          ~on_unknown_rpc:`Close_connection
-    }
+  let master_implementations : Rpc.Connection.Client_implementations.t =
+    T
+      { connection_state = const ()
+      ; implementations =
+          Rpc.Implementations.create_exn
+            ~implementations:(Versioned_rpc.Menu.add worker_state.master_implementations)
+            ~on_unknown_rpc:`Close_connection
+      }
   ;;
 
   let serve worker_state_init_arg =
