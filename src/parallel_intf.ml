@@ -436,6 +436,22 @@ module type Creator = sig
        , 'response )
        _function
 
+  (** [create_state ?name ~f ~bin_query ~bin_state ~bin_update ()] will create an
+      [Rpc.State_rpc.t] with [name] if specified. *)
+  val create_state
+    :  ?name:string
+    -> ?client_pushes_back:unit
+    -> f:
+         (worker_state:worker_state
+          -> conn_state:connection_state
+          -> 'query
+          -> ('state * 'update Pipe.Reader.t) Deferred.t)
+    -> bin_query:'query Bin_prot.Type_class.t
+    -> bin_state:'state Bin_prot.Type_class.t
+    -> bin_update:'update Bin_prot.Type_class.t
+    -> unit
+    -> (worker, 'query, 'state * 'update Pipe.Reader.t) _function
+
   (** [of_async_rpc ~f rpc] is the analog to [create_rpc] but instead of creating an Rpc
       protocol, it uses the supplied one *)
   val of_async_rpc
@@ -478,6 +494,17 @@ module type Creator = sig
     :  f:(worker_state:worker_state -> conn_state:connection_state -> 'query -> unit)
     -> 'query Rpc.One_way.t
     -> (worker, 'query, unit) _function
+
+  (** [of_async_state_rpc ~f rpc] is the analog to [create_state] but instead of
+      creating a State rpc protocol, it uses the supplied one *)
+  val of_async_state_rpc
+    :  f:
+         (worker_state:worker_state
+          -> conn_state:connection_state
+          -> 'query
+          -> ('state * 'update Pipe.Reader.t) Deferred.t)
+    -> ('query, 'state, 'update, Error.t) Rpc.State_rpc.t
+    -> (worker, 'query, 'state * 'update Pipe.Reader.t) _function
 end
 
 (** Specification for the creation of a worker type *)

@@ -133,6 +133,34 @@ module Function = struct
     ;;
   end
 
+  module Function_state = struct
+    type ('worker, 'query, 'state, 'update) t =
+      ('query, 'state, 'update, Error.t) Rpc.State_rpc.t
+
+    let make_impl ~monitor ~f protocol =
+      Rpc.State_rpc.implement
+        protocol
+        (fun ((_conn : Rpc.Connection.t), internal_conn_state) arg ->
+        let { Utils.Internal_connection_state.conn_state; worker_state; _ } =
+          Set_once.get_exn internal_conn_state [%here]
+        in
+        Utils.try_within ~monitor (fun () -> f ~worker_state ~conn_state arg))
+    ;;
+
+    let make_proto ~name ~bin_query ~bin_state ~bin_update ~client_pushes_back =
+      let name = maybe_generate_name ~prefix:"rpc_parallel_state" ~name in
+      Rpc.State_rpc.create
+        ?client_pushes_back
+        ~name
+        ~version:0
+        ~bin_query
+        ~bin_state
+        ~bin_update
+        ~bin_error:Error.bin_t
+        ()
+    ;;
+  end
+
   module Function_plain = struct
     type ('worker, 'query, 'response) t = ('query, 'response) Rpc.Rpc.t
 
@@ -264,6 +292,10 @@ module Function = struct
         ('worker, 'query, 'response) Function_piped.t
         * ('r, 'response Pipe.Reader.t) Type_equal.t
         -> ('worker, 'query, 'r) t_internal
+    | State :
+        ('worker, 'query, 'state, 'update) Function_state.t
+        * ('r, 'state * 'update Pipe.Reader.t) Type_equal.t
+        -> ('worker, 'query, 'r) t_internal
     | Directly_piped :
         ('worker, 'query, 'response) Function_piped.t
         -> ( 'worker
@@ -309,6 +341,20 @@ module Function = struct
     in
     let impl = Function_piped.make_impl ~monitor ~f proto in
     T (Fn.id, Piped (proto, Type_equal.T), Fn.id), impl
+  ;;
+
+  let create_state ~monitor ~name ~f ~bin_query ~bin_state ~bin_update ~client_pushes_back
+    =
+    let proto =
+      Function_state.make_proto
+        ~name
+        ~bin_query
+        ~bin_state
+        ~bin_update
+        ~client_pushes_back
+    in
+    let impl = Function_state.make_impl ~monitor ~f proto in
+    T (Fn.id, State (proto, Type_equal.T), Fn.id), impl
   ;;
 
   let create_direct_pipe ~monitor ~name ~f ~bin_input ~bin_output ~client_pushes_back =
@@ -382,6 +428,11 @@ module Function = struct
     T (Fn.id, Piped (proto, Type_equal.T), Fn.id), impl
   ;;
 
+  let of_async_state_rpc ~monitor ~f proto =
+    let impl = Function_state.make_impl ~monitor ~f proto in
+    T (Fn.id, State (proto, Type_equal.T), Fn.id), impl
+  ;;
+
   let of_async_direct_pipe_rpc ~monitor ~f proto =
     let impl = Function_piped.make_direct_impl ~monitor ~f proto in
     T (Fn.id, Directly_piped proto, Fn.id), impl
@@ -404,6 +455,9 @@ module Function = struct
     | Piped (proto, Type_equal.T) ->
       let%map result = Rpc.Pipe_rpc.dispatch proto connection arg in
       Or_error.join result |> Or_error.map ~f:(fun (reader, _) -> reader)
+    | State (proto, Type_equal.T) ->
+      let%map result = Rpc.State_rpc.dispatch proto connection arg in
+      Or_error.join result |> Or_error.map ~f:(fun (state, reader, _) -> state, reader)
     | One_way proto -> Rpc.One_way.dispatch proto connection arg |> return
     | Reverse_piped ({ worker_rpc; master_rpc = _; master_in_progress }, Type_equal.T) ->
       let query, updates = arg in
@@ -1056,6 +1110,18 @@ module Make (S : Worker_spec) = struct
         Function.create_pipe ~monitor ~name ~f ~bin_input ~bin_output ~client_pushes_back)
     ;;
 
+    let create_state ?name ?client_pushes_back ~f ~bin_query ~bin_state ~bin_update () =
+      with_add_impl (fun () ->
+        Function.create_state
+          ~monitor
+          ~name
+          ~f
+          ~bin_query
+          ~bin_state
+          ~bin_update
+          ~client_pushes_back)
+    ;;
+
     let create_direct_pipe ?name ?client_pushes_back ~f ~bin_input ~bin_output () =
       with_add_impl (fun () ->
         Function.create_direct_pipe
@@ -1143,6 +1209,10 @@ module Make (S : Worker_spec) = struct
 
     let of_async_pipe_rpc ~f proto =
       with_add_impl (fun () -> Function.of_async_pipe_rpc ~monitor ~f proto)
+    ;;
+
+    let of_async_state_rpc ~f proto =
+      with_add_impl (fun () -> Function.of_async_state_rpc ~monitor ~f proto)
     ;;
 
     let of_async_direct_pipe_rpc ~f proto =

@@ -38,16 +38,16 @@
   served worker (client side) : ((handshake_timeout 2s))
   served worker (server side) : ((handshake_timeout 2s))
 
-  $ APP_RPC_SETTINGS_FOR_TEST="((handshake_timeout 1s) (max_message_size 125))" RPC_PARALLEL_RPC_SETTINGS="((handshake_timeout 2s))" run test/timeouts.exe rpc-settings
-  master : ((max_message_size 125) (handshake_timeout 2s))
-  spawned worker (client side) : ((max_message_size 125) (handshake_timeout 2s))
-  spawned worker (server side) : ((max_message_size 125) (handshake_timeout 2s))
-  served worker (client side) : ((max_message_size 125) (handshake_timeout 2s))
-  served worker (server side) : ((max_message_size 125) (handshake_timeout 2s))
+  $ APP_RPC_SETTINGS_FOR_TEST="((handshake_timeout 1s) (max_message_size 1500))" RPC_PARALLEL_RPC_SETTINGS="((handshake_timeout 2s))" run test/timeouts.exe rpc-settings
+  master : ((max_message_size 1500) (handshake_timeout 2s))
+  spawned worker (client side) : ((max_message_size 1500) (handshake_timeout 2s))
+  spawned worker (server side) : ((max_message_size 1500) (handshake_timeout 2s))
+  served worker (client side) : ((max_message_size 1500) (handshake_timeout 2s))
+  served worker (server side) : ((max_message_size 1500) (handshake_timeout 2s))
 
-  $ APP_RPC_SETTINGS_FOR_TEST="((handshake_timeout 1s))" RPC_PARALLEL_RPC_SETTINGS="((handshake_timeout 2s) (max_message_size 125))" run test/timeouts.exe rpc-settings
-  master : ((max_message_size 125) (handshake_timeout 2s))
-  spawned worker (client side) : ((max_message_size 125) (handshake_timeout 2s))
-  spawned worker (server side) : ((max_message_size 125) (handshake_timeout 2s))
-  served worker (client side) : ((max_message_size 125) (handshake_timeout 2s))
-  served worker (server side) : ((max_message_size 125) (handshake_timeout 2s))
+  $ APP_RPC_SETTINGS_FOR_TEST="((handshake_timeout 1s))" RPC_PARALLEL_RPC_SETTINGS="((handshake_timeout 2s) (max_message_size 1500))" run test/timeouts.exe rpc-settings
+  master : ((max_message_size 1500) (handshake_timeout 2s))
+  spawned worker (client side) : ((max_message_size 1500) (handshake_timeout 2s))
+  spawned worker (server side) : ((max_message_size 1500) (handshake_timeout 2s))
+  served worker (client side) : ((max_message_size 1500) (handshake_timeout 2s))
+  served worker (server side) : ((max_message_size 1500) (handshake_timeout 2s))
