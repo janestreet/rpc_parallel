@@ -832,10 +832,9 @@ end = struct
     in
     (wait_for_disconnect
      >>> fun (`Disconnected reason) ->
-     Log.Global.error_s
-       [%message
-         "Rpc_parallel: Heartbeater with master lost connection... Shutting down."
-           (reason : Info.t)];
+     [%log.global.error
+       "Rpc_parallel: Heartbeater with master lost connection... Shutting down."
+         (reason : Info.t)];
      Shutdown.shutdown 254);
     return `Connected
   ;;
@@ -1997,9 +1996,9 @@ module Make (S : Worker_spec) = struct
            >>> fun () ->
            if not worker_state.client_has_connected
            then (
-             Log.Global.error
+             [%log.global.error_string
                "Rpc_parallel: worker timed out waiting for client connection... Shutting \
-                down";
+                down"];
              Shutdown.shutdown 254));
         Hashtbl.add_exn worker_state.states ~key:worker ~data:state)
   ;;
@@ -2017,10 +2016,9 @@ module Make (S : Worker_spec) = struct
       then (
         Rpc.Connection.close_reason ~on_close:`finished connection
         >>> fun reason ->
-        Log.Global.info_s
-          [%message
-            "Rpc_parallel: initial client connection closed... Shutting down."
-              (reason : Info.t)];
+        [%log.global.info
+          "Rpc_parallel: initial client connection closed... Shutting down."
+            (reason : Info.t)];
         Shutdown.shutdown 0);
       let%map conn_state =
         Utils.try_within_exn ~monitor (fun () ->
@@ -2034,7 +2032,7 @@ module Make (S : Worker_spec) = struct
 
   let shutdown_impl =
     Rpc.One_way.implement Shutdown_rpc.rpc (fun _conn_state () ->
-      Log.Global.info "Rpc_parallel: Got shutdown rpc... Shutting down.";
+      [%log.global.info_string "Rpc_parallel: Got shutdown rpc... Shutting down."];
       Shutdown.shutdown 0)
   ;;
 
@@ -2145,7 +2143,7 @@ let worker_main backend_settings ~worker_env =
           conn
           { id; name = config.name; error = Error.of_exn exn })
       >>> fun _ ->
-      Log.Global.error !"Rpc_parallel: %{Exn} ... Shutting down." exn;
+      [%log.global.error_format !"Rpc_parallel: %{Exn} ... Shutting down." exn];
       Shutdown.shutdown 254)
   in
   (* Ensure we do not leak processes. Make sure we have initialized successfully, meaning
@@ -2155,9 +2153,9 @@ let worker_main backend_settings ~worker_env =
     >>> fun () ->
     match Set_once.get (get_worker_state_exn ()).initialized with
     | None ->
-      Log.Global.error
+      [%log.global.error_string
         "Rpc_parallel: Timeout getting Init_worker_state rpc from master... Shutting \
-         down.";
+         down."];
       Shutdown.shutdown 254
     | Some (`Init_started initialize_result) ->
       initialize_result

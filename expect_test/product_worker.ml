@@ -21,7 +21,7 @@ module T = struct
   struct
     let product_impl ~worker_state:() ~conn_state:() arg =
       let product = List.fold ~init:1 ~f:( * ) (List.init arg ~f:(( + ) 1)) in
-      Log.Global.info "Prod_worker.product: %i\n" product;
+      [%log.global.info_format "Prod_worker.product: %i\n" product];
       return product
     ;;
 

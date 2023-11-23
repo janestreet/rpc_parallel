@@ -9,6 +9,7 @@
 # 
 #   $ cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
 #   $ chmod 600 ~/.ssh/authorized_keys
+
   $ run test/copy_executable.exe -dir $(pwd) -worker $(hostname)
   Ok
 

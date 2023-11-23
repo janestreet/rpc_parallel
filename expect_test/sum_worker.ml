@@ -30,7 +30,7 @@ module T = struct
     (* Define the implementation for the [sum] function *)
     let sum_impl ~worker_state:() ~conn_state:() arg =
       let sum = List.fold ~init:0 ~f:( + ) (List.init arg ~f:Fn.id) in
-      Log.Global.info "Sum_worker.sum: %i\n" sum;
+      [%log.global.info_format "Sum_worker.sum: %i\n" sum];
       return sum
     ;;
 

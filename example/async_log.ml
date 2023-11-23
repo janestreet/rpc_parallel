@@ -22,7 +22,7 @@ module Worker = struct
           ~bin_input:Unit.bin_t
           ~bin_output:Unit.bin_t
           ~f:(fun ~worker_state:_ ~conn_state:_ () ->
-            Log.Global.info "worker log message";
+            [%log.global.info_string "worker log message"];
             Log.Global.flushed ())
           ()
       ;;
