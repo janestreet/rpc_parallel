@@ -1,7 +1,9 @@
 (executables
+ (modes byte exe)
  (names abort_direct_pipe add_numbers alternative_init async_log number_stats
-  reverse_direct_pipe reverse_pipe rpc_direct_pipe serve side_arg
-  spawn_in_foreground stream_workers worker_binprot workers_as_masters)
+   reverse_direct_pipe reverse_pipe rpc_direct_pipe serve side_arg
+   spawn_in_foreground stream_workers worker_binprot workers_as_masters)
  (libraries async core_unix.command_unix core jane rpc_parallel_krb_public
-  rpc_parallel_unauthenticated sexplib)
- (preprocess (pps ppx_jane)))
+   rpc_parallel_unauthenticated sexplib)
+ (preprocess
+  (pps ppx_jane)))

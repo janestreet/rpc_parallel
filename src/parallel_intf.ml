@@ -656,6 +656,7 @@ module type Parallel = sig
     -> ?when_parsing_succeeds:(unit -> unit)
     -> ?complete_subcommands:
          (path:string list -> part:string -> string list list -> string list option)
+    -> ?add_validate_parsing_flag:bool
     -> Backend_and_settings.t
        (** Use rpc_parallel_krb or rpc_parallel_unauthenticated to avoid having to manually
         construct a custom Backend *)

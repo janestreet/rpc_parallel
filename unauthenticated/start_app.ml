@@ -6,18 +6,22 @@ let backend_and_settings = Rpc_parallel.Backend_and_settings.T ((module Backend)
 
 let start_app
   ?rpc_max_message_size
+  ?rpc_buffer_age_limit
   ?rpc_handshake_timeout
   ?rpc_heartbeat_config
   ?when_parsing_succeeds
   ?complete_subcommands
+  ?add_validate_parsing_flag
   command
   =
   Rpc_parallel.start_app
     ?rpc_max_message_size
+    ?rpc_buffer_age_limit
     ?rpc_handshake_timeout
     ?rpc_heartbeat_config
     ?when_parsing_succeeds
     ?complete_subcommands
+    ?add_validate_parsing_flag
     backend_and_settings
     command
 ;;
@@ -29,12 +33,14 @@ end
 module Expert = struct
   let start_master_server_exn
     ?rpc_max_message_size
+    ?rpc_buffer_age_limit
     ?rpc_handshake_timeout
     ?rpc_heartbeat_config
     ?pass_name
     =
     Rpc_parallel.Expert.start_master_server_exn
       ?rpc_max_message_size
+      ?rpc_buffer_age_limit
       ?rpc_handshake_timeout
       ?rpc_heartbeat_config
       ?pass_name

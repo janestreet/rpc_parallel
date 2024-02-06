@@ -6,11 +6,13 @@ open Async
 (** See lib/rpc_parallel/src/parallel_intf.ml for documentation. *)
 val start_app
   :  ?rpc_max_message_size:int
+  -> ?rpc_buffer_age_limit:Writer.buffer_age_limit
   -> ?rpc_handshake_timeout:Time_float.Span.t
   -> ?rpc_heartbeat_config:Rpc.Connection.Heartbeat_config.t
   -> ?when_parsing_succeeds:(unit -> unit)
   -> ?complete_subcommands:
        (path:string list -> part:string -> string list list -> string list option)
+  -> ?add_validate_parsing_flag:bool
   -> Command.t
   -> unit
 
@@ -23,6 +25,7 @@ module Expert : sig
   (** See lib/rpc_parallel/src/parallel_intf.ml for documentation. *)
   val start_master_server_exn
     :  ?rpc_max_message_size:int
+    -> ?rpc_buffer_age_limit:Writer.buffer_age_limit
     -> ?rpc_handshake_timeout:Time_float.Span.t
     -> ?rpc_heartbeat_config:Rpc.Connection.Heartbeat_config.t
     -> ?pass_name:bool (** default: true *)

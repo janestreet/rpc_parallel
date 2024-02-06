@@ -1040,12 +1040,18 @@ module Make (S : Worker_spec) = struct
   (* Rpcs implemented by this worker type. The implementations for some must be below
      because User_functions is defined below (by supplying a [Creator] module) *)
   module Init_worker_state_rpc = struct
+    module Worker_shutdown_on = struct
+      type t =
+        | Heartbeater_connection_timeout of Heartbeater_master.t
+        | Connection_closed of { connection_timeout : Time_float.Span.t }
+        | Called_shutdown_function
+      [@@deriving bin_io]
+    end
+
     type query =
-      { (* The heartbeater of the process that called [spawn] *)
-        master : Heartbeater_master.t option (* The process that got spawned *)
-      ; worker : Worker_id.t
+      { worker_shutdown_on : Worker_shutdown_on.t
+      ; worker : Worker_id.t (* The process that got spawned *)
       ; arg : S.Worker_state.init_arg
-      ; initial_client_connection_timeout : Time_float.Span.t option
       }
     [@@deriving bin_io]
 
@@ -1339,21 +1345,17 @@ module Make (S : Worker_spec) = struct
       | Heartbeater_connection_timeout : worker M.t Deferred.t t
       | Called_shutdown_function : worker M.t Deferred.t t
 
-    let args
-      : type a.
-        a t
-        -> [ `Client_will_immediately_connect of bool ]
-           * [ `Setup_master_heartbeater of bool ]
-      = function
-      | Heartbeater_connection_timeout ->
-        `Client_will_immediately_connect false, `Setup_master_heartbeater true
-      | Connection_closed ->
-        (* No heartbeater needed because we call
-             [Connection.client_with_worker_shutdown_on_disconnect] and the worker shuts
-             itself down if it times out waiting for a connection from the master. *)
-        `Client_will_immediately_connect true, `Setup_master_heartbeater false
-      | Called_shutdown_function ->
-        `Client_will_immediately_connect false, `Setup_master_heartbeater false
+    let to_init_worker_state_rpc_query_arg (type a) (t : a t) =
+      Staged.stage (fun ~heartbeater_master ~connection_timeout ->
+        match t with
+        | Heartbeater_connection_timeout ->
+          Init_worker_state_rpc.Worker_shutdown_on.Heartbeater_connection_timeout
+            heartbeater_master
+        | Connection_closed ->
+          Init_worker_state_rpc.Worker_shutdown_on.Connection_closed
+            { connection_timeout }
+        | Called_shutdown_function ->
+          Init_worker_state_rpc.Worker_shutdown_on.Called_shutdown_function)
     ;;
   end
 
@@ -1379,13 +1381,13 @@ module Make (S : Worker_spec) = struct
      after spawn succeeded. *)
   let connection_timeout_default = sec 10.
 
-  let decorate_error_if_running_inline_test error =
+  let decorate_error_if_running_test error =
     let tag =
       "You must call [Rpc_parallel.For_testing.initialize] at the top level before any \
        tests are defined. See lib/rpc_parallel/src/parallel_intf.ml for more \
        information."
     in
-    if Ppx_inline_test_lib.am_running then Error.tag ~tag error else error
+    if Core.am_running_test then Error.tag ~tag error else error
   ;;
 
   (* Specific environment variables that influence process execution that a child should
@@ -1424,7 +1426,7 @@ module Make (S : Worker_spec) = struct
            "You must initialize this process to run as a master before calling [spawn]. \
             Either use a top-level [start_app] call or use the [Expert] module."
        in
-       return (Error (decorate_error_if_running_inline_test error))
+       return (Error (decorate_error_if_running_test error))
      | Some global_state -> Deferred.Or_error.return global_state.as_master)
     >>=? fun global_state ->
     (* generate a unique identifier for this worker *)
@@ -1491,8 +1493,7 @@ module Make (S : Worker_spec) = struct
     ~connection_timeout
     ~on_failure
     ~id
-    ~client_will_immediately_connect
-    ~setup_master_heartbeater
+    ~worker_shutdown_on
     init_arg
     =
     let connection_timeout =
@@ -1523,23 +1524,19 @@ module Make (S : Worker_spec) = struct
       with_shutdown_on_error worker ~f:(fun () ->
         match%map
           with_client worker ~f:(fun conn ->
-            let heartbeater =
-              Option.some_if
-                setup_master_heartbeater
-                (Heartbeater_master.create
-                   ~host_and_port:master_server
-                   ~rpc_settings:global_state.app_rpc_settings
-                   ~backend_settings:global_state.backend_settings)
+            let heartbeater_master =
+              Heartbeater_master.create
+                ~host_and_port:master_server
+                ~rpc_settings:global_state.app_rpc_settings
+                ~backend_settings:global_state.backend_settings
+            in
+            let worker_shutdown_on =
+              Staged.unstage worker_shutdown_on ~heartbeater_master ~connection_timeout
             in
             Rpc.Rpc.dispatch
               Init_worker_state_rpc.rpc
               conn
-              { master = heartbeater
-              ; worker = id
-              ; arg = init_arg
-              ; initial_client_connection_timeout =
-                  Option.some_if client_will_immediately_connect connection_timeout
-              })
+              { worker_shutdown_on; worker = id; arg = init_arg })
         with
         | Error error ->
           Hashtbl.remove global_state.on_failures worker.id;
@@ -1581,14 +1578,11 @@ module Make (S : Worker_spec) = struct
     : a
     =
     let open Deferred.Result.Let_syntax in
-    let open Spawn_in_foreground_aux_shutdown_on in
     let daemonize_args = `Don't_daemonize in
-    let ( `Client_will_immediately_connect client_will_immediately_connect
-        , `Setup_master_heartbeater setup_master_heartbeater )
-      =
-      args shutdown_on
+    let worker_shutdown_on =
+      Spawn_in_foreground_aux_shutdown_on.to_init_worker_state_rpc_query_arg shutdown_on
     in
-    let with_spawned_worker ~client_will_immediately_connect ~setup_master_heartbeater ~f =
+    let with_spawned_worker ~f =
       let%bind id, process =
         spawn_process ~how ~env ~cd ~name ~connection_timeout ~daemonize_args
         |> Deferred.Result.map_error ~f:(fun e -> e, `Worker_process None)
@@ -1611,37 +1605,25 @@ module Make (S : Worker_spec) = struct
               ~connection_timeout
               ~on_failure
               ~id
-              ~client_will_immediately_connect
-              ~setup_master_heartbeater
+              ~worker_shutdown_on
               worker_state_init_arg
           in
           f (worker, process))
     in
     match shutdown_on with
-    | Heartbeater_connection_timeout ->
-      with_spawned_worker
-        ~client_will_immediately_connect
-        ~setup_master_heartbeater
-        ~f:return
+    | Heartbeater_connection_timeout -> with_spawned_worker ~f:return
     | Connection_closed ->
       fun ~connection_state_init_arg ->
-        with_spawned_worker
-          ~client_will_immediately_connect
-          ~setup_master_heartbeater
-          ~f:(fun (worker, process) ->
+        with_spawned_worker ~f:(fun (worker, process) ->
           (* If [Connection_state.init] raises, [client_internal] will close the Rpc
-               connection, causing the worker to shutdown. *)
+             connection, causing the worker to shutdown. *)
           let%bind conn =
             Connection.client_with_worker_shutdown_on_disconnect
               worker
               connection_state_init_arg
           in
           return (conn, process))
-    | Called_shutdown_function ->
-      with_spawned_worker
-        ~client_will_immediately_connect
-        ~setup_master_heartbeater
-        ~f:return
+    | Called_shutdown_function -> with_spawned_worker ~f:return
   ;;
 
   module Spawn_in_foreground_result = struct
@@ -1765,7 +1747,7 @@ module Make (S : Worker_spec) = struct
           "Worker process %s"
           (Unix.Exit_or_signal.to_string_hum exit_or_signal)
       in
-      Error (decorate_error_if_running_inline_test error)
+      Error (decorate_error_if_running_test error)
   ;;
 
   module Spawn_shutdown_on = Shutdown_on (Or_error)
@@ -1788,12 +1770,10 @@ module Make (S : Worker_spec) = struct
     let daemonize_args =
       `Daemonize { Daemonize_args.umask; redirect_stderr; redirect_stdout }
     in
-    let ( `Client_will_immediately_connect client_will_immediately_connect
-        , `Setup_master_heartbeater setup_master_heartbeater )
-      =
-      Spawn_shutdown_on.args shutdown_on
+    let worker_shutdown_on =
+      Spawn_shutdown_on.to_init_worker_state_rpc_query_arg shutdown_on
     in
-    let spawn_worker ~client_will_immediately_connect ~setup_master_heartbeater =
+    let spawn_worker () =
       match%bind
         spawn_process ~how ~env ~cd ~name ~connection_timeout ~daemonize_args
       with
@@ -1808,25 +1788,22 @@ module Make (S : Worker_spec) = struct
              ~connection_timeout
              ~on_failure
              ~id
-             ~client_will_immediately_connect
-             ~setup_master_heartbeater
+             ~worker_shutdown_on
              worker_state_init_arg)
     in
     let open Spawn_shutdown_on in
     match shutdown_on with
-    | Heartbeater_connection_timeout ->
-      spawn_worker ~client_will_immediately_connect ~setup_master_heartbeater
+    | Heartbeater_connection_timeout -> spawn_worker ()
     | Connection_closed ->
       fun ~connection_state_init_arg ->
-        spawn_worker ~client_will_immediately_connect ~setup_master_heartbeater
+        spawn_worker ()
         >>=? fun worker ->
         (* If [Connection_state.init] raises, [client_internal] will close the Rpc
            connection, causing the worker to shutdown. *)
         Connection.client_with_worker_shutdown_on_disconnect
           worker
           connection_state_init_arg
-    | Called_shutdown_function ->
-      spawn_worker ~client_will_immediately_connect ~setup_master_heartbeater
+    | Called_shutdown_function -> spawn_worker ()
   ;;
 
   module Spawn_exn_shutdown_on = Shutdown_on (Monad.Ident)
@@ -1966,33 +1943,63 @@ module Make (S : Worker_spec) = struct
     Rpc.Rpc.implement
       Init_worker_state_rpc.rpc
       (fun
-          _conn_state
-          { Init_worker_state_rpc.master; worker; arg; initial_client_connection_timeout }
+          ( rpc_connection
+          , (_ :
+              ( Function_creator.worker_state
+              , Function_creator.connection_state )
+              Utils.Internal_connection_state.t1
+              Set_once.t) )
+          { Init_worker_state_rpc.worker_shutdown_on; worker; arg }
           ->
       let init_finished =
         Utils.try_within ~monitor (fun () ->
-          let%bind () =
-            match master with
-            | None -> Deferred.unit
-            | Some master ->
+          let%bind on_connection_closed =
+            match worker_shutdown_on with
+            | Heartbeater_connection_timeout heartbeater_master ->
               let%map `Connected =
-                Heartbeater_master.connect_and_shutdown_on_disconnect_exn master
+                Heartbeater_master.connect_and_shutdown_on_disconnect_exn
+                  heartbeater_master
               in
-              ()
+              `Keep_going
+            | Connection_closed { connection_timeout = _ } -> return `Shutdown
+            | Called_shutdown_function -> return `Keep_going
           in
-          User_functions.init_worker_state arg)
+          let init_finished = User_functions.init_worker_state arg in
+          (match on_connection_closed with
+           | `Keep_going -> ()
+           | `Shutdown ->
+             (* The connection that is used to dispatch this rpc is a short-lived
+                    connection that is only used to dispatch this rpc. Under normal
+                    operation, this connection will be closed by the master after
+                    receiving an RPC response. If the connection closes before we finished
+                    running [init_worker_state] then we can force ourselves to shutdown
+                    early. This is purely a "shutdown early" bit of code. If we remove
+                    this code, the worker will still shutdown eventually, but it will be
+                    after worker initialization and after [connection_timeout] when the
+                    worker realizes that it hasn't received an initial connection from the
+                    master. *)
+             Rpc.Connection.close_finished rpc_connection
+             >>> fun () ->
+             if not (Deferred.is_determined init_finished)
+             then (
+               [%log.global.error
+                 "Rpc_parallel: worker connection closed during init... Shutting down"];
+               Shutdown.shutdown 254));
+          init_finished)
       in
       Set_once.set_exn
         (get_worker_state_exn ()).initialized
         [%here]
-        (`Init_started (init_finished >>|? const `Initialized));
+        (`Init_started
+          (init_finished >>|? fun (_ : Function_creator.worker_state) -> `Initialized));
       match%map init_finished with
       | Error e -> Error.raise e
       | Ok state ->
-        (match initial_client_connection_timeout with
-         | None -> ()
-         | Some timeout ->
-           Clock.after timeout
+        (match worker_shutdown_on with
+         | Heartbeater_connection_timeout (_ : Heartbeater_master.t)
+         | Called_shutdown_function -> ()
+         | Connection_closed { connection_timeout } ->
+           Clock.after connection_timeout
            >>> fun () ->
            if not worker_state.client_has_connected
            then (
@@ -2298,7 +2305,7 @@ end
 
 module For_testing = struct
   let initialize backend_and_settings here =
-    if Ppx_inline_test_lib.am_running
+    if Core.am_running_test
     then (
       match Utils.whoami () with
       | `Master ->
@@ -2330,6 +2337,7 @@ let start_app
   ?rpc_heartbeat_config
   ?when_parsing_succeeds
   ?complete_subcommands
+  ?add_validate_parsing_flag
   backend_and_settings
   command
   =
@@ -2352,5 +2360,9 @@ let start_app
       backend_and_settings
       ~rpc_settings
       ~worker_command_args:Add_master_pid;
-    Command_unix.run ?when_parsing_succeeds ?complete_subcommands command
+    Command_unix.run
+      ?add_validate_parsing_flag
+      ?when_parsing_succeeds
+      ?complete_subcommands
+      command
 ;;
