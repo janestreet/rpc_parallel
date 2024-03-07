@@ -14,7 +14,7 @@ binary!
 * Getting started
 
 If you are looking for an entry point into the library, take a look at the
-sum_worker.ml example in lib/rpc_parallel/expect_test. This is a test that
+sum_worker.ml example in lib/rpc_parallel/public/expect_test. This is a test that
 demonstrates how to spawn a worker and run a function on it. A lot of the other
 examples are used to test specific aspects of the library, so they might not be
 as useful as a source of documentation.

@@ -73,6 +73,7 @@ module Worker_server_rpc_settings_rpc = struct
       ~version:0
       ~bin_query:Unit.bin_t
       ~bin_response:Rpc_settings.bin_t
+      ~include_in_error_count:Only_on_exn
   ;;
 end
 
@@ -179,7 +180,12 @@ module Function = struct
 
     let make_proto ~name ~bin_input ~bin_output =
       let name = maybe_generate_name ~prefix:"rpc_parallel_plain" ~name in
-      Rpc.Rpc.create ~name ~version:0 ~bin_query:bin_input ~bin_response:bin_output
+      Rpc.Rpc.create
+        ~name
+        ~version:0
+        ~bin_query:bin_input
+        ~bin_response:bin_output
+        ~include_in_error_count:Only_on_exn
     ;;
   end
 
@@ -236,7 +242,12 @@ module Function = struct
           type 'a t = 'a * Id.t [@@deriving bin_io]
         end
         in
-        Rpc.Rpc.create ~name ~version:0 ~bin_query:(With_id.bin_t bin_query) ~bin_response
+        Rpc.Rpc.create
+          ~name
+          ~version:0
+          ~bin_query:(With_id.bin_t bin_query)
+          ~bin_response
+          ~include_in_error_count:Only_on_exn
       in
       let master_rpc =
         Rpc.Pipe_rpc.create
@@ -895,7 +906,12 @@ module Register_rpc = struct
   [@@deriving bin_io]
 
   let rpc =
-    Rpc.Rpc.create ~name:"register_worker_rpc" ~version:0 ~bin_query:bin_t ~bin_response
+    Rpc.Rpc.create
+      ~name:"register_worker_rpc"
+      ~version:0
+      ~bin_query:bin_t
+      ~bin_response
+      ~include_in_error_count:Only_on_exn
   ;;
 
   let implementation =
@@ -925,6 +941,7 @@ module Handle_exn_rpc = struct
       ~version:0
       ~bin_query:bin_t
       ~bin_response:Unit.bin_t
+      ~include_in_error_count:Only_on_exn
   ;;
 
   let implementation =
@@ -1061,6 +1078,7 @@ module Make (S : Worker_spec) = struct
         ~version:0
         ~bin_query
         ~bin_response:Unit.bin_t
+        ~include_in_error_count:Only_on_exn
     ;;
   end
 
@@ -1081,6 +1099,7 @@ module Make (S : Worker_spec) = struct
         ~version:0
         ~bin_query
         ~bin_response:Unit.bin_t
+        ~include_in_error_count:Only_on_exn
     ;;
   end
 
