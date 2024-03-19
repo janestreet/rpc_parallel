@@ -56,7 +56,6 @@ let () = Rpc_parallel_krb_public.For_testing.initialize [%here]
 let%expect_test "" =
   let%bind res = main 10 in
   printf "%d\n" res;
-  [%expect {|
-    3628800 |}];
+  [%expect {| 3628800 |}];
   return ()
 ;;

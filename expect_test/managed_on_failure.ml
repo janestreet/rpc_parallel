@@ -97,6 +97,7 @@ let%expect_test "" =
        "(on_failure\
       \n (5a863fc1-67b7-3a0a-dc90-aca2995afbf9\
       \n  (monitor.ml.Error (Failure \"asynchronous exception\")\
-      \n   (\"<backtrace elided in test>\"))))")) |}];
+      \n   (\"<backtrace elided in test>\"))))"))
+    |}];
   return ()
 ;;

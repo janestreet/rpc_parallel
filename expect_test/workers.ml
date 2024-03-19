@@ -10,6 +10,7 @@ let%expect_test "" =
   printf "product: %d\n" product;
   [%expect {|
     sum: 45
-    product: 3628800 |}];
+    product: 3628800
+    |}];
   return ()
 ;;
