@@ -1,3 +1,15 @@
+## Release v0.17.0
+
+- Add support for `Rpc.State_rpc.t`
+
+- Fix a bug when using `~shutdown_on:Connection_closed` and the master shuts down during
+  `init_worker_state`
+
+- Add parameters allowing to control the rpc max buffer age limit
+
+- Expand documentation for `Parallel_intf.create_direct_pipe` to detail behavior of queued
+  elements written before the function returns.
+
 ## Release v0.16.0
 
 - `How_to_run.remote` now accepts an optional `assert_binary_hash` parameter
