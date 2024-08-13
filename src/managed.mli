@@ -82,6 +82,6 @@ end
 
 module Make (S : Parallel.Worker_spec) :
   Worker
-    with type 'a functions := 'a S.functions
-     and type worker_state_init_arg := S.Worker_state.init_arg
-     and type connection_state_init_arg := S.Connection_state.init_arg
+  with type 'a functions := 'a S.functions
+   and type worker_state_init_arg := S.Worker_state.init_arg
+   and type connection_state_init_arg := S.Connection_state.init_arg

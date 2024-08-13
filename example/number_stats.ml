@@ -4,49 +4,49 @@ open Async
 
 module Generate_random_map_function =
 Rpc_parallel.Map_reduce.Make_map_function_with_init (struct
-  type state_type = unit
+    type state_type = unit
 
-  module Param = struct
-    type t = unit [@@deriving bin_io]
-  end
+    module Param = struct
+      type t = unit [@@deriving bin_io]
+    end
 
-  module Input = struct
-    type t = unit [@@deriving bin_io]
-  end
+    module Input = struct
+      type t = unit [@@deriving bin_io]
+    end
 
-  module Output = struct
-    type t = float array [@@deriving bin_io]
-  end
+    module Output = struct
+      type t = float array [@@deriving bin_io]
+    end
 
-  let init () =
-    Random.self_init ();
-    Deferred.unit
-  ;;
+    let init () =
+      Random.self_init ();
+      Deferred.unit
+    ;;
 
-  let map () () =
-    return
-      (Array.init 50000 ~f:(fun _ ->
-         Float.(atan (atan (atan (atan (atan (atan (Random.float 100.)))))))))
-  ;;
-end)
+    let map () () =
+      return
+        (Array.init 50000 ~f:(fun _ ->
+           Float.(atan (atan (atan (atan (atan (atan (Random.float 100.)))))))))
+    ;;
+  end)
 
 module Compute_stats_map_reduce_function =
 Rpc_parallel.Map_reduce.Make_map_reduce_function (struct
-  module Accum = struct
-    type t = immutable Rstats.t [@@deriving bin_io]
-  end
+    module Accum = struct
+      type t = immutable Rstats.t [@@deriving bin_io]
+    end
 
-  module Input = struct
-    type t = float array [@@deriving bin_io]
-  end
+    module Input = struct
+      type t = float array [@@deriving bin_io]
+    end
 
-  let map input =
-    return
-      (Array.fold input ~init:(Rstats.empty ()) ~f:(fun acc x -> Rstats.update acc x))
-  ;;
+    let map input =
+      return
+        (Array.fold input ~init:(Rstats.empty ()) ~f:(fun acc x -> Rstats.update acc x))
+    ;;
 
-  let combine acc1 acc2 = return (Rstats.merge acc1 acc2)
-end)
+    let combine acc1 acc2 = return (Rstats.merge acc1 acc2)
+  end)
 
 let command =
   Command.async_spec

@@ -16,9 +16,9 @@ module type Function = sig
 
     type nonrec ('worker, 'query, 'response) t =
       ( 'worker
-      , 'query * ('response Rpc.Pipe_rpc.Pipe_message.t -> Rpc.Pipe_rpc.Pipe_response.t)
-      , 'worker Id.t )
-      t
+        , 'query * ('response Rpc.Pipe_rpc.Pipe_message.t -> Rpc.Pipe_rpc.Pipe_response.t)
+        , 'worker Id.t )
+        t
   end
 
   val map : ('worker, 'query, 'a) t -> f:('a -> 'b) -> ('worker, 'query, 'b) t
@@ -153,9 +153,9 @@ module type Worker = sig
         shutdown when the master process exits. We strongly discourage use of this
         variant. *)
     type _ t =
-      | Connection_closed
-          : (connection_state_init_arg:connection_state_init_arg
-             -> Connection.t M.t Deferred.t)
+      | Connection_closed :
+          (connection_state_init_arg:connection_state_init_arg
+           -> Connection.t M.t Deferred.t)
             t
       | Heartbeater_connection_timeout : worker M.t Deferred.t t
       | Called_shutdown_function : worker M.t Deferred.t t
@@ -208,7 +208,7 @@ module type Worker = sig
        -> redirect_stderr:Fd_redirection.t
        -> worker_state_init_arg
        -> 'a)
-      with_spawn_args
+        with_spawn_args
 
   val spawn_exn
     : (?umask:int (** defaults to use existing umask *)
@@ -217,7 +217,7 @@ module type Worker = sig
        -> redirect_stderr:Fd_redirection.t
        -> worker_state_init_arg
        -> 'a)
-      with_spawn_args
+        with_spawn_args
 
   module Spawn_in_foreground_result : sig
     type 'a t = ('a * Process.t) Or_error.t
@@ -234,7 +234,7 @@ module type Worker = sig
     : (shutdown_on:'a Shutdown_on(Spawn_in_foreground_result).t
        -> worker_state_init_arg
        -> 'a)
-      with_spawn_args
+        with_spawn_args
 
   module Spawn_in_foreground_exn_result : sig
     type 'a t = 'a * Process.t
@@ -244,7 +244,7 @@ module type Worker = sig
     : (shutdown_on:'a Shutdown_on(Spawn_in_foreground_exn_result).t
        -> worker_state_init_arg
        -> 'a)
-      with_spawn_args
+        with_spawn_args
 
   (** [shutdown] attempts to connect to a worker. Upon success, [Shutdown.shutdown 0] is
       run in the worker. If you want strong guarantees that a worker did shutdown, consider
@@ -266,7 +266,7 @@ module type Worker = sig
          -> connection_state_init_arg:connection_state_init_arg
          -> worker_state_init_arg
          -> (t * Connection.t) Or_error.t Deferred.t)
-        with_spawn_args
+          with_spawn_args
 
     val spawn_and_connect_exn
       : (?umask:int
@@ -275,7 +275,7 @@ module type Worker = sig
          -> connection_state_init_arg:connection_state_init_arg
          -> worker_state_init_arg
          -> (t * Connection.t) Deferred.t)
-        with_spawn_args
+          with_spawn_args
   end
 
   (** This module is used for internal testing of the rpc_parallel library. *)
@@ -283,15 +283,15 @@ module type Worker = sig
     module Spawn_in_foreground_result : sig
       type 'a t =
         ( 'a * Process.t
-        , Error.t * [ `Worker_process of Unix.Exit_or_signal.t Deferred.t option ] )
-        Result.t
+          , Error.t * [ `Worker_process of Unix.Exit_or_signal.t Deferred.t option ] )
+          Result.t
     end
 
     val spawn_in_foreground
       : (shutdown_on:'a Shutdown_on(Spawn_in_foreground_result).t
          -> worker_state_init_arg
          -> 'a)
-        with_spawn_args
+          with_spawn_args
 
     val master_app_rpc_settings : unit -> Rpc_settings.t
   end
@@ -431,10 +431,10 @@ module type Creator = sig
     -> bin_response:'response Bin_prot.Type_class.t
     -> unit
     -> ( worker
-       , 'query
-         * ('update Rpc.Pipe_rpc.Direct_stream_writer.t -> unit Or_error.t Deferred.t)
-       , 'response )
-       _function
+         , 'query
+           * ('update Rpc.Pipe_rpc.Direct_stream_writer.t -> unit Or_error.t Deferred.t)
+         , 'response )
+         _function
 
   (** [create_state ?name ~f ~bin_query ~bin_state ~bin_update ()] will create an
       [Rpc.State_rpc.t] with [name] if specified. *)
@@ -531,18 +531,18 @@ module type Worker_spec = sig
 
   (** The functions that can be run on this worker type *)
   module Functions
-    (C : Creator
+      (C : Creator
            with type worker_state = Worker_state.t
             and type connection_state = Connection_state.t
             and type ('w, 'q, 'r) _function := ('w, 'q, 'r) _function
             and type ('w, 'q, 'r) _direct := ('w, 'q, 'r) _direct) :
     Functions
-      with type worker := C.worker
-       and type 'a functions := 'a functions
-       and type worker_state := Worker_state.t
-       and type worker_state_init_arg := Worker_state.init_arg
-       and type connection_state := Connection_state.t
-       and type connection_state_init_arg := Connection_state.init_arg
+    with type worker := C.worker
+     and type 'a functions := 'a functions
+     and type worker_state := Worker_state.t
+     and type worker_state_init_arg := Worker_state.init_arg
+     and type connection_state := Connection_state.t
+     and type connection_state_init_arg := Connection_state.init_arg
 end
 
 (** An RPC backend. Defines how to create RPC servers and clients for a given protocol.
@@ -613,20 +613,20 @@ module type Parallel = sig
 
   module type Worker =
     Worker
-      with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
-       and type 'w _id_direct := 'w Function.Direct_pipe.Id.t
+    with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
+     and type 'w _id_direct := 'w Function.Direct_pipe.Id.t
 
   module type Functions = Functions
 
   module type Creator =
     Creator
-      with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
-       and type ('w, 'q, 'r) _direct := ('w, 'q, 'r) Function.Direct_pipe.t
+    with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
+     and type ('w, 'q, 'r) _direct := ('w, 'q, 'r) Function.Direct_pipe.t
 
   module type Worker_spec =
     Worker_spec
-      with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
-       and type ('w, 'q, 'r) _direct := ('w, 'q, 'r) Function.Direct_pipe.t
+    with type ('w, 'q, 'r) _function := ('w, 'q, 'r) Function.t
+     and type ('w, 'q, 'r) _direct := ('w, 'q, 'r) Function.Direct_pipe.t
 
   (** module Worker = Make(T)
 
@@ -634,9 +634,9 @@ module type Parallel = sig
       workers. *)
   module Make (S : Worker_spec) :
     Worker
-      with type 'a functions := 'a S.functions
-       and type worker_state_init_arg := S.Worker_state.init_arg
-       and type connection_state_init_arg := S.Connection_state.init_arg
+    with type 'a functions := 'a S.functions
+     and type worker_state_init_arg := S.Worker_state.init_arg
+     and type connection_state_init_arg := S.Connection_state.init_arg
 
   (** [start_app command] should be called from the top-level in order to start the
       parallel application. This function will parse certain environment variables and

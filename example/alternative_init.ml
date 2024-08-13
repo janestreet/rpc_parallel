@@ -18,7 +18,7 @@ module Worker = struct
     end
 
     module Functions
-      (_ : Rpc_parallel.Creator
+        (_ : Rpc_parallel.Creator
              with type worker_state := Worker_state.t
               and type connection_state := Connection_state.t) =
     struct

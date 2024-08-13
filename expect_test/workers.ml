@@ -8,7 +8,8 @@ let%expect_test "" =
   and product = Product_worker.main 10 in
   printf "sum: %d\n" sum;
   printf "product: %d\n" product;
-  [%expect {|
+  [%expect
+    {|
     sum: 45
     product: 3628800
     |}];

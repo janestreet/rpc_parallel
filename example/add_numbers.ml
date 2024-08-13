@@ -2,26 +2,26 @@ open Core
 open Async
 
 module Add_numbers_map_function = Rpc_parallel.Map_reduce.Make_map_function (struct
-  module Input = struct
-    type t = int * int [@@deriving bin_io]
-  end
+    module Input = struct
+      type t = int * int [@@deriving bin_io]
+    end
 
-  module Output = struct
-    type t = int * int [@@deriving bin_io]
-  end
+    module Output = struct
+      type t = int * int [@@deriving bin_io]
+    end
 
-  let rec spin ntimes =
-    match ntimes with
-    | 0 -> ()
-    | _ -> spin (ntimes - 1)
-  ;;
+    let rec spin ntimes =
+      match ntimes with
+      | 0 -> ()
+      | _ -> spin (ntimes - 1)
+    ;;
 
-  let map (index, max) =
-    spin 100000000;
-    (* Waste some CPU time *)
-    return (index, List.fold ~init:0 ~f:( + ) (List.init max ~f:Fn.id))
-  ;;
-end)
+    let map (index, max) =
+      spin 100000000;
+      (* Waste some CPU time *)
+      return (index, List.fold ~init:0 ~f:( + ) (List.init max ~f:Fn.id))
+    ;;
+  end)
 
 let command =
   Command.async_spec

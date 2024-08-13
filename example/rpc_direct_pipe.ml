@@ -25,7 +25,7 @@ module Sum_worker = struct
     end
 
     module Functions
-      (C : Rpc_parallel.Creator
+        (C : Rpc_parallel.Creator
              with type worker_state := Worker_state.t
               and type connection_state := Connection_state.t) =
     struct

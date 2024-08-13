@@ -17,7 +17,7 @@ module Shard = struct
     end
 
     module Functions
-      (Creator : Rpc_parallel.Creator
+        (Creator : Rpc_parallel.Creator
                    with type worker_state = Worker_state.t
                     and type connection_state = Connection_state.t) =
     struct

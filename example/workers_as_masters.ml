@@ -20,7 +20,7 @@ module Secondary_worker = struct
     end
 
     module Functions
-      (C : Rpc_parallel.Creator
+        (C : Rpc_parallel.Creator
              with type worker_state := Worker_state.t
               and type connection_state := Connection_state.t) =
     struct
@@ -62,7 +62,7 @@ module Primary_worker = struct
     end
 
     module Functions
-      (C : Rpc_parallel.Creator
+        (C : Rpc_parallel.Creator
              with type worker_state := Worker_state.t
               and type connection_state := Connection_state.t) =
     struct
@@ -78,7 +78,7 @@ module Primary_worker = struct
           in
           ignore
             (Bag.add workers (next_worker_name (), secondary_worker)
-              : (string * Secondary_worker.worker) Bag.Elt.t))
+             : (string * Secondary_worker.worker) Bag.Elt.t))
         >>| ignore
       ;;
 

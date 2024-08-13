@@ -28,7 +28,7 @@ module Stream_worker = struct
     end
 
     module Functions
-      (C : Rpc_parallel.Creator
+        (C : Rpc_parallel.Creator
              with type connection_state := unit
               and type worker_state := Worker_state.t) =
     struct
@@ -40,8 +40,8 @@ module Stream_worker = struct
         (Pipe.closed w
          >>> fun () ->
          worker_state.Worker_state.workers
-           <- List.filter worker_state.Worker_state.workers ~f:(fun worker ->
-                not (Pipe.equal worker w)));
+         <- List.filter worker_state.Worker_state.workers ~f:(fun worker ->
+              not (Pipe.equal worker w)));
         worker_state.Worker_state.workers <- w :: worker_state.Worker_state.workers;
         return r
       ;;
@@ -58,18 +58,18 @@ module Stream_worker = struct
              Deferred.repeat_until_finished
                worker_state.Worker_state.num_elts
                (fun count ->
-               let%bind () = Clock.after (sec 0.05) in
-               if count = 0
-               then return (`Finished ())
-               else (
-                 let elt = get_element () in
-                 let to_worker =
-                   List.nth_exn
-                     worker_state.workers
-                     (Random.int (List.length worker_state.workers))
-                 in
-                 let%map () = Pipe.write to_worker elt in
-                 `Repeat (count - 1)))
+                  let%bind () = Clock.after (sec 0.05) in
+                  if count = 0
+                  then return (`Finished ())
+                  else (
+                    let elt = get_element () in
+                    let to_worker =
+                      List.nth_exn
+                        worker_state.workers
+                        (Random.int (List.length worker_state.workers))
+                    in
+                    let%map () = Pipe.write to_worker elt in
+                    `Repeat (count - 1)))
            in
            List.iter worker_state.workers ~f:(fun writer -> Pipe.close writer));
         return ()
@@ -108,7 +108,7 @@ module Worker = struct
     end
 
     module Functions
-      (C : Rpc_parallel.Creator
+        (C : Rpc_parallel.Creator
              with type worker_state := Worker_state.t
               and type connection_state := Connection_state.t) =
     struct

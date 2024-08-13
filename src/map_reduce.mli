@@ -49,9 +49,9 @@ module type Map_function = sig
 
   module Worker :
     Worker
-      with type param_type = Param.t
-       and type run_input_type = Input.t
-       and type run_output_type = Output.t
+    with type param_type = Param.t
+     and type run_input_type = Input.t
+     and type run_output_type = Output.t
 end
 
 module type Map_function_with_init_spec = sig
@@ -67,9 +67,9 @@ end
 
 module Make_map_function_with_init (S : Map_function_with_init_spec) :
   Map_function
-    with type Param.t = S.Param.t
-     and type Input.t = S.Input.t
-     and type Output.t = S.Output.t
+  with type Param.t = S.Param.t
+   and type Input.t = S.Input.t
+   and type Output.t = S.Output.t
 
 module type Map_function_spec = sig
   module Input : Binable
@@ -80,9 +80,9 @@ end
 
 module Make_map_function (S : Map_function_spec) :
   Map_function
-    with type Param.t = unit
-     and type Input.t = S.Input.t
-     and type Output.t = S.Output.t
+  with type Param.t = unit
+   and type Input.t = S.Input.t
+   and type Output.t = S.Output.t
 
 (** The [map_unordered] operation takes ['a Pipe.Reader.t] along with a [Map_function] and
     sends the ['a] values to workers for mapping. Each pair in the resulting [('b * int)
@@ -138,13 +138,13 @@ module type Map_reduce_function = sig
 
   module Worker :
     Worker
-      with type param_type = Param.t
-       and type run_input_type =
-        [ `Map of Input.t
-        | `Combine of Accum.t * Accum.t
-        | `Map_right_combine of Accum.t * Input.t (* combine accum (map input) *)
-        ]
-       and type run_output_type = Accum.t
+    with type param_type = Param.t
+     and type run_input_type =
+      [ `Map of Input.t
+      | `Combine of Accum.t * Accum.t
+      | `Map_right_combine of Accum.t * Input.t (* combine accum (map input) *)
+      ]
+     and type run_output_type = Accum.t
 end
 
 module type Map_reduce_function_with_init_spec = sig
@@ -161,9 +161,9 @@ end
 
 module Make_map_reduce_function_with_init (S : Map_reduce_function_with_init_spec) :
   Map_reduce_function
-    with type Param.t = S.Param.t
-     and type Accum.t = S.Accum.t
-     and type Input.t = S.Input.t
+  with type Param.t = S.Param.t
+   and type Accum.t = S.Accum.t
+   and type Input.t = S.Input.t
 
 module type Map_reduce_function_spec = sig
   module Accum : Binable
@@ -175,9 +175,9 @@ end
 
 module Make_map_reduce_function (S : Map_reduce_function_spec) :
   Map_reduce_function
-    with type Param.t = unit
-     and type Accum.t = S.Accum.t
-     and type Input.t = S.Input.t
+  with type Param.t = unit
+   and type Accum.t = S.Accum.t
+   and type Input.t = S.Input.t
 
 (** The [map_reduce_commutative] operation takes ['a Pipe.Reader.t] along with a
     [Map_reduce_function] and applies the [map] function to ['a] values (in an unspecified
