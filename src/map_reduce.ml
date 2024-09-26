@@ -94,7 +94,12 @@ module type Worker = sig
   type run_input_type
   type run_output_type
 
-  val spawn_config_exn : Config.t -> param_type -> t list Deferred.t
+  val spawn_config_exn
+    :  ?how_to_spawn:Monad_sequence.how
+    -> Config.t
+    -> param_type
+    -> t list Deferred.t
+
   val run_exn : t -> run_input_type -> run_output_type Deferred.t
   val shutdown_exn : t -> unit Deferred.t
 end
@@ -106,7 +111,7 @@ module type Rpc_parallel_worker_spec = sig
   module Run_input : Binable
   module Run_output : Binable
 
-  val init : Param.t -> state_type Deferred.t
+  val init : Param.t -> worker_index:int -> state_type Deferred.t
   val execute : state_type -> Run_input.t -> Run_output.t Deferred.t
 end
 
@@ -117,7 +122,12 @@ module Make_rpc_parallel_worker (S : Rpc_parallel_worker_spec) = struct
         { execute : ('worker, S.Run_input.t, S.Run_output.t) Parallel.Function.t }
 
       module Worker_state = struct
-        type init_arg = S.Param.t [@@deriving bin_io]
+        type init_arg =
+          { param : S.Param.t
+          ; worker_index : int
+          }
+        [@@deriving bin_io]
+
         type t = S.state_type
       end
 
@@ -140,7 +150,11 @@ module Make_rpc_parallel_worker (S : Rpc_parallel_worker_spec) = struct
         ;;
 
         let functions = { execute }
-        let init_worker_state = S.init
+
+        let init_worker_state ({ param; worker_index } : Worker_state.init_arg) =
+          S.init param ~worker_index
+        ;;
+
         let init_connection_state ~connection:_ ~worker_state:_ () = return ()
       end
     end
@@ -153,7 +167,15 @@ module Make_rpc_parallel_worker (S : Rpc_parallel_worker_spec) = struct
   type run_input_type = S.Run_input.t
   type run_output_type = S.Run_output.t
 
-  let spawn_exn how param ~cd ~connection_timeout ~redirect_stderr ~redirect_stdout =
+  let spawn_exn
+    how
+    param
+    ~worker_index
+    ~cd
+    ~connection_timeout
+    ~redirect_stderr
+    ~redirect_stdout
+    =
     Parallel_worker.spawn_exn
       ~how
       ?connection_timeout
@@ -161,12 +183,13 @@ module Make_rpc_parallel_worker (S : Rpc_parallel_worker_spec) = struct
       ~shutdown_on:Connection_closed
       ~redirect_stderr
       ~redirect_stdout
-      param
+      { param; worker_index }
       ~on_failure:Error.raise
       ~connection_state_init_arg:()
   ;;
 
   let spawn_config_exn
+    ?(how_to_spawn = `Sequential)
     { Config.local; remote; cd; connection_timeout; redirect_stderr; redirect_stdout }
     param
     =
@@ -188,10 +211,11 @@ module Make_rpc_parallel_worker (S : Rpc_parallel_worker_spec) = struct
         (local, List.map remote ~f:snd)
         [%sexp_of: int * int list];
     let spawn_n where n =
-      Deferred.List.init ~how:`Sequential n ~f:(fun _i ->
+      Deferred.List.init ~how:how_to_spawn n ~f:(fun worker_index ->
         spawn_exn
           where
           param
+          ~worker_index
           ~cd
           ~connection_timeout
           ~redirect_stderr:(redirect_stderr :> Fd_redirection.t)
@@ -236,7 +260,7 @@ module type Map_function_with_init_spec = sig
   module Input : Binable
   module Output : Binable
 
-  val init : Param.t -> state_type Deferred.t
+  val init : Param.t -> worker_index:int -> state_type Deferred.t
   val map : state_type -> Input.t -> Output.t Deferred.t
 end
 
@@ -274,7 +298,7 @@ module Make_map_function (S : Map_function_spec) = Make_map_function_with_init (
     module Input = S.Input
     module Output = S.Output
 
-    let init = return
+    let init () ~worker_index:(_ : int) = return ()
     let map () = S.map
   end)
 
@@ -303,7 +327,7 @@ module type Map_reduce_function_with_init_spec = sig
   module Accum : Binable
   module Input : Binable
 
-  val init : Param.t -> state_type Deferred.t
+  val init : Param.t -> worker_index:int -> state_type Deferred.t
   val map : state_type -> Input.t -> Accum.t Deferred.t
   val combine : state_type -> Accum.t -> Accum.t -> Accum.t Deferred.t
 end
@@ -361,17 +385,17 @@ Make_map_reduce_function_with_init (struct
     module Accum = S.Accum
     module Input = S.Input
 
-    let init = return
+    let init () ~worker_index:(_ : int) = return ()
     let map () = S.map
     let combine () = S.combine
   end)
 
-let map_unordered (type param a b) config input_reader ~m ~(param : param) =
+let map_unordered (type param a b) ?how_to_spawn config input_reader ~m ~(param : param) =
   let module Map_function =
     (val m
       : Map_function with type Param.t = param and type Input.t = a and type Output.t = b)
   in
-  let%bind workers = Map_function.Worker.spawn_config_exn config param in
+  let%bind workers = Map_function.Worker.spawn_config_exn ?how_to_spawn config param in
   let input_with_index_reader = append_index input_reader in
   let output_reader, output_writer = Pipe.create () in
   let consumer =
@@ -392,8 +416,8 @@ let map_unordered (type param a b) config input_reader ~m ~(param : param) =
   return output_reader
 ;;
 
-let map config input_reader ~m ~param =
-  let%bind mapped_reader = map_unordered config input_reader ~m ~param in
+let map ?how_to_spawn config input_reader ~m ~param =
+  let%bind mapped_reader = map_unordered ?how_to_spawn config input_reader ~m ~param in
   let new_reader, new_writer = Pipe.create () in
   let expecting_index = ref 0 in
   let out_of_order_output =
@@ -427,7 +451,7 @@ let map config input_reader ~m ~param =
   return new_reader
 ;;
 
-let find_map (type param a b) config input_reader ~m ~(param : param) =
+let find_map (type param a b) ?how_to_spawn config input_reader ~m ~(param : param) =
   let module Map_function =
     (val m
       : Map_function
@@ -435,7 +459,7 @@ let find_map (type param a b) config input_reader ~m ~(param : param) =
        and type Input.t = a
        and type Output.t = b option)
   in
-  let%bind workers = Map_function.Worker.spawn_config_exn config param in
+  let%bind workers = Map_function.Worker.spawn_config_exn ?how_to_spawn config param in
   let found_value = ref None in
   let rec find_loop worker =
     match%bind Pipe.read input_reader with
@@ -455,7 +479,14 @@ let find_map (type param a b) config input_reader ~m ~(param : param) =
   !found_value
 ;;
 
-let map_reduce_commutative (type param a accum) config input_reader ~m ~(param : param) =
+let map_reduce_commutative
+  (type param a accum)
+  ?how_to_spawn
+  config
+  input_reader
+  ~m
+  ~(param : param)
+  =
   let module Map_reduce_function =
     (val m
       : Map_reduce_function
@@ -463,7 +494,9 @@ let map_reduce_commutative (type param a accum) config input_reader ~m ~(param :
        and type Input.t = a
        and type Accum.t = accum)
   in
-  let%bind workers = Map_reduce_function.Worker.spawn_config_exn config param in
+  let%bind workers =
+    Map_reduce_function.Worker.spawn_config_exn ?how_to_spawn config param
+  in
   let rec map_and_combine_loop worker acc =
     match%bind Pipe.read input_reader with
     | `Eof -> return acc
@@ -497,7 +530,7 @@ let map_reduce_commutative (type param a accum) config input_reader ~m ~(param :
   !combined_acc
 ;;
 
-let map_reduce (type param a accum) config input_reader ~m ~(param : param) =
+let map_reduce (type param a accum) ?how_to_spawn config input_reader ~m ~(param : param) =
   let module Map_reduce_function =
     (val m
       : Map_reduce_function
@@ -505,7 +538,9 @@ let map_reduce (type param a accum) config input_reader ~m ~(param : param) =
        and type Input.t = a
        and type Accum.t = accum)
   in
-  let%bind workers = Map_reduce_function.Worker.spawn_config_exn config param in
+  let%bind workers =
+    Map_reduce_function.Worker.spawn_config_exn ?how_to_spawn config param
+  in
   let input_with_index_reader = append_index input_reader in
   let module H = Half_open_interval in
   let acc_map = ref H.Map.empty in

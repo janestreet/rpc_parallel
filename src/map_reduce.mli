@@ -28,7 +28,12 @@ module type Worker = sig
   type run_input_type
   type run_output_type
 
-  val spawn_config_exn : Config.t -> param_type -> t list Deferred.t
+  val spawn_config_exn
+    :  ?how_to_spawn:Monad_sequence.how (** Default: [`Sequential] *)
+    -> Config.t
+    -> param_type
+    -> t list Deferred.t
+
   val run_exn : t -> run_input_type -> run_output_type Deferred.t
   val shutdown_exn : t -> unit Deferred.t
 end
@@ -61,7 +66,7 @@ module type Map_function_with_init_spec = sig
   module Input : Binable
   module Output : Binable
 
-  val init : Param.t -> state_type Deferred.t
+  val init : Param.t -> worker_index:int -> state_type Deferred.t
   val map : state_type -> Input.t -> Output.t Deferred.t
 end
 
@@ -89,7 +94,8 @@ module Make_map_function (S : Map_function_spec) :
     Pipe.Reader.t] contains the mapped value and the index of the value in the input
     pipe. *)
 val map_unordered
-  :  Config.t
+  :  ?how_to_spawn:Monad_sequence.how (** Default: [`Sequential] *)
+  -> Config.t
   -> 'a Pipe.Reader.t
   -> m:
        (module Map_function
@@ -103,7 +109,8 @@ val map_unordered
     Pipe.Reader.t] where the mapped values are guaranteed to be in the same order as the
     input values. *)
 val map
-  :  Config.t
+  :  ?how_to_spawn:Monad_sequence.how (** Default: [`Sequential] *)
+  -> Config.t
   -> 'a Pipe.Reader.t
   -> m:
        (module Map_function
@@ -119,7 +126,8 @@ val map
     is returned. If more than one worker returns [Some value], one value is chosen
     arbitrarily and returned. *)
 val find_map
-  :  Config.t
+  :  ?how_to_spawn:Monad_sequence.how (** Default: [`Sequential] *)
+  -> Config.t
   -> 'a Pipe.Reader.t
   -> m:
        (module Map_function
@@ -154,7 +162,7 @@ module type Map_reduce_function_with_init_spec = sig
   module Accum : Binable
   module Input : Binable
 
-  val init : Param.t -> state_type Deferred.t
+  val init : Param.t -> worker_index:int -> state_type Deferred.t
   val map : state_type -> Input.t -> Accum.t Deferred.t
   val combine : state_type -> Accum.t -> Accum.t -> Accum.t Deferred.t
 end
@@ -186,7 +194,8 @@ module Make_map_reduce_function (S : Map_reduce_function_spec) :
     value. Commutative map-reduce assumes that [combine] is associative and
     commutative. *)
 val map_reduce_commutative
-  :  Config.t
+  :  ?how_to_spawn:Monad_sequence.how (** Default: [`Sequential] **)
+  -> Config.t
   -> 'a Pipe.Reader.t
   -> m:
        (module Map_reduce_function
@@ -205,7 +214,8 @@ val map_reduce_commutative
     [acc_{0,n+1}] value. Noncommutative map-reduce assumes that [combine] is
     associative. *)
 val map_reduce
-  :  Config.t
+  :  ?how_to_spawn:Monad_sequence.how (** Default: [`Sequential] *)
+  -> Config.t
   -> 'a Pipe.Reader.t
   -> m:
        (module Map_reduce_function
