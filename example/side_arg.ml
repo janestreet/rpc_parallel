@@ -16,7 +16,7 @@ module Side_arg_map_function = Rpc_parallel.Map_reduce.Make_map_function_with_in
       type t = string [@@deriving bin_io]
     end
 
-    let init param =
+    let init param ~worker_index:(_ : int) =
       Random.self_init ();
       return (sprintf "[%i] %s" (Random.bits ()) param)
     ;;

@@ -1,1 +1,1 @@
-include Parallel_intf.Parallel
+include Parallel_intf.Parallel (** @inline *)

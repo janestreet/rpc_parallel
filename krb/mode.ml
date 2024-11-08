@@ -11,7 +11,7 @@ module Kerberized = struct
   let krb_server_mode t =
     let conn_type_preference = Krb_public.Conn_type_preference.accept_only t.conn_type in
     let key_source = t.server_key_source in
-    Krb_public.Mode.Server.kerberized ~conn_type_preference ~key_source |> return
+    Krb_public.Mode.Server.Expert.kerberized ~conn_type_preference ~key_source |> return
   ;;
 
   let krb_client_mode t =

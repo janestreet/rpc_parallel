@@ -1309,6 +1309,7 @@ module Make (S : Worker_spec) = struct
     let close_finished t = Rpc.Connection.close_finished t.connection
     let close_reason t = Rpc.Connection.close_reason t.connection
     let is_closed t = Rpc.Connection.is_closed t.connection
+    let underlying (t : t) = t.connection
 
     let client_aux
       ~worker_shutdown_on_disconnect

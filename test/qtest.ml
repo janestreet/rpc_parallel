@@ -10,7 +10,7 @@ module Add_map_function = Rpc_parallel.Map_reduce.Make_map_function_with_init (s
 
     type state_type = int
 
-    let init = return
+    let init param ~worker_index:(_ : int) = return param
     let map state x = return (x + state)
   end)
 
@@ -25,7 +25,7 @@ Rpc_parallel.Map_reduce.Make_map_reduce_function_with_init (struct
 
     type state_type = int
 
-    let init = return
+    let init param ~worker_index:(_ : int) = return param
     let map state l = return (state * List.fold l ~init:0 ~f:( + ))
     let combine _state x y = return (x + y)
   end)

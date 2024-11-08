@@ -18,7 +18,7 @@ Rpc_parallel.Map_reduce.Make_map_function_with_init (struct
       type t = float array [@@deriving bin_io]
     end
 
-    let init () =
+    let init () ~worker_index:(_ : int) =
       Random.self_init ();
       Deferred.unit
     ;;

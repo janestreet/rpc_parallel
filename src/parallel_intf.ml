@@ -127,6 +127,11 @@ module type Worker = sig
     val close_finished : t -> unit Deferred.t
     val close_reason : t -> on_close:[ `started | `finished ] -> Info.t Deferred.t
     val is_closed : t -> bool
+
+    (** The underlying rpc connection. This should not be used to dispatch rpcs, but it's
+        fine to use it for monitoring functions like [Rpc.Connection.last_seen_alive],
+        tracing, metrics, etc. *)
+    val underlying : t -> Rpc.Connection.t
   end
 
   module Shutdown_on (M : T1) : sig
