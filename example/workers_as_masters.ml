@@ -87,8 +87,7 @@ module Primary_worker = struct
       let ping_impl ~worker_state:() ~conn_state:() () =
         Deferred.List.map ~how:`Parallel (Bag.to_list workers) ~f:(fun (name, worker) ->
           match%bind Secondary_worker.Connection.client worker () with
-          | Error e ->
-            failwiths ~here:[%here] "failed connecting to worker" e [%sexp_of: Error.t]
+          | Error e -> failwiths "failed connecting to worker" e [%sexp_of: Error.t]
           | Ok conn ->
             (match%map
                Secondary_worker.Connection.run

@@ -123,14 +123,11 @@ let command =
                     let i = succ i in
                     if i < n
                     then don't_wait_for (ping i)
-                    else
-                      Worker.Connection.abort
-                        connection
-                        ~id:(Set_once.get_exn the_id [%here])
+                    else Worker.Connection.abort connection ~id:(Set_once.get_exn the_id)
                   | Closed reason -> Ivar.fill_exn closed reason);
                  Continue )
        in
-       Set_once.set_exn the_id [%here] id;
+       Set_once.set_exn the_id id;
        let%bind () = ping 0 in
        let%bind reason = Ivar.read closed in
        printf !"Closed: %{sexp: [ `By_remote_side | `Error of Error.t ]}\n" reason;

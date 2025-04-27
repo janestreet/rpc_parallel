@@ -9,8 +9,8 @@ type t =
   }
 [@@deriving bin_io, sexp]
 
-(** [env_var] is the name of the environment variable read by rpc-parallel on start-up
-    to inject additional rpc-settings for the application. *)
+(** [env_var] is the name of the environment variable read by rpc-parallel on start-up to
+    inject additional rpc-settings for the application. *)
 val env_var : string
 
 (** Use all the default rpc settings. This is the record with [None] in every field. *)

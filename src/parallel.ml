@@ -105,20 +105,22 @@ module Function = struct
       Rpc.Pipe_rpc.implement
         protocol
         (fun ((_conn : Rpc.Connection.t), internal_conn_state) arg ->
-           let { Utils.Internal_connection_state.conn_state; worker_state; _ } =
-             Set_once.get_exn internal_conn_state [%here]
-           in
-           Utils.try_within ~monitor (fun () -> f ~worker_state ~conn_state arg))
+          let { Utils.Internal_connection_state.conn_state; worker_state; _ } =
+            Set_once.get_exn internal_conn_state
+          in
+          Utils.try_within ~monitor (fun () -> f ~worker_state ~conn_state arg))
+        ~leave_open_on_exception:true
     ;;
 
     let make_direct_impl ~monitor ~f protocol =
       Rpc.Pipe_rpc.implement_direct
         protocol
         (fun ((_conn : Rpc.Connection.t), internal_conn_state) arg writer ->
-           let { Utils.Internal_connection_state.conn_state; worker_state; _ } =
-             Set_once.get_exn internal_conn_state [%here]
-           in
-           Utils.try_within ~monitor (fun () -> f ~worker_state ~conn_state arg writer))
+          let { Utils.Internal_connection_state.conn_state; worker_state; _ } =
+            Set_once.get_exn internal_conn_state
+          in
+          Utils.try_within ~monitor (fun () -> f ~worker_state ~conn_state arg writer))
+        ~leave_open_on_exception:true
     ;;
 
     let make_proto ~name ~bin_input ~bin_output ~client_pushes_back =
@@ -142,10 +144,11 @@ module Function = struct
       Rpc.State_rpc.implement
         protocol
         (fun ((_conn : Rpc.Connection.t), internal_conn_state) arg ->
-           let { Utils.Internal_connection_state.conn_state; worker_state; _ } =
-             Set_once.get_exn internal_conn_state [%here]
-           in
-           Utils.try_within ~monitor (fun () -> f ~worker_state ~conn_state arg))
+          let { Utils.Internal_connection_state.conn_state; worker_state; _ } =
+            Set_once.get_exn internal_conn_state
+          in
+          Utils.try_within ~monitor (fun () -> f ~worker_state ~conn_state arg))
+        ~leave_open_on_exception:true
     ;;
 
     let make_proto ~name ~bin_query ~bin_state ~bin_update ~client_pushes_back =
@@ -170,7 +173,7 @@ module Function = struct
         protocol
         (fun ((_conn : Rpc.Connection.t), internal_conn_state) arg ->
            let { Utils.Internal_connection_state.conn_state; worker_state; _ } =
-             Set_once.get_exn internal_conn_state [%here]
+             Set_once.get_exn internal_conn_state
            in
            (* We want to raise any exceptions from [f arg] to the current monitor (handled
               by Rpc) so the caller can see it. Additional exceptions will be handled by the
@@ -201,7 +204,7 @@ module Function = struct
     let make_worker_impl ~monitor ~f t =
       Rpc.Rpc.implement t.worker_rpc (fun (conn, internal_conn_state) (arg, id) ->
         let { Utils.Internal_connection_state.conn_state; worker_state; _ } =
-          Set_once.get_exn internal_conn_state [%here]
+          Set_once.get_exn internal_conn_state
         in
         Utils.try_within_exn ~monitor (fun () ->
           match%bind Rpc.Pipe_rpc.dispatch t.master_rpc conn id with
@@ -226,13 +229,17 @@ module Function = struct
     let make_master_impl t =
       make_master
         t
-        ~implement:Rpc.Pipe_rpc.implement
+        ~implement:(Rpc.Pipe_rpc.implement ~leave_open_on_exception:true)
         ~ok:Deferred.Or_error.return
         ~error:Fn.id
     ;;
 
     let make_master_impl_direct t =
-      make_master t ~implement:Rpc.Pipe_rpc.implement_direct ~ok:Fn.id ~error:const
+      make_master
+        t
+        ~implement:(Rpc.Pipe_rpc.implement_direct ~leave_open_on_exception:true)
+        ~ok:Fn.id
+        ~error:const
     ;;
 
     let make_proto ~name ~bin_query ~bin_update ~bin_response ~client_pushes_back =
@@ -272,7 +279,7 @@ module Function = struct
         protocol
         (fun ((_conn : Rpc.Connection.t), internal_conn_state) arg ->
           let { Utils.Internal_connection_state.conn_state; worker_state; _ } =
-            Set_once.get_exn internal_conn_state [%here]
+            Set_once.get_exn internal_conn_state
           in
           don't_wait_for
             (* Even though [f] returns [unit], we want to use [try_within_exn] so if it
@@ -597,17 +604,17 @@ end = struct
     (Backend_and_settings.T ((module Backend), backend_settings))
     : Settings.t
     =
-    Set_once.set_exn backend [%here] (module Backend : Backend);
+    Set_once.set_exn backend (module Backend : Backend);
     [%sexp_of: Backend.Settings.t] backend_settings
   ;;
 
   let get_backend_and_settings_exn backend_settings =
-    let backend = Set_once.get_exn backend [%here] in
+    let backend = Set_once.get_exn backend in
     Settings.with_backend backend_settings backend
   ;;
 
   let assert_already_initialized_with_same_backend (module Other_backend : Backend) =
-    let (module Backend : Backend) = Set_once.get_exn backend [%here] in
+    let (module Backend : Backend) = Set_once.get_exn backend in
     let backend = Backend.name in
     let other_backend = Other_backend.name in
     if not (String.equal backend other_backend)
@@ -1001,7 +1008,7 @@ let init_master_state backend_and_settings ~rpc_settings ~worker_command_args =
       }
     in
     let as_worker = { my_worker_servers; initialized = Set_once.create () } in
-    Set_once.set_exn global_state [%here] { as_master; as_worker }
+    Set_once.set_exn global_state { as_master; as_worker }
 ;;
 
 module Make (S : Worker_spec) = struct
@@ -2011,7 +2018,6 @@ module Make (S : Worker_spec) = struct
          in
          Set_once.set_exn
            (get_worker_state_exn ()).initialized
-           [%here]
            (`Init_started
              (init_finished >>|? fun (_ : Function_creator.worker_state) -> `Initialized));
          match%map init_finished with
@@ -2055,7 +2061,6 @@ module Make (S : Worker_spec) = struct
          in
          Set_once.set_exn
            internal_conn_state
-           [%here]
            { Utils.Internal_connection_state.worker_id; conn_state; worker_state })
   ;;
 
@@ -2073,7 +2078,7 @@ module Make (S : Worker_spec) = struct
       Close_server_rpc.rpc
       (fun (_conn, conn_state) () ->
         let { Utils.Internal_connection_state.worker_id; _ } =
-          Set_once.get_exn conn_state [%here]
+          Set_once.get_exn conn_state
         in
         let global_state = get_worker_state_exn () in
         match Hashtbl.find global_state.my_worker_servers worker_id with
@@ -2087,31 +2092,34 @@ module Make (S : Worker_spec) = struct
   ;;
 
   let async_log_impl =
-    Rpc.Pipe_rpc.implement Async_log_rpc.rpc (fun _conn_state () ->
-      let r, w = Pipe.create () in
-      let new_output =
-        Log.Output.create
-          ~flush:(fun () -> Deferred.ignore_m (Pipe.downstream_flushed w))
-          (fun msgs ->
-            if not (Pipe.is_closed w)
-            then Queue.iter msgs ~f:(fun msg -> Pipe.write_without_pushback w msg);
-            return ())
-      in
-      Log.Global.set_output (new_output :: Log.Global.get_output ());
-      (* Remove this new output upon the pipe closing. *)
-      upon (Pipe.closed w) (fun () ->
-        let new_outputs =
-          List.filter (Log.Global.get_output ()) ~f:(fun output ->
-            not (phys_equal output new_output))
+    Rpc.Pipe_rpc.implement
+      Async_log_rpc.rpc
+      (fun _conn_state () ->
+        let r, w = Pipe.create () in
+        let new_output =
+          Log.Output.create
+            ~flush:(fun () -> Deferred.ignore_m (Pipe.downstream_flushed w))
+            (fun msgs ->
+              if not (Pipe.is_closed w)
+              then Queue.iter msgs ~f:(fun msg -> Pipe.write_without_pushback w msg);
+              return ())
         in
-        Log.Global.set_output new_outputs);
-      return (Ok r))
+        Log.Global.set_output (new_output :: Log.Global.get_output ());
+        (* Remove this new output upon the pipe closing. *)
+        upon (Pipe.closed w) (fun () ->
+          let new_outputs =
+            List.filter (Log.Global.get_output ()) ~f:(fun output ->
+              not (phys_equal output new_output))
+          in
+          Log.Global.set_output new_outputs);
+        return (Ok r))
+      ~leave_open_on_exception:true
   ;;
 
   let worker_server_rpc_settings_impl =
     Rpc.Rpc.implement Worker_server_rpc_settings_rpc.rpc (fun (_conn, conn_state) () ->
       let { Utils.Internal_connection_state.worker_id; _ } =
-        Set_once.get_exn conn_state [%here]
+        Set_once.get_exn conn_state
       in
       let global_state = get_worker_state_exn () in
       match Hashtbl.find global_state.my_worker_servers worker_id with
@@ -2152,10 +2160,8 @@ let worker_main backend_settings ~worker_env =
         (Tcp.Where_to_connect.of_host_and_port config.master)
         (fun conn -> Rpc.Rpc.dispatch Register_rpc.rpc conn (id, my_host_and_port))
     with
-    | Error error ->
-      failwiths ~here:[%here] "Worker failed to register" error [%sexp_of: Error.t]
-    | Ok (Error e) ->
-      failwiths ~here:[%here] "Worker failed to register" e [%sexp_of: Error.t]
+    | Error error -> failwiths "Worker failed to register" error [%sexp_of: Error.t]
+    | Ok (Error e) -> failwiths "Worker failed to register" e [%sexp_of: Error.t]
     | Ok (Ok `Shutdown) -> failwith "Got [`Shutdown] on register"
     | Ok (Ok `Registered) -> ()
   in

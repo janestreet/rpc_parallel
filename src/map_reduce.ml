@@ -10,11 +10,7 @@ module Half_open_interval = struct
     let create_exn l u =
       if l >= u
       then
-        failwiths
-          ~here:[%here]
-          "Lower bound must be less than upper bound"
-          (l, u)
-          [%sexp_of: int * int];
+        failwiths "Lower bound must be less than upper bound" (l, u) [%sexp_of: int * int];
       l, u
     ;;
 
@@ -29,7 +25,6 @@ module Half_open_interval = struct
         if intersects t1 t2
         then
           failwiths
-            ~here:[%here]
             "Cannot compare unequal intersecting intervals"
             (t1, t2)
             [%sexp_of: t * t];
@@ -57,8 +52,8 @@ module Config = struct
     ; remote : (packed_remote * int) list
     ; cd : string option
     ; connection_timeout : Time_float.Span.t option
-    ; redirect_stderr : [ `Dev_null | `File_append of string ]
-    ; redirect_stdout : [ `Dev_null | `File_append of string ]
+    ; redirect_stderr : [ `Dev_null | `File_append of worker_index:int -> string ]
+    ; redirect_stdout : [ `Dev_null | `File_append of worker_index:int -> string ]
     }
 
   let default_cores () = (ok_exn Linux_ext.cores) ()
@@ -193,33 +188,31 @@ module Make_rpc_parallel_worker (S : Rpc_parallel_worker_spec) = struct
     { Config.local; remote; cd; connection_timeout; redirect_stderr; redirect_stdout }
     param
     =
-    if local < 0
-    then failwiths ~here:[%here] "config.local must be nonnegative" local Int.sexp_of_t;
+    if local < 0 then failwiths "config.local must be nonnegative" local Int.sexp_of_t;
     (match List.find remote ~f:(fun (_remote, n) -> n < 0) with
      | Some remote ->
-       failwiths
-         ~here:[%here]
-         "remote number of workers must be nonnegative"
-         (snd remote)
-         Int.sexp_of_t
+       failwiths "remote number of workers must be nonnegative" (snd remote) Int.sexp_of_t
      | None -> ());
     if local = 0 && not (List.exists remote ~f:(fun (_remote, n) -> n > 0))
     then
       failwiths
-        ~here:[%here]
         "total number of workers must be positive"
         (local, List.map remote ~f:snd)
         [%sexp_of: int * int list];
     let spawn_n where n =
       Deferred.List.init ~how:how_to_spawn n ~f:(fun worker_index ->
+        let to_fd_redirection = function
+          | `Dev_null -> `Dev_null
+          | `File_append f -> `File_append (f ~worker_index)
+        in
         spawn_exn
           where
           param
           ~worker_index
           ~cd
           ~connection_timeout
-          ~redirect_stderr:(redirect_stderr :> Fd_redirection.t)
-          ~redirect_stdout:(redirect_stdout :> Fd_redirection.t))
+          ~redirect_stderr:(to_fd_redirection redirect_stderr)
+          ~redirect_stdout:(to_fd_redirection redirect_stdout))
     in
     let%map local_workers, remote_workers =
       Deferred.both
