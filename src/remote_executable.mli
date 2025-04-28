@@ -37,9 +37,7 @@ val host_key_checking : _ t -> string list
 
 (** Run the executable remotely with the given environment and arguments. This checks to
     make sure [t] matches the currently running executable that [run] is called from. The
-    check can be disabled by supplying [~assert_binary_hash:false].
-
-*)
+    check can be disabled by supplying [~assert_binary_hash:false]. *)
 val run
   :  ?assert_binary_hash:bool
   -> _ t

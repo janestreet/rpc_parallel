@@ -3,9 +3,9 @@ open! Async
 
 (** See the doc/ directory for more details *)
 
-(** A [('worker, 'query, 'response) Function.t] is a type-safe function ['query ->
-    'response Deferred.t] that can only be run on a ['worker]. Under the hood it
-    represents an Async Rpc protocol that we know a ['worker] will implement. *)
+(** A [('worker, 'query, 'response) Function.t] is a type-safe function
+    ['query -> 'response Deferred.t] that can only be run on a ['worker]. Under the hood
+    it represents an Async Rpc protocol that we know a ['worker] will implement. *)
 module type Function = sig
   type ('worker, 'query, +'response) t
 
@@ -46,8 +46,8 @@ module type Function = sig
       worker server will be accepted.
 
       NOTE: calling [close_server] on a worker process that is only running one worker
-      server will leave a stranded worker process if no other cleanup has been setup
-      (e.g. setting up [on_client_disconnect] or [Connection.close_finished] handlers) *)
+      server will leave a stranded worker process if no other cleanup has been setup (e.g.
+      setting up [on_client_disconnect] or [Connection.close_finished] handlers) *)
   val close_server : (_, unit, unit) t
 
   module For_internal_testing : sig
@@ -79,8 +79,8 @@ module type Worker = sig
   val id : t -> Id.t
   val rpc_settings : t -> Rpc_settings.t
 
-  (** [serve arg] will start an Rpc server in process implementing all the functions
-      of the given worker. *)
+  (** [serve arg] will start an Rpc server in process implementing all the functions of
+      the given worker. *)
   val serve : worker_state_init_arg -> worker Deferred.t
 
   module Connection : sig
@@ -112,11 +112,11 @@ module type Worker = sig
     val client_exn : worker -> connection_state_init_arg -> t Deferred.t
 
     (** [with_client worker init_arg f] connects to the [worker]'s server, initializes the
-        connection state with [init_arg]  and runs [f] until an exception is thrown or
+        connection state with [init_arg] and runs [f] until an exception is thrown or
         until the returned Deferred is determined.
 
-        NOTE: You should be careful when using this with [Pipe_rpc].
-        See [Rpc.Connection.with_close] for more information. *)
+        NOTE: You should be careful when using this with [Pipe_rpc]. See
+        [Rpc.Connection.with_close] for more information. *)
     val with_client
       :  worker
       -> connection_state_init_arg
@@ -147,8 +147,8 @@ module type Worker = sig
         want to choose.
 
         In the [Heartbeater_connection_timeout] case, the connection is internal to the
-        library. The [worker] is returned so the caller is free to establish
-        connections and close them without triggering worker shutdown.
+        library. The [worker] is returned so the caller is free to establish connections
+        and close them without triggering worker shutdown.
 
         In both the above cases, worker shutdown will be triggered when the master process
         exits. It may also result from network problems or long async cycles.
@@ -174,18 +174,18 @@ module type Worker = sig
       [env] extends the environment of the spawned worker process.
 
       [connection_timeout] is used for various internal timeouts. This may need be to
-      increased if the init arg is really large (serialization and deserialization
-      takes more than [connection_timeout]).
+      increased if the init arg is really large (serialization and deserialization takes
+      more than [connection_timeout]).
 
       [cd] changes the current working directory of a spawned worker process.
 
       [shutdown_on] specifies when a worker should shut itself down.
 
       [on_failure exn] will be called in the spawning process upon the worker process
-      raising a background exception. All exceptions raised before functions return will be
-      returned to the caller. [on_failure] will be called in [Monitor.current ()] at the
-      time of this spawn call. The worker initiates shutdown upon sending the exception
-      to the master process.
+      raising a background exception. All exceptions raised before functions return will
+      be returned to the caller. [on_failure] will be called in [Monitor.current ()] at
+      the time of this spawn call. The worker initiates shutdown upon sending the
+      exception to the master process.
 
       [worker_state_init_arg] (below) will be passed to [init_worker_state] of the given
       [Worker_spec] module. This initializes a persistent worker state for all connections
@@ -252,18 +252,19 @@ module type Worker = sig
         with_spawn_args
 
   (** [shutdown] attempts to connect to a worker. Upon success, [Shutdown.shutdown 0] is
-      run in the worker. If you want strong guarantees that a worker did shutdown, consider
-      using [spawn_in_foreground] and inspecting the [Process.t]. *)
+      run in the worker. If you want strong guarantees that a worker did shutdown,
+      consider using [spawn_in_foreground] and inspecting the [Process.t]. *)
   val shutdown : t -> unit Or_error.t Deferred.t
 
   module Deprecated : sig
-    (** This is nearly identical to calling [spawn ~shutdown_on:Heartbeater_connection_timeout] and
-        then [Connection.client]. The only difference is that this function handles
-        shutting down the worker when [Connection.client] returns an error.
+    (** This is nearly identical to calling
+        [spawn ~shutdown_on:Heartbeater_connection_timeout] and then [Connection.client].
+        The only difference is that this function handles shutting down the worker when
+        [Connection.client] returns an error.
 
-        Uses of [spawn_and_connect] that disregard [t] can likely be replaced with [spawn
-        ~shutdown_on:Connection_closed]. If [t] is used for reconnecting, then you can use [spawn]
-        followed by [Connection.client]. *)
+        Uses of [spawn_and_connect] that disregard [t] can likely be replaced with
+        [spawn ~shutdown_on:Connection_closed]. If [t] is used for reconnecting, then you
+        can use [spawn] followed by [Connection.client]. *)
     val spawn_and_connect
       : (?umask:int
          -> redirect_stdout:Fd_redirection.t
@@ -318,7 +319,7 @@ module type Functions = sig
   (** [init_connection_state] is called with the [init_arg] passed to [Connection.client]
 
       [connection] should only be used to register [close_finished] callbacks, not to
-      dispatch.  *)
+      dispatch. *)
   val init_connection_state
     :  connection:Rpc.Connection.t
     -> worker_state:worker_state
@@ -500,8 +501,8 @@ module type Creator = sig
     -> 'query Rpc.One_way.t
     -> (worker, 'query, unit) _function
 
-  (** [of_async_state_rpc ~f rpc] is the analog to [create_state] but instead of
-      creating a State rpc protocol, it uses the supplied one *)
+  (** [of_async_state_rpc ~f rpc] is the analog to [create_state] but instead of creating
+      a State rpc protocol, it uses the supplied one *)
   val of_async_state_rpc
     :  f:
          (worker_state:worker_state
@@ -521,8 +522,8 @@ module type Worker_spec = sig
       record type here is often the most convenient and readable. *)
   type 'worker functions
 
-  (** State associated with each [Worker.t]. If this state is mutable, you must
-      think carefully when making multiple connections to the same spawned worker. *)
+  (** State associated with each [Worker.t]. If this state is mutable, you must think
+      carefully when making multiple connections to the same spawned worker. *)
   module Worker_state : sig
     type t
     type init_arg [@@deriving bin_io]
@@ -648,8 +649,8 @@ module type Parallel = sig
       determine whether to start as a master or a worker.
 
       [rpc_max_message_size], [rpc_handshake_timeout], [rpc_heartbeat_config] can be used
-      to alter the rpc defaults. These rpc settings will be used for all connections.
-      This can be useful if you have long async jobs.
+      to alter the rpc defaults. These rpc settings will be used for all connections. This
+      can be useful if you have long async jobs.
 
       [when_parsing_succeeds] and [complete_subcommands] will be passed to [Command.run]
       in the master process. *)
@@ -663,8 +664,8 @@ module type Parallel = sig
          (path:string list -> part:string -> string list list -> string list option)
     -> ?add_validate_parsing_flag:bool
     -> Backend_and_settings.t
-       (** Use rpc_parallel_krb or rpc_parallel_unauthenticated to avoid having to manually
-        construct a custom Backend *)
+       (** Use rpc_parallel_krb or rpc_parallel_unauthenticated to avoid having to
+           manually construct a custom Backend *)
     -> Command.t
     -> unit
 
@@ -689,20 +690,17 @@ module type Parallel = sig
         For example:
 
         {[
-
           let () = Rpc_parallel.For_testing.initialize [%here]
 
           let%expect_test "" =
             run_code_with_rpc_parallel ();
             [%expect {| output |}]
           ;;
-
-        ]}
-    *)
+        ]} *)
     val initialize
       :  Backend_and_settings.t
-         (** Use rpc_parallel_krb or rpc_parallel_unauthenticated to avoid having to manually
-          construct a custom Backend *)
+         (** Use rpc_parallel_krb or rpc_parallel_unauthenticated to avoid having to
+             manually construct a custom Backend *)
       -> Source_code_position.t
       -> unit
   end
@@ -727,8 +725,8 @@ module type Parallel = sig
       -> ?rpc_heartbeat_config:Rpc.Connection.Heartbeat_config.t
       -> ?pass_name:bool (** default: true *)
       -> Backend_and_settings.t
-         (** Use rpc_parallel_krb or rpc_parallel_unauthenticated to avoid having to manually
-          construct a custom Backend *)
+         (** Use rpc_parallel_krb or rpc_parallel_unauthenticated to avoid having to
+             manually construct a custom Backend *)
       -> worker_command_args:string list
       -> unit
       -> unit
@@ -747,8 +745,8 @@ module type Parallel = sig
 
     val worker_command
       :  (module Backend)
-         (** Use rpc_parallel_krb or rpc_parallel_unauthenticated to avoid having to manually
-          construct a custom Backend *)
+         (** Use rpc_parallel_krb or rpc_parallel_unauthenticated to avoid having to
+             manually construct a custom Backend *)
       -> Command.t
 
     module Worker_env : sig
@@ -773,8 +771,8 @@ module type Parallel = sig
         runs are redirected to the spawning process's stderr. *)
     val start_worker_server_exn
       :  (module Backend)
-         (** Use rpc_parallel_krb or rpc_parallel_unauthenticated to avoid having to manually
-          construct a custom Backend *)
+         (** Use rpc_parallel_krb or rpc_parallel_unauthenticated to avoid having to
+             manually construct a custom Backend *)
       -> Worker_env.t
       -> unit
   end

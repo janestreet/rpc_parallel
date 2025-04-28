@@ -6,21 +6,19 @@ let name = "Kerberized Async RPC"
 module Settings = struct
   type t = Mode.t [@@deriving bin_io, sexp]
 
-  let test_principal = lazy (Krb_public.Principal.Name.User (Core_unix.getlogin ()))
+  let test_principal = lazy (Krb.Principal.Name.User (Core_unix.getlogin ()))
 
   let server_mode = function
     | Mode.Kerberized kerberized -> Mode.Kerberized.krb_server_mode kerberized
     | For_unit_test ->
       return
-        (Krb_public.Mode.Server.test_with_principal
-           ~test_principal:(force test_principal)
-           ())
+        (Krb.Mode.Server.test_with_principal ~test_principal:(force test_principal) ())
   ;;
 
   let client_mode = function
     | Mode.Kerberized kerberized -> Mode.Kerberized.krb_client_mode kerberized
     | For_unit_test ->
-      Krb_public.Mode.Client.test_with_principal ~test_principal:(force test_principal) ()
+      Krb.Mode.Client.test_with_principal ~test_principal:(force test_principal) ()
   ;;
 end
 
@@ -30,14 +28,14 @@ let authorize_current_principal () =
     then
       (* There isn't a cred cache in the testing environment, so just use the current
          username. *)
-      Unix.getlogin () >>| fun x -> Krb_public.Principal.Name.User x
+      Unix.getlogin () >>| fun x -> Krb.Principal.Name.User x
     else
-      Krb_public.Cred_cache.default_principal ()
+      Krb.Cred_cache.default_principal ()
       (* This will raise if there is the default credential cache doesn't exist. If this
          is the case, we'd expect [Krb.Rpc.Connection.serve] to have already failed. *)
       >>| Or_error.ok_exn
   in
-  Krb_public.Authorize.accept_single principal_to_authorize
+  Krb.Authorize.accept_single principal_to_authorize
 ;;
 
 let serve
@@ -52,9 +50,9 @@ let serve
   =
   let%bind authorize = authorize_current_principal () in
   let%bind krb_mode = Settings.server_mode settings in
-  Krb_public.Rpc.Connection.serve
+  Krb.Rpc.Connection.serve
     ~implementations
-    ~initial_connection_state:(fun (_ : Krb_public.Client_identity.t) inet connection ->
+    ~initial_connection_state:(fun (_ : Krb.Client_identity.t) inet connection ->
       initial_connection_state inet connection)
     ~authorize
     ~krb_mode
@@ -79,7 +77,7 @@ let with_client
   =
   let%bind authorize = authorize_current_principal () in
   let krb_mode = Settings.client_mode settings in
-  Krb_public.Rpc.Connection.with_client
+  Krb.Rpc.Connection.with_client
     ?implementations:(Option.map ~f:Fn.const implementations)
     ?max_message_size
     ?buffer_age_limit
@@ -103,7 +101,7 @@ let client
   =
   let%bind authorize = authorize_current_principal () in
   let krb_mode = Settings.client_mode settings in
-  Krb_public.Rpc.Connection.client
+  Krb.Rpc.Connection.client
     ?implementations:(Option.map ~f:Fn.const implementations)
     ?max_message_size
     ?buffer_age_limit

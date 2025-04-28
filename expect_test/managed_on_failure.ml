@@ -1,7 +1,7 @@
 open Core
 open Async
 
-let () = Backtrace.elide := true
+let () = Dynamic.set_root Backtrace.elide true
 
 module T = struct
   type 'worker functions = { fail : ('worker, unit, unit) Rpc_parallel.Function.t }

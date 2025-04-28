@@ -7,17 +7,15 @@ open! Async
 module Config : sig
   type t
 
-  (** Default is to create the same number of local workers as the cores in local
-      machine. All spawned workers will redirect their stdout and stderr to the same
-      file. *)
+  (** Default is to create the same number of local workers as the cores in local machine. *)
   val create
     :  ?local:int
     -> ?remote:(_ Remote_executable.t * int) list
     -> ?cd:string (** default / *)
     -> ?connection_timeout:Time_float.Span.t
          (** see [with_spawn_args] in parallel_intf.ml *)
-    -> redirect_stderr:[ `Dev_null | `File_append of string ]
-    -> redirect_stdout:[ `Dev_null | `File_append of string ]
+    -> redirect_stderr:[ `Dev_null | `File_append of worker_index:int -> string ]
+    -> redirect_stdout:[ `Dev_null | `File_append of worker_index:int -> string ]
     -> unit
     -> t
 end
@@ -43,8 +41,8 @@ end
 (** [Map_function] modules must be created using the [Make_map_function] or
     [Make_map_function_with_init] functors. The init variety allows you to specify an
     [init] function that takes a "param" argument. The non-init variety is equivalent to
-    the init variety with [init] equal to [return] and a [unit] "param"
-    argument. Similarly, [Map_reduce_function] modules must be created using the
+    the init variety with [init] equal to [return] and a [unit] "param" argument.
+    Similarly, [Map_reduce_function] modules must be created using the
     [Make_map_combine_function] or [Make_map_combine_function_with_init] functors. *)
 
 module type Map_function = sig
@@ -90,9 +88,9 @@ module Make_map_function (S : Map_function_spec) :
    and type Output.t = S.Output.t
 
 (** The [map_unordered] operation takes ['a Pipe.Reader.t] along with a [Map_function] and
-    sends the ['a] values to workers for mapping. Each pair in the resulting [('b * int)
-    Pipe.Reader.t] contains the mapped value and the index of the value in the input
-    pipe. *)
+    sends the ['a] values to workers for mapping. Each pair in the resulting
+    [('b * int) Pipe.Reader.t] contains the mapped value and the index of the value in the
+    input pipe. *)
 val map_unordered
   :  ?how_to_spawn:Monad_sequence.how (** Default: [`Sequential] *)
   -> Config.t
@@ -105,9 +103,9 @@ val map_unordered
   -> param:'param
   -> ('b * int) Pipe.Reader.t Deferred.t
 
-(** The [map] operation is similar to [map_unordered], but the result is a ['b
-    Pipe.Reader.t] where the mapped values are guaranteed to be in the same order as the
-    input values. *)
+(** The [map] operation is similar to [map_unordered], but the result is a
+    ['b Pipe.Reader.t] where the mapped values are guaranteed to be in the same order as
+    the input values. *)
 val map
   :  ?how_to_spawn:Monad_sequence.how (** Default: [`Sequential] *)
   -> Config.t
@@ -137,7 +135,8 @@ val find_map
   -> param:'param
   -> 'b option Deferred.t
 
-(** {4 Map-reduce} functions *)
+(** {4 Map-reduce}
+    functions *)
 
 module type Map_reduce_function = sig
   module Param : Binable
@@ -190,9 +189,8 @@ module Make_map_reduce_function (S : Map_reduce_function_spec) :
 (** The [map_reduce_commutative] operation takes ['a Pipe.Reader.t] along with a
     [Map_reduce_function] and applies the [map] function to ['a] values (in an unspecified
     order), resulting in ['accum] values. The [combine] function is then called to combine
-    the ['accum] values (in an unspecified order) into a single ['accum]
-    value. Commutative map-reduce assumes that [combine] is associative and
-    commutative. *)
+    the ['accum] values (in an unspecified order) into a single ['accum] value.
+    Commutative map-reduce assumes that [combine] is associative and commutative. *)
 val map_reduce_commutative
   :  ?how_to_spawn:Monad_sequence.how (** Default: [`Sequential] **)
   -> Config.t
@@ -208,11 +206,10 @@ val map_reduce_commutative
 (** The [map_reduce] operation makes strong guarantees about the order in which the values
     are processed by [combine]. For a list a_0, a_1, a_2, ..., a_n of ['a] values, the
     noncommutative map-reduce operation applies the [map] function to produce
-    [acc_{i,i+1}] from each [a_i]. The [combine] function is used to compute [combine
-    acc_{i,j} acc_{j,k}] for i<j<k, producing [acc_{i,k}]. The [map] and [combine]
-    functions are called repeatedly until the entire list is reduced to a single
-    [acc_{0,n+1}] value. Noncommutative map-reduce assumes that [combine] is
-    associative. *)
+    [acc_{i,i+1}] from each [a_i]. The [combine] function is used to compute
+    [combine acc_{i,j} acc_{j,k}] for i<j<k, producing [acc_{i,k}]. The [map] and
+    [combine] functions are called repeatedly until the entire list is reduced to a single
+    [acc_{0,n+1}] value. Noncommutative map-reduce assumes that [combine] is associative. *)
 val map_reduce
   :  ?how_to_spawn:Monad_sequence.how (** Default: [`Sequential] *)
   -> Config.t

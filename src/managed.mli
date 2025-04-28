@@ -7,8 +7,8 @@ open Async
 
     This functor keeps cached connections to workers and dispatches on these connections.
     The semantics of reconnect are not currently well-defined. If you expect connections
-    to drop or want multiple connections to the same worker, using [Rpc_parallel.Make()] is
-    probably the better choice. *)
+    to drop or want multiple connections to the same worker, using [Rpc_parallel.Make()]
+    is probably the better choice. *)
 
 module type Worker = sig
   type t [@@deriving sexp_of]
@@ -38,9 +38,9 @@ module type Worker = sig
     -> connection_state_init_arg
     -> on_failure:(Error.t -> unit) (** See [on_failure] in parallel_intf.ml *)
     -> on_connection_to_worker_closed:(Error.t -> unit)
-         (** Called when the connection to the spawned worker is closed. If a worker process
-        terminates, both [on_failure] and [on_connection_to_worker_closed] might get
-        called. *)
+         (** Called when the connection to the spawned worker is closed. If a worker
+             process terminates, both [on_failure] and [on_connection_to_worker_closed]
+             might get called. *)
     -> t Or_error.t Deferred.t
 
   val spawn_exn
@@ -73,8 +73,8 @@ module type Worker = sig
     -> arg:'query
     -> 'response Deferred.t
 
-  (** Using these functions will not result in [on_failure] reporting a closed
-      connection, unlike running the [shutdown] function. *)
+  (** Using these functions will not result in [on_failure] reporting a closed connection,
+      unlike running the [shutdown] function. *)
   val kill : t -> unit Or_error.t Deferred.t
 
   val kill_exn : t -> unit Deferred.t

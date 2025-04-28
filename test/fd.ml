@@ -63,7 +63,7 @@ let assert_fds here ~listen ~established =
         ~args:[ "-ap"; Pid.to_string pid; "-iTCP" ]
         ()
     with
-    | Error e -> failwiths ~here:[%here] "Unable to lsof" e [%sexp_of: Error.t]
+    | Error e -> failwiths "Unable to lsof" e [%sexp_of: Error.t]
     | Ok lines ->
       let filter to_match =
         List.filter lines ~f:(fun line ->

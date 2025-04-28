@@ -3,7 +3,7 @@ open! Core
 (** A type-safe parallel library built on top of Async_rpc.
 
     {[
-      module Worker = Rpc_parallel.Make (T : Worker_spec)
+      module Worker = Rpc_parallel.Make ((T : Worker_spec))
     ]}
 
     The [Worker] module can be used to spawn new workers, either locally or remotely, and

@@ -143,9 +143,7 @@ module Worker = struct
   include Rpc_parallel.Make (T)
 end
 
-let handle_error worker err =
-  failwiths ~here:[%here] (sprintf "error in %s" worker) err Error.sexp_of_t
-;;
+let handle_error worker err = failwiths (sprintf "error in %s" worker) err Error.sexp_of_t
 
 let command =
   Command.async_spec_or_error

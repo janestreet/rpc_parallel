@@ -4,8 +4,8 @@ open Async
 module Kerberized : sig
   type t
 
-  val krb_server_mode : t -> Krb_public.Mode.Server.t Deferred.t
-  val krb_client_mode : t -> Krb_public.Mode.Client.t
+  val krb_server_mode : t -> Krb.Mode.Server.t Deferred.t
+  val krb_client_mode : t -> Krb.Mode.Client.t
 end
 
 type t =
@@ -28,8 +28,8 @@ type t =
     principals that match the principal associated with [key_source]. By default, this is
     the principal associated with the user that started the rpc_parallel process. *)
 val kerberized
-  :  key_source:Krb_public.Server_key_source.t
-  -> conn_type:Krb_public.Conn_type.t
+  :  key_source:Krb.Server_key_source.t
+  -> conn_type:Krb.Conn_type.t
   -> unit
   -> t
 
