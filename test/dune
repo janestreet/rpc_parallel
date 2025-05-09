@@ -10,7 +10,7 @@
   (pps ppx_jane)))
 
 (rule
- (alias runtest)
  (deps qtest.exe)
  (action
-  (bash "TESTING_FRAMEWORK= ./qtest.exe")))
+  (bash "TESTING_FRAMEWORK= ./qtest.exe"))
+ (alias runtest))
