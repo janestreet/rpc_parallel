@@ -790,7 +790,7 @@ let start_server
   in
   let implementations =
     Rpc.Implementations.create_exn
-      ~implementations:(Versioned_rpc.Menu.add implementations)
+      ~implementations
       ~on_unknown_rpc:`Close_connection
       ~on_exception:Log_on_background_exn
   in
@@ -1265,7 +1265,7 @@ module Make (S : Worker_spec) = struct
       { connection_state = const ()
       ; implementations =
           Rpc.Implementations.create_exn
-            ~implementations:(Versioned_rpc.Menu.add worker_state.master_implementations)
+            ~implementations:worker_state.master_implementations
             ~on_unknown_rpc:`Close_connection
             ~on_exception:Log_on_background_exn
       }
