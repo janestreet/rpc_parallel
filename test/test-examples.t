@@ -10,14 +10,13 @@
 #   $ cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
 #   $ chmod 600 ~/.ssh/authorized_keys
 
-  $ run test/copy_executable.exe -dir $(pwd) -worker $(hostname)
+  $ $TESTDIR/ssh_test_server.sh with run test/copy_executable.exe -dir $(pwd) -worker $(hostname)
   Ok
-
 
   $ run example/serve.exe
   Success.
 
-  $ run test/wrap_test.exe -wrapper $TESTDIR/print_and_run.sh -host localhost
+  $ $TESTDIR/ssh_test_server.sh with run test/wrap_test.exe -wrapper $TESTDIR/print_and_run.sh -host localhost
   Worker successfully started
   [WORKER STDOUT]: Ran with print_and_run!
 
@@ -29,7 +28,7 @@
   WORKER: OCAMLRUNPARAM=foo=bar
   WORKER: OCAMLRUNPARAM=foo=user-supplied
 
-  $ run test/env_test.exe special-var -host localhost
+  $ $TESTDIR/ssh_test_server.sh with run test/env_test.exe special-var -host localhost
   WORKER: OCAMLRUNPARAM=foo=bar
   WORKER: OCAMLRUNPARAM=foo=user-supplied
 
@@ -106,7 +105,7 @@
   Success.
 
   $ run example/spawn_in_foreground.exe
-  [WORKER STDERR]: *-*-* *:*:*.* Info ("Rpc_parallel: initial client connection closed... Shutting down."(reason"EOF or connection closed")) (glob)
+  [WORKER STDERR]: *-*-* *:*:*.* Info ("Rpc_parallel: initial client connection closed... Shutting down."(reason* (glob)
   [WORKER STDOUT]: HELLO
   [WORKER STDOUT]: HELLO2
 
@@ -121,7 +120,7 @@
   $ run_absolute_path /tmp/remove_running_executable.exe -spawn-local
   Ok.
 
-  $ run_absolute_path /tmp/remove_running_executable.exe -spawn-remote
+  $ $TESTDIR/ssh_test_server.sh with run_absolute_path /tmp/remove_running_executable.exe -spawn-remote
   Ok.
 
   $ rm /tmp/remove_running_executable.exe

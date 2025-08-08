@@ -1111,12 +1111,60 @@ module Make (S : Worker_spec) = struct
     ;;
   end
 
-  let run_executable how ~env ~worker_command_args ~input =
-    Utils.create_worker_env ~extra:env
-    |> return
-    >>=? fun env ->
-    How_to_run.run how ~env ~worker_command_args
-    >>|? fun p ->
+  module Timeout : sig
+    type t
+
+    val after : Time_float.Span.t -> t
+    val with_timeout : t -> 'a Deferred.t -> [ `Result of 'a | `Timeout ] Deferred.t
+    val earlier : t -> t -> t
+  end = struct
+    type t = Time_float.t
+
+    let after span = Time_float.add (Time_float.now ()) span
+
+    let with_timeout t deferred =
+      let event = Clock.Event.at t in
+      choose
+        [ choice deferred (fun result ->
+            Clock.Event.abort_if_possible event ();
+            `Result result)
+        ; choice (Clock.Event.fired event) (fun (_ : _ Time_source.Event.Fired.t) ->
+            `Timeout)
+        ]
+    ;;
+
+    let earlier = Time_float.min
+  end
+
+  let kill_process process =
+    Process.send_signal process Signal.term;
+    let close_fds_and_wait () =
+      let%map (_we_just_want_it_dead : Unix.Exit_or_signal.t) = Process.wait process
+      and () = Writer.close (Process.stdin process)
+      and () = Reader.close (Process.stdout process)
+      and () = Reader.close (Process.stderr process) in
+      ()
+    in
+    match%map Clock_ns.with_timeout (Time_ns.Span.of_sec 10.) (close_fds_and_wait ()) with
+    | `Result () -> ()
+    | `Timeout -> Process.send_signal process Signal.kill
+  ;;
+
+  let run_executable how ~env ~worker_command_args ~input ~timeout =
+    let open Deferred.Or_error.Let_syntax in
+    let%bind env = Utils.create_worker_env ~extra:env |> Deferred.return in
+    let p = How_to_run.run how ~env ~worker_command_args in
+    let%map p =
+      match%bind.Deferred Timeout.with_timeout timeout p with
+      | `Result p -> Deferred.return p
+      | `Timeout ->
+        don't_wait_for
+          (let open Deferred.Let_syntax in
+           match%bind p with
+           | Error (_we_just_want_it_dead : Error.t) -> Deferred.unit
+           | Ok p -> kill_process p);
+        Deferred.Or_error.error_string "Timed out spawning worker"
+    in
     Writer.write_sexp (Process.stdin p) input;
     p
   ;;
@@ -1374,8 +1422,8 @@ module Make (S : Worker_spec) = struct
       | Heartbeater_connection_timeout : worker M.t Deferred.t t
       | Called_shutdown_function : worker M.t Deferred.t t
 
-    let to_init_worker_state_rpc_query_arg (type a) (t : a t) =
-      Staged.stage (fun ~heartbeater_master ~connection_timeout ->
+    let to_init_worker_state_rpc_query_arg (type a) (t : a t) ~connection_timeout =
+      Staged.stage (fun ~heartbeater_master ->
         match t with
         | Heartbeater_connection_timeout ->
           Init_worker_state_rpc.Worker_shutdown_on.Heartbeater_connection_timeout
@@ -1393,6 +1441,7 @@ module Make (S : Worker_spec) = struct
     -> ?name:string
     -> ?env:(string * string) list
     -> ?connection_timeout:Time_float.Span.t
+    -> ?spawn_timeout:Time_float.Span.t
     -> ?cd:string
     -> on_failure:(Error.t -> unit)
     -> 'a
@@ -1434,7 +1483,15 @@ module Make (S : Worker_spec) = struct
          Option.map (Unix.getenv var) ~f:(fun value -> var, value)))
   ;;
 
-  let spawn_process ~how ~env ~cd ~name ~connection_timeout ~daemonize_args =
+  let spawn_process
+    ~how
+    ~env
+    ~cd
+    ~name
+    ~timeout
+    ~daemonize_args
+    ~configured_connection_timeout
+    =
     let how = Option.value how ~default:How_to_run.local in
     let env =
       (* [force ocaml_env_from_parent] must come before [Option.value env ~default:[]]
@@ -1445,9 +1502,6 @@ module Make (S : Worker_spec) = struct
       |> Map.to_alist
     in
     let cd = Option.value cd ~default:"/" in
-    let connection_timeout =
-      Option.value connection_timeout ~default:connection_timeout_default
-    in
     (match Set_once.get global_state with
      | None ->
        let error =
@@ -1470,7 +1524,7 @@ module Make (S : Worker_spec) = struct
       ; backend_settings = global_state.backend_settings
       ; cd
       ; daemonize_args
-      ; connection_timeout
+      ; connection_timeout = configured_connection_timeout
       ; worker_command_args = global_state.worker_command_args
       }
       |> Worker_config.sexp_of_t
@@ -1486,7 +1540,7 @@ module Make (S : Worker_spec) = struct
         if pass_name then args @ Option.to_list name else args
     in
     Hashtbl.add_exn global_state.pending ~key:id ~data:pending_ivar;
-    match%map run_executable how ~env ~worker_command_args ~input with
+    match%map run_executable how ~env ~worker_command_args ~input ~timeout with
     | Error _ as err ->
       Hashtbl.remove global_state.pending id;
       err
@@ -1519,19 +1573,16 @@ module Make (S : Worker_spec) = struct
 
   let wait_for_connection_and_initialize
     ~name
-    ~connection_timeout
+    ~timeout
     ~on_failure
     ~id
     ~worker_shutdown_on
     init_arg
     =
-    let connection_timeout =
-      Option.value connection_timeout ~default:connection_timeout_default
-    in
     let global_state = get_master_state_exn () in
     let pending_ivar = Hashtbl.find_exn global_state.pending id in
     (* Ensure that we got a register from the worker *)
-    match%bind Clock.with_timeout connection_timeout (Ivar.read pending_ivar) with
+    match%bind Timeout.with_timeout timeout (Ivar.read pending_ivar) with
     | `Timeout ->
       Hashtbl.remove global_state.pending id;
       Deferred.Or_error.error_string "Timed out getting connection from process"
@@ -1559,9 +1610,7 @@ module Make (S : Worker_spec) = struct
                 ~rpc_settings:global_state.app_rpc_settings
                 ~backend_settings:global_state.backend_settings
             in
-            let worker_shutdown_on =
-              Staged.unstage worker_shutdown_on ~heartbeater_master ~connection_timeout
-            in
+            let worker_shutdown_on = worker_shutdown_on ~heartbeater_master in
             Rpc.Rpc.dispatch
               Init_worker_state_rpc.rpc
               conn
@@ -1594,12 +1643,17 @@ module Make (S : Worker_spec) = struct
       return (Error (e, finalized))
   ;;
 
+  let default_spawn_timeout ~connection_timeout =
+    Time_float.Span.scale connection_timeout 2.
+  ;;
+
   let spawn_in_foreground_aux
     (type a)
     ?how
     ?name
     ?env
     ?connection_timeout
+    ?spawn_timeout
     ?cd
     ~on_failure
     ~(shutdown_on : a Spawn_in_foreground_aux_shutdown_on.t)
@@ -1608,12 +1662,29 @@ module Make (S : Worker_spec) = struct
     =
     let open Deferred.Result.Let_syntax in
     let daemonize_args = `Don't_daemonize in
+    let connection_timeout =
+      Option.value connection_timeout ~default:connection_timeout_default
+    in
     let worker_shutdown_on =
-      Spawn_in_foreground_aux_shutdown_on.to_init_worker_state_rpc_query_arg shutdown_on
+      Spawn_in_foreground_aux_shutdown_on.to_init_worker_state_rpc_query_arg
+        shutdown_on
+        ~connection_timeout
+      |> unstage
+    in
+    let spawn_timeout =
+      Timeout.after
+        (Option.value spawn_timeout ~default:(default_spawn_timeout ~connection_timeout))
     in
     let with_spawned_worker ~f =
       let%bind id, process =
-        spawn_process ~how ~env ~cd ~name ~connection_timeout ~daemonize_args
+        spawn_process
+          ~how
+          ~env
+          ~cd
+          ~name
+          ~daemonize_args
+          ~timeout:spawn_timeout
+          ~configured_connection_timeout:connection_timeout
         |> Deferred.Result.map_error ~f:(fun e -> e, `Worker_process None)
       in
       finalize_on_error
@@ -1631,7 +1702,7 @@ module Make (S : Worker_spec) = struct
           let%bind worker =
             wait_for_connection_and_initialize
               ~name
-              ~connection_timeout
+              ~timeout:(Timeout.earlier spawn_timeout (Timeout.after connection_timeout))
               ~on_failure
               ~id
               ~worker_shutdown_on
@@ -1667,6 +1738,7 @@ module Make (S : Worker_spec) = struct
     ?name
     ?env
     ?connection_timeout
+    ?spawn_timeout
     ?cd
     ~on_failure
     ~(shutdown_on : a Spawn_in_foreground_shutdown_on.t)
@@ -1683,6 +1755,7 @@ module Make (S : Worker_spec) = struct
         ?name
         ?env
         ?connection_timeout
+        ?spawn_timeout
         ?cd
         ~on_failure
         ~shutdown_on
@@ -1713,6 +1786,7 @@ module Make (S : Worker_spec) = struct
     ?name
     ?env
     ?connection_timeout
+    ?spawn_timeout
     ?cd
     ~on_failure
     ~(shutdown_on : a Spawn_in_foreground_exn_shutdown_on.t)
@@ -1728,6 +1802,7 @@ module Make (S : Worker_spec) = struct
           ?name
           ?env
           ?connection_timeout
+          ?spawn_timeout
           ?cd
           ~on_failure
           ~shutdown_on:Connection_closed
@@ -1740,6 +1815,7 @@ module Make (S : Worker_spec) = struct
         ?name
         ?env
         ?connection_timeout
+        ?spawn_timeout
         ?cd
         ~on_failure
         ~shutdown_on:Heartbeater_connection_timeout
@@ -1751,6 +1827,7 @@ module Make (S : Worker_spec) = struct
         ?name
         ?env
         ?connection_timeout
+        ?spawn_timeout
         ?cd
         ~on_failure
         ~shutdown_on:Called_shutdown_function
@@ -1758,23 +1835,25 @@ module Make (S : Worker_spec) = struct
       >>| ok_exn
   ;;
 
-  let wait_for_daemonization_and_collect_stderr name process =
-    let%bind () = Writer.close (Process.stdin process) in
-    let%bind exit_or_signal = Process.wait process in
-    let%bind () = Reader.close (Process.stdout process) in
-    let worker_stderr = Reader.lines (Process.stderr process) in
-    let%map () =
-      Pipe.iter worker_stderr ~f:(fun line ->
-        let line' = sprintf "[WORKER %s STDERR]: %s\n" name line in
-        Writer.write (Lazy.force Writer.stderr) line' |> return)
-    in
-    match exit_or_signal with
-    | Ok () -> Ok ()
-    | Error _ ->
+  let wait_for_daemonization_and_collect_stderr name process ~timeout =
+    don't_wait_for
+      (let%bind () = Writer.close (Process.stdin process) in
+       let%bind () = Reader.close (Process.stdout process) in
+       let worker_stderr = Reader.lines (Process.stderr process) in
+       Pipe.iter worker_stderr ~f:(fun line ->
+         let line' = sprintf "[WORKER %s STDERR]: %s\n" name line in
+         Writer.write (Lazy.force Writer.stderr) line' |> return));
+    match%map Timeout.with_timeout timeout (Process.wait process) with
+    | `Timeout ->
+      don't_wait_for (kill_process process);
+      Or_error.error_string "Timed out waiting for worker to daemonize"
+    | `Result (Ok ()) -> Ok ()
+    | `Result (Error _ as exit_or_signal) ->
       let error =
-        Error.createf
-          "Worker process %s"
-          (Unix.Exit_or_signal.to_string_hum exit_or_signal)
+        Error.create_s
+          [%message
+            "Worker process exited with error"
+              ~_:(Unix.Exit_or_signal.to_string_hum exit_or_signal)]
       in
       Error (decorate_error_if_running_test error)
   ;;
@@ -1787,6 +1866,7 @@ module Make (S : Worker_spec) = struct
     ?name
     ?env
     ?connection_timeout
+    ?spawn_timeout
     ?cd
     ~on_failure
     ?umask
@@ -1799,22 +1879,42 @@ module Make (S : Worker_spec) = struct
     let daemonize_args =
       `Daemonize { Daemonize_args.umask; redirect_stderr; redirect_stdout }
     in
+    let connection_timeout =
+      Option.value connection_timeout ~default:connection_timeout_default
+    in
     let worker_shutdown_on =
-      Spawn_shutdown_on.to_init_worker_state_rpc_query_arg shutdown_on
+      Spawn_shutdown_on.to_init_worker_state_rpc_query_arg shutdown_on ~connection_timeout
+      |> unstage
+    in
+    let spawn_timeout =
+      Timeout.after
+        (Option.value spawn_timeout ~default:(default_spawn_timeout ~connection_timeout))
     in
     let spawn_worker () =
       match%bind
-        spawn_process ~how ~env ~cd ~name ~connection_timeout ~daemonize_args
+        spawn_process
+          ~how
+          ~env
+          ~cd
+          ~name
+          ~timeout:spawn_timeout
+          ~daemonize_args
+          ~configured_connection_timeout:connection_timeout
       with
       | Error e -> return (Error e)
       | Ok (id, process) ->
         let id_or_name = Option.value ~default:(Worker_id.to_string id) name in
-        (match%bind wait_for_daemonization_and_collect_stderr id_or_name process with
+        (match%bind
+           wait_for_daemonization_and_collect_stderr
+             id_or_name
+             process
+             ~timeout:spawn_timeout
+         with
          | Error e -> return (Error e)
          | Ok () ->
            wait_for_connection_and_initialize
              ~name
-             ~connection_timeout
+             ~timeout:(Timeout.earlier spawn_timeout (Timeout.after connection_timeout))
              ~on_failure
              ~id
              ~worker_shutdown_on
@@ -1843,6 +1943,7 @@ module Make (S : Worker_spec) = struct
     ?name
     ?env
     ?connection_timeout
+    ?spawn_timeout
     ?cd
     ~on_failure
     ?umask
@@ -1861,6 +1962,7 @@ module Make (S : Worker_spec) = struct
           ?name
           ?env
           ?connection_timeout
+          ?spawn_timeout
           ?cd
           ~on_failure
           ?umask
@@ -1876,6 +1978,7 @@ module Make (S : Worker_spec) = struct
         ?name
         ?env
         ?connection_timeout
+        ?spawn_timeout
         ?cd
         ~on_failure
         ?umask
@@ -1890,6 +1993,7 @@ module Make (S : Worker_spec) = struct
         ?name
         ?env
         ?connection_timeout
+        ?spawn_timeout
         ?cd
         ~on_failure
         ?umask
@@ -1906,6 +2010,7 @@ module Make (S : Worker_spec) = struct
       ?name
       ?env
       ?connection_timeout
+      ?spawn_timeout
       ?cd
       ~on_failure
       ?umask
@@ -1919,6 +2024,7 @@ module Make (S : Worker_spec) = struct
         ?name
         ?env
         ?connection_timeout
+        ?spawn_timeout
         ?cd
         ?umask
         ~redirect_stdout
@@ -1937,6 +2043,7 @@ module Make (S : Worker_spec) = struct
       ?name
       ?env
       ?connection_timeout
+      ?spawn_timeout
       ?cd
       ~on_failure
       ?umask
@@ -1950,6 +2057,7 @@ module Make (S : Worker_spec) = struct
         ?name
         ?env
         ?connection_timeout
+        ?spawn_timeout
         ?cd
         ~on_failure
         ?umask
