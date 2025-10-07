@@ -72,7 +72,7 @@ let whoami () =
   | None -> `Master
 ;;
 
-let clear_env () = Unix.unsetenv is_child_env_var
+let clear_env () = (Unix.unsetenv [@ocaml.alert "-unsafe_multidomain"]) is_child_env_var
 
 let validate_env env =
   match List.find env ~f:(fun (key, _) -> key = is_child_env_var) with

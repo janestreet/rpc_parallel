@@ -68,14 +68,22 @@ let run ?(assert_binary_hash = true) exec ~env ~args ~wrap =
         ~args:(exec.host_key_checking @ [ exec.host; "md5sum"; exec.path ])
         ()
       >>=? fun remote_md5 ->
-      let remote_md5, _ = String.lsplit2_exn ~on:' ' remote_md5 in
-      if md5 <> remote_md5
-      then
-        Deferred.Or_error.errorf
-          "The remote executable %s:%s does not match the local executable"
-          exec.host
-          exec.path
-      else Deferred.Or_error.ok_unit
+      (match String.lsplit2 ~on:' ' remote_md5 with
+       | None ->
+         Deferred.Or_error.errorf
+           "Failed to compute an md5 checksum for %s:%s. Perhaps ssh received a signal?. \
+            Output: %s"
+           exec.host
+           exec.path
+           remote_md5
+       | Some (remote_md5, _) ->
+         if md5 <> remote_md5
+         then
+           Deferred.Or_error.errorf
+             "The remote executable %s:%s does not match the local executable"
+             exec.host
+             exec.path
+         else Deferred.Or_error.ok_unit)
   in
   let { Prog_and_args.prog; args } = wrap { Prog_and_args.prog = exec.path; args } in
   Process.create

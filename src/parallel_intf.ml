@@ -174,8 +174,14 @@ module type Worker = sig
       [env] extends the environment of the spawned worker process.
 
       [connection_timeout] is used for various internal timeouts. This may need be to
-      increased if the init arg is really large (serialization and deserialization takes
-      more than [connection_timeout]).
+      increased if the init arg is really large (e.g. when serialization and
+      deserialization takes longer than [connection_timeout]).
+
+      [spawn_timeout] is used as the timeout for this specific call to spawn, which
+      includes both:
+      - starting the worker process
+      - establishing connectivity between the worker and the master (which is also subject
+        to [connection_timeout])
 
       [cd] changes the current working directory of a spawned worker process.
 
@@ -195,6 +201,7 @@ module type Worker = sig
     -> ?name:string
     -> ?env:(string * string) list
     -> ?connection_timeout:Time_float.Span.t (** default 10 sec *)
+    -> ?spawn_timeout:Time_float.Span.t (** default [connection_timeout * 2] *)
     -> ?cd:string (** default / *)
     -> on_failure:(Error.t -> unit)
     -> 'a

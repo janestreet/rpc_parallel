@@ -96,7 +96,7 @@ let special_var =
     (fun host () ->
       let envvar = "OCAMLRUNPARAM" in
       let envval = "foo=bar" in
-      Unix.putenv ~key:envvar ~data:envval;
+      (Unix.putenv [@ocaml.alert "-unsafe_multidomain"]) ~key:envvar ~data:envval;
       spawn ~host ()
       >>=? fun conn ->
       print_worker_env conn ~key:envvar

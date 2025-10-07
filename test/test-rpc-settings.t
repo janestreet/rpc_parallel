@@ -1,6 +1,6 @@
 # we get a timeout because sleeping for 5 seconds exceeds the heartbeat timeout
   $ APP_RPC_SETTINGS_FOR_TEST="((heartbeat_config((timeout 3s)(send_every 1s))))" run_one_line test/timeouts.exe timeout -sleep-for 5
-  ((rpc_error  (Connection_closed   ("No heartbeats received*"* (glob)
+  ((rpc_error  (Connection_closed   (*"No heartbeats received*"* (glob)
 
 # we don't get a timeout because we are overriding the rpc settings with the RPC_PARALLEL_RPC_SETTINGS env var
   $ APP_RPC_SETTINGS_FOR_TEST="((heartbeat_config((timeout 3s)(send_every 1s))))" RPC_PARALLEL_RPC_SETTINGS="((heartbeat_config((timeout 8s)(send_every 2s))))" run_one_line test/timeouts.exe timeout -sleep-for 5
