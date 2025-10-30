@@ -15,6 +15,7 @@ depends: [
   "core"
   "core_kernel"
   "core_unix"
+  "current_exe"
   "ppx_jane"
   "sexplib"
   "dune"        {>= "3.17.0"}

@@ -9,7 +9,7 @@ type t =
 
 let local ~env ~worker_command_args ~wrap =
   let { Prog_and_args.prog; args } =
-    wrap { Prog_and_args.prog = Utils.our_binary (); args = worker_command_args }
+    wrap { Prog_and_args.prog = Current_exe.get_path (); args = worker_command_args }
   in
   Process.create ~prog ~argv0:(Sys.get_argv ()).(0) ~args ~env:(`Extend env) ()
 ;;

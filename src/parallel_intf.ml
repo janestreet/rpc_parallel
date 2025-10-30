@@ -670,6 +670,7 @@ module type Parallel = sig
     -> ?complete_subcommands:
          (path:string list -> part:string -> string list list -> string list option)
     -> ?add_validate_parsing_flag:bool
+    -> ?argv:string list
     -> Backend_and_settings.t
        (** Use rpc_parallel_krb or rpc_parallel_unauthenticated to avoid having to
            manually construct a custom Backend *)

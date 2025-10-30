@@ -4,8 +4,8 @@
    krb_expert qtest raise_on_connection_state_init remove_running_executable
    run_exn shutdown_during_worker_init spawn_in_foreground_zombie stress_test
    timeouts wrap_test)
- (libraries async core_unix.command_unix rpc_parallel_krb_public core
-   core_unix procfs_async qtest_deprecated rpc_parallel sexplib)
+ (libraries async core_unix.command_unix core core_unix procfs_async
+   qtest_deprecated rpc_parallel rpc_parallel_krb_public sexplib)
  (preprocess
   (pps ppx_jane)))
 

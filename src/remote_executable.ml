@@ -33,7 +33,7 @@ let copy_to_host ~executable_dir ?strict_host_key_checking host =
   let path = String.strip (executable_dir ^/ new_basename) in
   Process.run
     ~prog:"scp"
-    ~args:(options @ [ Utils.our_binary (); sprintf "%s:%s" host path ])
+    ~args:(options @ [ Current_exe.get_path (); sprintf "%s:%s" host path ])
     ()
   >>|? Fn.const { host; path; host_key_checking = options }
 ;;
