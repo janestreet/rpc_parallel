@@ -2480,6 +2480,7 @@ let start_app
   ?when_parsing_succeeds
   ?complete_subcommands
   ?add_validate_parsing_flag
+  ?argv
   backend_and_settings
   command
   =
@@ -2506,5 +2507,6 @@ let start_app
       ?add_validate_parsing_flag
       ?when_parsing_succeeds
       ?complete_subcommands
+      ?argv
       command
 ;;

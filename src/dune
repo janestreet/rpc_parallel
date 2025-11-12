@@ -1,8 +1,8 @@
 (library
  (name rpc_parallel)
  (public_name rpc_parallel)
- (libraries async core_unix.command_unix core core_unix core_unix.daemon
-   core_unix.linux_ext core_kernel.pairing_heap sexplib core_kernel.uuid
-   core_unix.uuid)
+ (libraries async core_unix.command_unix core core_unix current_exe
+   core_unix.daemon core_unix.linux_ext core_kernel.pairing_heap sexplib
+   core_kernel.uuid core_unix.uuid)
  (preprocess
   (pps ppx_jane)))

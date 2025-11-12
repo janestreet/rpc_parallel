@@ -12,6 +12,7 @@ let start_app
   ?when_parsing_succeeds
   ?complete_subcommands
   ?add_validate_parsing_flag
+  ?argv
   command
   =
   Rpc_parallel.start_app
@@ -22,6 +23,7 @@ let start_app
     ?when_parsing_succeeds
     ?complete_subcommands
     ?add_validate_parsing_flag
+    ?argv
     backend_and_settings
     command
 ;;

@@ -13,6 +13,7 @@ val start_app
   -> ?complete_subcommands:
        (path:string list -> part:string -> string list list -> string list option)
   -> ?add_validate_parsing_flag:bool
+  -> ?argv:string list
   -> Command.t
   -> unit
 
