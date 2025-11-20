@@ -266,7 +266,7 @@ module Make_map_reduce_function (S : Map_reduce_function_spec) :
     the ['accum] values (in an unspecified order) into a single ['accum] value.
     Commutative map-reduce assumes that [combine] is associative and commutative. *)
 val map_reduce_commutative
-  :  ?how_to_spawn:Monad_sequence.how (** Default: [`Sequential] **)
+  :  ?how_to_spawn:Monad_sequence.how (** Default: [`Sequential] *)
   -> Config.t
   -> 'a Pipe.Reader.t
   -> m:

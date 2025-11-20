@@ -20,9 +20,8 @@ module Worker_type_id : Unique_id
    stored here to gracefully handle the cleanup needed when [close_server] is called when
    there are still open connections.
 
-   [worker_id] is the id of the worker server that this connection is to. This is
-   needed because there can be multiple instances of a given worker server in a single
-   process.
+   [worker_id] is the id of the worker server that this connection is to. This is needed
+   because there can be multiple instances of a given worker server in a single process.
 
    The [Rpc.Connection.t] is the underlying connection that has this state *)
 module Internal_connection_state : sig

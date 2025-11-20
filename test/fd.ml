@@ -51,10 +51,10 @@ let assert_fds here ~listen ~established =
      1. *)
   let accept_nonzero_exit = [ 1 ] in
   (* There is a bug somewhere (lsof? linux kernel?) that causes lsof to be
-     nondeterministic. I believe it has something to do with atomicity of /proc/net.
-     we retry multiple times. Once in a while lsof will drop a tcp connection
-     (and display "can't identify protocol"), then it will reappear on the next
-     invocation. I have never seen it fail twice in a row. *)
+     nondeterministic. I believe it has something to do with atomicity of /proc/net. we
+     retry multiple times. Once in a while lsof will drop a tcp connection (and display
+     "can't identify protocol"), then it will reappear on the next invocation. I have
+     never seen it fail twice in a row. *)
   let rec try_lsof retries =
     match%bind
       Process.run_lines
@@ -91,8 +91,8 @@ let test_unmanaged () =
       ()
   in
   (* The only connection we have is from
-     [Rpc_parallel.Heartbeater.connect_and_shutdown_on_disconnect_exn]. And now finally the
-     master rpc server has started. *)
+     [Rpc_parallel.Heartbeater.connect_and_shutdown_on_disconnect_exn]. And now finally
+     the master rpc server has started. *)
   let%bind () = assert_fds [%here] ~listen:1 ~established:1 in
   let%bind connection = Worker.Connection.client_exn worker () in
   (* Now we have another connection *)
@@ -115,8 +115,8 @@ let test_serve () =
      [Rpc_parallel.Heartbeater] only connects if [spawn] was called. *)
   let%bind () = assert_fds [%here] ~listen:1 ~established:0 in
   let%bind connection = Worker.Connection.client_exn worker () in
-  (* Just the single connection we just made, but double counted because both ends
-     are in this process *)
+  (* Just the single connection we just made, but double counted because both ends are in
+     this process *)
   let%bind () = assert_fds [%here] ~listen:1 ~established:2 in
   let%bind () =
     Worker.Connection.run_exn connection ~f:Rpc_parallel.Function.close_server ~arg:()

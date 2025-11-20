@@ -5,8 +5,8 @@ open Async
 module Worker_id = struct
   let create = Uuid_unix.create
 
-  (* If we do not use the stable sexp serialization, when running
-     inline tests, we will create UUIDs that fail tests *)
+  (* If we do not use the stable sexp serialization, when running inline tests, we will
+     create UUIDs that fail tests *)
   module T = Uuid.Stable.V1
 
   type t = T.t [@@deriving sexp, bin_io]
@@ -77,8 +77,8 @@ let validate_env env =
 ;;
 
 (* Don't run tests in the worker if we are running an expect test. A call to
-   [Rpc_parallel.For_testing.initialize] will initialize the worker and start the
-   Async scheduler. *)
+   [Rpc_parallel.For_testing.initialize] will initialize the worker and start the Async
+   scheduler. *)
 let force_drop_inline_test =
   if Core.am_running_test then [ "FORCE_DROP_INLINE_TEST", "" ] else []
 ;;

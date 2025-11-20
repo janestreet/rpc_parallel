@@ -28,8 +28,8 @@ end
 module Worker = Rpc_parallel.Make (Worker_impl)
 
 let with_rename f =
-  (* Force the lazy because `readlink /proc/PID/exe` changes when you rename
-     the executable  *)
+  (* Force the lazy because `readlink /proc/PID/exe` changes when you rename the
+     executable *)
   let%bind _worker =
     Worker.spawn_exn
       ~on_failure:Error.raise
@@ -49,11 +49,8 @@ let with_rename f =
   let%bind () = Unix.rename ~src:old_path ~dst:new_path in
   (* run f *)
   match%map
-    Monitor.protect
-      ~run:`Schedule (* consider [~run:`Now] instead; see: https://wiki/x/ByVWF *)
-      ~rest:`Log
-      (* consider [`Raise] instead; see: https://wiki/x/Ux4xF *) f
-      ~finally:(fun () -> Unix.rename ~src:new_path ~dst:old_path)
+    Monitor.protect ~run:`Schedule ~rest:`Log f ~finally:(fun () ->
+      Unix.rename ~src:new_path ~dst:old_path)
   with
   | Ok () -> printf "Ok.\n"
   | Error e -> Error.raise e

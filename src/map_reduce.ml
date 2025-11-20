@@ -655,8 +655,8 @@ let map_reduce (type param a accum) ?how_to_spawn config input_reader ~m ~(param
     | (`Right | `Right_nothing_left) as dir' ->
       (match Map.closest_key (!acc_map : _ H.Map.t) `Greater_than key with
        | Some (right_key, right_acc) when H.lbound right_key = H.ubound key ->
-         (* combine acc_{this_lbound, this_ubound} acc_{right_lbound, right_ubound}
-            -> acc_{this_lbound, right_ubound} *)
+         (* combine acc_[{this_lbound, this_ubound}] acc_[{right_lbound, right_ubound}] ->
+            acc_[{this_lbound, right_ubound}] *)
          acc_map
          := Map.remove (Map.remove (!acc_map : _ H.Map.t) key : _ H.Map.t) right_key;
          let%bind new_acc =
@@ -678,8 +678,8 @@ let map_reduce (type param a accum) ?how_to_spawn config input_reader ~m ~(param
       let%bind () =
         match Map.closest_key (!acc_map : _ H.Map.t) `Less_than key with
         | Some (left_key, left_acc) when H.ubound left_key = H.lbound key ->
-          (* combine acc_{left_lbound, left_ubound} (map a_index)
-             -> acc_{left_lbound, index + 1} *)
+          (* combine acc_[{left_lbound, left_ubound}] (map a_index) ->
+             acc_[{left_lbound, index + 1}] *)
           acc_map := Map.remove (!acc_map : _ H.Map.t) left_key;
           let%bind acc =
             Map_reduce_function.Worker.run_exn

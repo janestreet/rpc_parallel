@@ -1,9 +1,9 @@
 open Core
 open Async
 
-(* A bare bones use case of the [Rpc_parallel] library. This demonstrates
-   how to define a simple worker type that implements some functions. The master then
-   spawns a worker of this type and calls a function to run on this worker *)
+(* A bare bones use case of the [Rpc_parallel] library. This demonstrates how to define a
+   simple worker type that implements some functions. The master then spawns a worker of
+   this type and calls a function to run on this worker *)
 
 module T = struct
   (* A [Sum_worker.worker] implements a single function [sum : int -> int]. Because this
@@ -48,8 +48,8 @@ include Rpc_parallel.Make (T)
 
 let main max =
   let%bind conn =
-    (* This is the main function called in the master. Spawn a local worker and run
-       the [sum] function on this worker *)
+    (* This is the main function called in the master. Spawn a local worker and run the
+       [sum] function on this worker *)
     spawn
       ~on_failure:Error.raise
       ~shutdown_on:Connection_closed

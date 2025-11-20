@@ -33,10 +33,10 @@ module Sum_worker = struct
         (* We make sure to write to the direct stream writer in a [don't_wait_for] because
            according to the docs at lib/async_rpc_kernel/src/rpc.mli:
 
-           Though the implementation function is given a writer immediately, the result of the
-           client's call to [dispatch] will not be determined until after the implementation
-           function returns. Elements written before the function returns will be queued up to
-           be written after the function returns. *)
+           Though the implementation function is given a writer immediately, the result of
+           the client's call to [dispatch] will not be determined until after the
+           implementation function returns. Elements written before the function returns
+           will be queued up to be written after the function returns. *)
         don't_wait_for
           (let%bind (_ : int) =
              Deferred.List.fold

@@ -1,10 +1,10 @@
 open Core
 open Async
 
-(* This example involves a [Stream_worker.t] that generates a stream of elements.
-   Each element of the stream is sent to a random [Worker.t] that has registered itself
-   with that stream. Each [Worker.t] processes the elements (in this example by sending it
-   back to the main process for printing) *)
+(* This example involves a [Stream_worker.t] that generates a stream of elements. Each
+   element of the stream is sent to a random [Worker.t] that has registered itself with
+   that stream. Each [Worker.t] processes the elements (in this example by sending it back
+   to the main process for printing) *)
 
 module Stream_worker = struct
   module T = struct
@@ -164,7 +164,7 @@ let command =
         num_elements
         ~on_failure:(handle_error "stream worker")
       >>=? fun stream_worker ->
-      (* Spawn workers and tell them about the stream worker  *)
+      (* Spawn workers and tell them about the stream worker *)
       Deferred.Or_error.List.init ~how:`Sequential num_workers ~f:(fun i ->
         Worker.spawn
           ~shutdown_on:Connection_closed
