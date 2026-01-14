@@ -79,8 +79,8 @@ let mismatching_executable_test worker dir =
   >>=? fun executable ->
   let path = Rpc_parallel.Remote_executable.path executable in
   (* When building with shared-cache, build artifacts in general and executables in
-     particular are read-only. [cp] and [scp] preserve such permissions, which would
-     cause the ">>" below to fail if we didn't chmod. *)
+     particular are read-only. [cp] and [scp] preserve such permissions, which would cause
+     the ">>" below to fail if we didn't chmod. *)
   Process.run
     ~prog:"ssh"
     ~args:

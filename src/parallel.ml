@@ -20,10 +20,9 @@ module Worker_id = Utils.Worker_id
 
    The handshake protocol for spawning a worker:
 
-   (Master) - SSH and start running executable
-   (Worker) - Start server, send [Register_rpc] with its host and port
-   (Master) - Connect to worker, send [Init_worker_state_rpc]
-   (Worker) - Do initialization (ensure we have daemonized first)
+   (Master) - SSH and start running executable (Worker) - Start server, send
+   [Register_rpc] with its host and port (Master) - Connect to worker, send
+   [Init_worker_state_rpc] (Worker) - Do initialization (ensure we have daemonized first)
    (Master) - Finally, return a [Worker.t] to the caller
 *)
 
@@ -176,8 +175,8 @@ module Function = struct
              Set_once.get_exn internal_conn_state
            in
            (* We want to raise any exceptions from [f arg] to the current monitor (handled
-              by Rpc) so the caller can see it. Additional exceptions will be handled by the
-              specified monitor *)
+              by Rpc) so the caller can see it. Additional exceptions will be handled by
+              the specified monitor *)
            Utils.try_within_exn ~monitor (fun () -> f ~worker_state ~conn_state arg))
     ;;
 
@@ -283,7 +282,7 @@ module Function = struct
           in
           don't_wait_for
             (* Even though [f] returns [unit], we want to use [try_within_exn] so if it
-                starts any background jobs we won't miss the exceptions *)
+               starts any background jobs we won't miss the exceptions *)
             (Utils.try_within_exn ~monitor (fun () ->
                f ~worker_state ~conn_state arg |> return)))
         ~on_exception:Close_connection
@@ -462,8 +461,19 @@ module Function = struct
     T (Fn.id, One_way proto, Fn.id), impl
   ;;
 
+  let handle_pipe_close_error on_pipe_rpc_close_error metadata =
+    Option.iter on_pipe_rpc_close_error ~f:(fun callback ->
+      don't_wait_for
+        (match%bind Rpc.Pipe_rpc.close_reason metadata with
+         | Closed_locally | Closed_remotely -> return ()
+         | Error err ->
+           callback err;
+           return ()))
+  ;;
+
   let run_internal
     (type worker query response)
+    ?on_pipe_rpc_close_error
     (t_internal : (worker, query, response) t_internal)
     connection
     ~(arg : query)
@@ -473,10 +483,16 @@ module Function = struct
     | Plain proto -> Rpc.Rpc.dispatch proto connection arg
     | Piped (proto, Type_equal.T) ->
       let%map result = Rpc.Pipe_rpc.dispatch proto connection arg in
-      Or_error.join result |> Or_error.map ~f:(fun (reader, _) -> reader)
+      Or_error.join result
+      |> Or_error.map ~f:(fun (reader, metadata) ->
+        handle_pipe_close_error on_pipe_rpc_close_error metadata;
+        reader)
     | State (proto, Type_equal.T) ->
       let%map result = Rpc.State_rpc.dispatch proto connection arg in
-      Or_error.join result |> Or_error.map ~f:(fun (state, reader, _) -> state, reader)
+      Or_error.join result
+      |> Or_error.map ~f:(fun (state, reader, metadata) ->
+        handle_pipe_close_error on_pipe_rpc_close_error metadata;
+        state, reader)
     | One_way proto -> Rpc.One_way.dispatch proto connection arg |> return
     | Reverse_piped ({ worker_rpc; master_rpc = _; master_in_progress }, Type_equal.T) ->
       let query, updates = arg in
@@ -491,8 +507,9 @@ module Function = struct
       Or_error.join result |> Or_error.map ~f:(fun id -> Id_directly_piped.T (proto, id))
   ;;
 
-  let run (T (query_f, t_internal, response_f)) connection ~arg =
-    run_internal t_internal connection ~arg:(query_f arg) >>| Or_error.map ~f:response_f
+  let run ?on_pipe_rpc_close_error (T (query_f, t_internal, response_f)) connection ~arg =
+    run_internal ?on_pipe_rpc_close_error t_internal connection ~arg:(query_f arg)
+    >>| Or_error.map ~f:response_f
   ;;
 
   let async_log = T (Fn.id, Piped (Async_log_rpc.rpc, Type_equal.T), Fn.id)
@@ -852,7 +869,7 @@ end = struct
     in
     (wait_for_disconnect
      >>> fun (`Disconnected reason) ->
-     [%log.global.error
+     [%log.error
        "Rpc_parallel: Heartbeater with master lost connection... Shutting down."
          (reason : Info.t)];
      Shutdown.shutdown 254);
@@ -872,7 +889,7 @@ type master_state =
       (* Arguments used when spawning a new worker. *)
   ; worker_command_args : Worker_command_args.t
       (* Callbacks for spawned worker exceptions along with the monitor that was current
-     when [spawn] was called *)
+         when [spawn] was called *)
   ; on_failures : ((Error.t -> unit) * Monitor.t) Worker_id.Table.t
   }
 
@@ -880,7 +897,7 @@ type master_state =
 type worker_state =
   { (* Currently running worker servers in this process *)
     my_worker_servers : Server_with_rpc_settings.t Worker_id.Table.t
-      (* To facilitate process creation cleanup.*)
+      (* To facilitate process creation cleanup. *)
   ; initialized : [ `Init_started of [ `Initialized ] Or_error.t Deferred.t ] Set_once.t
   }
 
@@ -1031,9 +1048,9 @@ module Make (S : Worker_spec) = struct
   let rpc_settings t = t.rpc_settings
 
   type worker_state =
-    { (* A unique identifier for each application of the [Make] functor.
-         Because we are running the same executable and this is supposed to run at the
-         top level, the master and the workers agree on these ids *)
+    { (* A unique identifier for each application of the [Make] functor. Because we are
+         running the same executable and this is supposed to run at the top level, the
+         master and the workers agree on these ids *)
       type_ : Worker_type_id.t
         (* Persistent states associated with instances of this worker server *)
     ; states : S.Worker_state.t Worker_id.Table.t
@@ -1057,9 +1074,8 @@ module Make (S : Worker_spec) = struct
   ;;
 
   (* Schedule all worker implementations in [Monitor.main] so no exceptions are lost.
-     Async log automatically throws its exceptions to [Monitor.main] so we can't make
-     our own local monitor. We detach [Monitor.main] and send exceptions back to the
-     master. *)
+     Async log automatically throws its exceptions to [Monitor.main] so we can't make our
+     own local monitor. We detach [Monitor.main] and send exceptions back to the master. *)
   let monitor = Monitor.main
 
   (* Rpcs implemented by this worker type. The implementations for some must be below
@@ -1408,8 +1424,14 @@ module Make (S : Worker_spec) = struct
       Result.map_error result ~f:(fun exn -> Error.of_exn exn)
     ;;
 
-    let run t ~f ~arg = Function.run f t.connection ~arg
-    let run_exn t ~f ~arg = run t ~f ~arg >>| Or_error.ok_exn
+    let run ?on_pipe_rpc_close_error t ~f ~arg =
+      Function.run ?on_pipe_rpc_close_error f t.connection ~arg
+    ;;
+
+    let run_exn ?on_pipe_rpc_close_error t ~f ~arg =
+      run ?on_pipe_rpc_close_error t ~f ~arg >>| Or_error.ok_exn
+    ;;
+
     let abort t ~id = Function.Direct_pipe.Id.abort id t.connection
   end
 
@@ -1450,11 +1472,12 @@ module Make (S : Worker_spec) = struct
 
      [spawn] returns an error if:
      (1) the master hasn't gotten a register rpc from the spawned worker within
-     [connection_timeout] of sending the register rpc.
+         [connection_timeout] of sending the register rpc.
      (2) a worker hasn't gotten its [init_arg] from the master within [connection_timeout]
-     of sending the register rpc
+         of sending the register rpc
 
      Additionally, if [~shutdown_on:Connection_closed] was used:
+
      (3) a worker will shut itself down if it doesn't get a connection from the master
      after spawn succeeded. *)
   let connection_timeout_default = sec 10.
@@ -1494,8 +1517,8 @@ module Make (S : Worker_spec) = struct
     =
     let how = Option.value how ~default:How_to_run.local in
     let env =
-      (* [force ocaml_env_from_parent] must come before [Option.value env ~default:[]]
-         so any user-supplied [env] can override [ocaml_env_from_parent]. *)
+      (* [force ocaml_env_from_parent] must come before [Option.value env ~default:[]] so
+         any user-supplied [env] can override [ocaml_env_from_parent]. *)
       force ocaml_env_from_parent @ Option.value env ~default:[]
       |> List.fold ~init:String.Map.empty ~f:(fun acc (key, data) ->
         Map.set acc ~key ~data)
@@ -2106,20 +2129,19 @@ module Make (S : Worker_spec) = struct
               | `Keep_going -> ()
               | `Shutdown ->
                 (* The connection that is used to dispatch this rpc is a short-lived
-                    connection that is only used to dispatch this rpc. Under normal
-                    operation, this connection will be closed by the master after
-                    receiving an RPC response. If the connection closes before we finished
-                    running [init_worker_state] then we can force ourselves to shutdown
-                    early. This is purely a "shutdown early" bit of code. If we remove
-                    this code, the worker will still shutdown eventually, but it will be
-                    after worker initialization and after [connection_timeout] when the
-                    worker realizes that it hasn't received an initial connection from the
-                    master. *)
+                   connection that is only used to dispatch this rpc. Under normal
+                   operation, this connection will be closed by the master after receiving
+                   an RPC response. If the connection closes before we finished running
+                   [init_worker_state] then we can force ourselves to shutdown early. This
+                   is purely a "shutdown early" bit of code. If we remove this code, the
+                   worker will still shutdown eventually, but it will be after worker
+                   initialization and after [connection_timeout] when the worker realizes
+                   that it hasn't received an initial connection from the master. *)
                 Rpc.Connection.close_finished rpc_connection
                 >>> fun () ->
                 if not (Deferred.is_determined init_finished)
                 then (
-                  [%log.global.error
+                  [%log.error
                     "Rpc_parallel: worker connection closed during init... Shutting down"];
                   Shutdown.shutdown 254));
              init_finished)
@@ -2139,7 +2161,7 @@ module Make (S : Worker_spec) = struct
               >>> fun () ->
               if not worker_state.client_has_connected
               then (
-                [%log.global.error_string
+                [%log.error_string
                   "Rpc_parallel: worker timed out waiting for client connection... \
                    Shutting down"];
                 Shutdown.shutdown 254));
@@ -2159,7 +2181,7 @@ module Make (S : Worker_spec) = struct
          then (
            Rpc.Connection.close_reason ~on_close:`finished connection
            >>> fun reason ->
-           [%log.global.info
+           [%log.info
              "Rpc_parallel: initial client connection closed... Shutting down."
                (reason : Info.t)];
            Shutdown.shutdown 0);
@@ -2176,7 +2198,7 @@ module Make (S : Worker_spec) = struct
     Rpc.One_way.implement
       Shutdown_rpc.rpc
       (fun _conn_state () ->
-        [%log.global.info_string "Rpc_parallel: Got shutdown rpc... Shutting down."];
+        [%log.info_string "Rpc_parallel: Got shutdown rpc... Shutting down."];
         Shutdown.shutdown 0)
       ~on_exception:Close_connection
   ;;
@@ -2254,8 +2276,8 @@ module Make (S : Worker_spec) = struct
   ;;
 end
 
-(* Start an Rpc server based on the implementations defined in the [Make] functor
-   for this worker type. Return a [Host_and_port.t] describing the server *)
+(* Start an Rpc server based on the implementations defined in the [Make] functor for this
+   worker type. Return a [Host_and_port.t] describing the server *)
 let worker_main backend_settings ~worker_env =
   let { Worker_env.config; maybe_release_daemon } = worker_env in
   let rpc_settings = Worker_config.app_rpc_settings config in
@@ -2292,7 +2314,7 @@ let worker_main backend_settings ~worker_env =
              conn
              { id; name = config.name; error = Error.of_exn exn })
       >>> fun _ ->
-      [%log.global.error_format !"Rpc_parallel: %{Exn} ... Shutting down." exn];
+      [%log.error_format !"Rpc_parallel: %{Exn} ... Shutting down." exn];
       Shutdown.shutdown 254)
   in
   (* Ensure we do not leak processes. Make sure we have initialized successfully, meaning
@@ -2302,7 +2324,7 @@ let worker_main backend_settings ~worker_env =
     >>> fun () ->
     match Set_once.get (get_worker_state_exn ()).initialized with
     | None ->
-      [%log.global.error_string
+      [%log.error_string
         "Rpc_parallel: Timeout getting Init_worker_state rpc from master... Shutting \
          down."];
       Shutdown.shutdown 254
@@ -2334,8 +2356,8 @@ let worker_main backend_settings ~worker_env =
     >>> fun () ->
     setup_exception_handling ();
     setup_cleanup_on_timeout ();
-    (* Daemonize as late as possible but still before running any user code. This lets
-       us read any setup errors from stderr *)
+    (* Daemonize as late as possible but still before running any user code. This lets us
+       read any setup errors from stderr *)
     maybe_release_daemon ()
 ;;
 
@@ -2370,10 +2392,10 @@ module Expert = struct
           Core_unix.chdir config.cd;
           Fn.id
         | `Daemonize { Daemonize_args.umask; redirect_stderr; redirect_stdout } ->
-          (* The worker is started via SSH. We want to go to the background so we can close
-             the SSH connection, but not until we've connected back to the master via
-             Rpc. This allows us to report any initialization errors to the master via the SSH
-             connection. *)
+          (* The worker is started via SSH. We want to go to the background so we can
+             close the SSH connection, but not until we've connected back to the master
+             via Rpc. This allows us to report any initialization errors to the master via
+             the SSH connection. *)
           let redirect_stdout = Utils.to_daemon_fd_redirection redirect_stdout in
           let redirect_stderr = Utils.to_daemon_fd_redirection redirect_stderr in
           Staged.unstage

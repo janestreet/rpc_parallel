@@ -4,9 +4,8 @@ module Rpc_settings = Rpc_parallel.Rpc_settings
 
 module Unresponsive_worker = struct
   module T = struct
-    (* An [Unresponsive_worker.t] implements a single function [wait : int ->
-       unit]. It waits for the specified number of seconds (blocking Async) and then
-       returns (). *)
+    (* An [Unresponsive_worker.t] implements a single function [wait : int -> unit]. It
+       waits for the specified number of seconds (blocking Async) and then returns (). *)
     type 'worker functions = { wait : ('worker, int, unit) Rpc_parallel.Function.t }
 
     module Worker_state = struct

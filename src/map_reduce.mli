@@ -46,9 +46,23 @@ end
     [Make_map_combine_function] or [Make_map_combine_function_with_init] functors. *)
 
 module type Map_function = sig
-  module Param : Binable
-  module Input : Binable
-  module Output : Binable
+  module Param : sig
+    type t
+
+    include Binable with type t := t
+  end
+
+  module Input : sig
+    type t
+
+    include Binable with type t := t
+  end
+
+  module Output : sig
+    type t
+
+    include Binable with type t := t
+  end
 
   module Worker :
     Worker
@@ -60,9 +74,23 @@ end
 module type Map_function_with_init_spec = sig
   type state_type
 
-  module Param : Binable
-  module Input : Binable
-  module Output : Binable
+  module Param : sig
+    type t
+
+    include Binable with type t := t
+  end
+
+  module Input : sig
+    type t
+
+    include Binable with type t := t
+  end
+
+  module Output : sig
+    type t
+
+    include Binable with type t := t
+  end
 
   val init : Param.t -> worker_index:int -> state_type Deferred.t
   val map : state_type -> Input.t -> Output.t Deferred.t
@@ -75,8 +103,17 @@ module Make_map_function_with_init (S : Map_function_with_init_spec) :
    and type Output.t = S.Output.t
 
 module type Map_function_spec = sig
-  module Input : Binable
-  module Output : Binable
+  module Input : sig
+    type t
+
+    include Binable with type t := t
+  end
+
+  module Output : sig
+    type t
+
+    include Binable with type t := t
+  end
 
   val map : Input.t -> Output.t Deferred.t
 end
@@ -139,9 +176,23 @@ val find_map
     functions *)
 
 module type Map_reduce_function = sig
-  module Param : Binable
-  module Accum : Binable
-  module Input : Binable
+  module Param : sig
+    type t
+
+    include Binable with type t := t
+  end
+
+  module Accum : sig
+    type t
+
+    include Binable with type t := t
+  end
+
+  module Input : sig
+    type t
+
+    include Binable with type t := t
+  end
 
   module Worker :
     Worker
@@ -157,9 +208,23 @@ end
 module type Map_reduce_function_with_init_spec = sig
   type state_type
 
-  module Param : Binable
-  module Accum : Binable
-  module Input : Binable
+  module Param : sig
+    type t
+
+    include Binable with type t := t
+  end
+
+  module Accum : sig
+    type t
+
+    include Binable with type t := t
+  end
+
+  module Input : sig
+    type t
+
+    include Binable with type t := t
+  end
 
   val init : Param.t -> worker_index:int -> state_type Deferred.t
   val map : state_type -> Input.t -> Accum.t Deferred.t
@@ -173,8 +238,17 @@ module Make_map_reduce_function_with_init (S : Map_reduce_function_with_init_spe
    and type Input.t = S.Input.t
 
 module type Map_reduce_function_spec = sig
-  module Accum : Binable
-  module Input : Binable
+  module Accum : sig
+    type t
+
+    include Binable with type t := t
+  end
+
+  module Input : sig
+    type t
+
+    include Binable with type t := t
+  end
 
   val map : Input.t -> Accum.t Deferred.t
   val combine : Accum.t -> Accum.t -> Accum.t Deferred.t
@@ -192,7 +266,7 @@ module Make_map_reduce_function (S : Map_reduce_function_spec) :
     the ['accum] values (in an unspecified order) into a single ['accum] value.
     Commutative map-reduce assumes that [combine] is associative and commutative. *)
 val map_reduce_commutative
-  :  ?how_to_spawn:Monad_sequence.how (** Default: [`Sequential] **)
+  :  ?how_to_spawn:Monad_sequence.how (** Default: [`Sequential] *)
   -> Config.t
   -> 'a Pipe.Reader.t
   -> m:

@@ -46,13 +46,15 @@ module type Worker = sig
     -> t Deferred.t
 
   val run
-    :  t
+    :  ?on_pipe_rpc_close_error:(Error.t -> unit)
+    -> t
     -> f:(unmanaged_t, 'query, 'response) Parallel.Function.t
     -> arg:'query
     -> 'response Or_error.t Deferred.t
 
   val run_exn
-    :  t
+    :  ?on_pipe_rpc_close_error:(Error.t -> unit)
+    -> t
     -> f:(unmanaged_t, 'query, 'response) Parallel.Function.t
     -> arg:'query
     -> 'response Deferred.t
@@ -192,9 +194,12 @@ module Make (S : Parallel.Worker_spec) = struct
 
   let kill_exn t = kill t >>| Or_error.ok_exn
 
-  let run t ~f ~arg =
-    get_connection t >>=? fun conn -> Unmanaged.Connection.run conn ~f ~arg
+  let run ?on_pipe_rpc_close_error t ~f ~arg =
+    get_connection t
+    >>=? fun conn -> Unmanaged.Connection.run ?on_pipe_rpc_close_error conn ~f ~arg
   ;;
 
-  let run_exn t ~f ~arg = run t ~f ~arg >>| Or_error.ok_exn
+  let run_exn ?on_pipe_rpc_close_error t ~f ~arg =
+    run ?on_pipe_rpc_close_error t ~f ~arg >>| Or_error.ok_exn
+  ;;
 end

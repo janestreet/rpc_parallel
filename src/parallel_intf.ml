@@ -91,13 +91,15 @@ module type Worker = sig
 
     (** Run functions implemented by this worker *)
     val run
-      :  t
+      :  ?on_pipe_rpc_close_error:(Error.t -> unit)
+      -> t
       -> f:(worker, 'query, 'response) _function
       -> arg:'query
       -> 'response Or_error.t Deferred.t
 
     val run_exn
-      :  t
+      :  ?on_pipe_rpc_close_error:(Error.t -> unit)
+      -> t
       -> f:(worker, 'query, 'response) _function
       -> arg:'query
       -> 'response Deferred.t

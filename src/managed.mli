@@ -62,13 +62,15 @@ module type Worker = sig
       but if there is currently a connection that has gone stale, they will fail with an
       error. Trying again will attempt a reconnection. *)
   val run
-    :  t
+    :  ?on_pipe_rpc_close_error:(Error.t -> unit)
+    -> t
     -> f:(unmanaged_t, 'query, 'response) Parallel.Function.t
     -> arg:'query
     -> 'response Or_error.t Deferred.t
 
   val run_exn
-    :  t
+    :  ?on_pipe_rpc_close_error:(Error.t -> unit)
+    -> t
     -> f:(unmanaged_t, 'query, 'response) Parallel.Function.t
     -> arg:'query
     -> 'response Deferred.t
