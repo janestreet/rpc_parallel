@@ -20,10 +20,9 @@ module Worker_id = Utils.Worker_id
 
    The handshake protocol for spawning a worker:
 
-   (Master) - SSH and start running executable
-   (Worker) - Start server, send [Register_rpc] with its host and port
-   (Master) - Connect to worker, send [Init_worker_state_rpc]
-   (Worker) - Do initialization (ensure we have daemonized first)
+   (Master) - SSH and start running executable (Worker) - Start server, send
+   [Register_rpc] with its host and port (Master) - Connect to worker, send
+   [Init_worker_state_rpc] (Worker) - Do initialization (ensure we have daemonized first)
    (Master) - Finally, return a [Worker.t] to the caller
 *)
 
@@ -462,8 +461,19 @@ module Function = struct
     T (Fn.id, One_way proto, Fn.id), impl
   ;;
 
+  let handle_pipe_close_error on_pipe_rpc_close_error metadata =
+    Option.iter on_pipe_rpc_close_error ~f:(fun callback ->
+      don't_wait_for
+        (match%bind Rpc.Pipe_rpc.close_reason metadata with
+         | Closed_locally | Closed_remotely -> return ()
+         | Error err ->
+           callback err;
+           return ()))
+  ;;
+
   let run_internal
     (type worker query response)
+    ?on_pipe_rpc_close_error
     (t_internal : (worker, query, response) t_internal)
     connection
     ~(arg : query)
@@ -473,10 +483,16 @@ module Function = struct
     | Plain proto -> Rpc.Rpc.dispatch proto connection arg
     | Piped (proto, Type_equal.T) ->
       let%map result = Rpc.Pipe_rpc.dispatch proto connection arg in
-      Or_error.join result |> Or_error.map ~f:(fun (reader, _) -> reader)
+      Or_error.join result
+      |> Or_error.map ~f:(fun (reader, metadata) ->
+        handle_pipe_close_error on_pipe_rpc_close_error metadata;
+        reader)
     | State (proto, Type_equal.T) ->
       let%map result = Rpc.State_rpc.dispatch proto connection arg in
-      Or_error.join result |> Or_error.map ~f:(fun (state, reader, _) -> state, reader)
+      Or_error.join result
+      |> Or_error.map ~f:(fun (state, reader, metadata) ->
+        handle_pipe_close_error on_pipe_rpc_close_error metadata;
+        state, reader)
     | One_way proto -> Rpc.One_way.dispatch proto connection arg |> return
     | Reverse_piped ({ worker_rpc; master_rpc = _; master_in_progress }, Type_equal.T) ->
       let query, updates = arg in
@@ -491,8 +507,9 @@ module Function = struct
       Or_error.join result |> Or_error.map ~f:(fun id -> Id_directly_piped.T (proto, id))
   ;;
 
-  let run (T (query_f, t_internal, response_f)) connection ~arg =
-    run_internal t_internal connection ~arg:(query_f arg) >>| Or_error.map ~f:response_f
+  let run ?on_pipe_rpc_close_error (T (query_f, t_internal, response_f)) connection ~arg =
+    run_internal ?on_pipe_rpc_close_error t_internal connection ~arg:(query_f arg)
+    >>| Or_error.map ~f:response_f
   ;;
 
   let async_log = T (Fn.id, Piped (Async_log_rpc.rpc, Type_equal.T), Fn.id)
@@ -852,7 +869,7 @@ end = struct
     in
     (wait_for_disconnect
      >>> fun (`Disconnected reason) ->
-     [%log.global.error
+     [%log.error
        "Rpc_parallel: Heartbeater with master lost connection... Shutting down."
          (reason : Info.t)];
      Shutdown.shutdown 254);
@@ -1407,8 +1424,14 @@ module Make (S : Worker_spec) = struct
       Result.map_error result ~f:(fun exn -> Error.of_exn exn)
     ;;
 
-    let run t ~f ~arg = Function.run f t.connection ~arg
-    let run_exn t ~f ~arg = run t ~f ~arg >>| Or_error.ok_exn
+    let run ?on_pipe_rpc_close_error t ~f ~arg =
+      Function.run ?on_pipe_rpc_close_error f t.connection ~arg
+    ;;
+
+    let run_exn ?on_pipe_rpc_close_error t ~f ~arg =
+      run ?on_pipe_rpc_close_error t ~f ~arg >>| Or_error.ok_exn
+    ;;
+
     let abort t ~id = Function.Direct_pipe.Id.abort id t.connection
   end
 
@@ -2118,7 +2141,7 @@ module Make (S : Worker_spec) = struct
                 >>> fun () ->
                 if not (Deferred.is_determined init_finished)
                 then (
-                  [%log.global.error
+                  [%log.error
                     "Rpc_parallel: worker connection closed during init... Shutting down"];
                   Shutdown.shutdown 254));
              init_finished)
@@ -2138,7 +2161,7 @@ module Make (S : Worker_spec) = struct
               >>> fun () ->
               if not worker_state.client_has_connected
               then (
-                [%log.global.error_string
+                [%log.error_string
                   "Rpc_parallel: worker timed out waiting for client connection... \
                    Shutting down"];
                 Shutdown.shutdown 254));
@@ -2158,7 +2181,7 @@ module Make (S : Worker_spec) = struct
          then (
            Rpc.Connection.close_reason ~on_close:`finished connection
            >>> fun reason ->
-           [%log.global.info
+           [%log.info
              "Rpc_parallel: initial client connection closed... Shutting down."
                (reason : Info.t)];
            Shutdown.shutdown 0);
@@ -2175,7 +2198,7 @@ module Make (S : Worker_spec) = struct
     Rpc.One_way.implement
       Shutdown_rpc.rpc
       (fun _conn_state () ->
-        [%log.global.info_string "Rpc_parallel: Got shutdown rpc... Shutting down."];
+        [%log.info_string "Rpc_parallel: Got shutdown rpc... Shutting down."];
         Shutdown.shutdown 0)
       ~on_exception:Close_connection
   ;;
@@ -2291,7 +2314,7 @@ let worker_main backend_settings ~worker_env =
              conn
              { id; name = config.name; error = Error.of_exn exn })
       >>> fun _ ->
-      [%log.global.error_format !"Rpc_parallel: %{Exn} ... Shutting down." exn];
+      [%log.error_format !"Rpc_parallel: %{Exn} ... Shutting down." exn];
       Shutdown.shutdown 254)
   in
   (* Ensure we do not leak processes. Make sure we have initialized successfully, meaning
@@ -2301,7 +2324,7 @@ let worker_main backend_settings ~worker_env =
     >>> fun () ->
     match Set_once.get (get_worker_state_exn ()).initialized with
     | None ->
-      [%log.global.error_string
+      [%log.error_string
         "Rpc_parallel: Timeout getting Init_worker_state rpc from master... Shutting \
          down."];
       Shutdown.shutdown 254

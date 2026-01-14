@@ -1,8 +1,8 @@
 open Core
 open Async
 
-(* This demonstrates how to take advantage of the feature in the
-   [Rpc_parallel] library that a [Worker.t] type is defined [with bin_io].
+(* This demonstrates how to take advantage of the feature in the [Rpc_parallel] library
+   that a [Worker.t] type is defined [with bin_io].
 *)
 
 module Worker = struct

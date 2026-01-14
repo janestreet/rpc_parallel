@@ -488,8 +488,9 @@ let map_unordered (type param a b) ?how_to_spawn config input_reader ~m ~(param 
     | `Eof -> Map_function.Worker.shutdown_exn worker
     | `Ok (input, index) ->
       let%bind output = Map_function.Worker.run_exn worker input in
-      let%bind () = Pipe.write output_writer (output, index) in
-      map_loop worker
+      (match%bind Pipe.write_when_ready output_writer ~f:(fun w -> w (output, index)) with
+       | `Closed -> Map_function.Worker.shutdown_exn worker
+       | `Ok () -> map_loop worker)
   in
   don't_wait_for
     (let%map () = Deferred.all_unit (List.map workers ~f:map_loop) in
@@ -510,18 +511,21 @@ let map ?how_to_spawn config input_reader ~m ~param =
     | Some (output, index) when index = !expecting_index ->
       expecting_index := !expecting_index + 1;
       Heap.remove_top out_of_order_output;
-      let%bind () = Pipe.write new_writer output in
-      write_out_of_order_output ()
+      (match%bind Pipe.write_when_ready new_writer ~f:(fun w -> w output) with
+       | `Ok () -> write_out_of_order_output ()
+       | `Closed -> Deferred.unit)
     | _ -> Deferred.unit
   in
   don't_wait_for
     (let%map () =
+       (Pipe.closed new_reader >>> fun () -> Pipe.close_read mapped_reader);
        Pipe.iter mapped_reader ~f:(fun ((output, index) as output_and_index) ->
          if index = !expecting_index
          then (
            expecting_index := !expecting_index + 1;
-           let%bind () = Pipe.write new_writer output in
-           write_out_of_order_output ())
+           match%bind Pipe.write_when_ready new_writer ~f:(fun w -> w output) with
+           | `Closed -> Deferred.unit
+           | `Ok () -> write_out_of_order_output ())
          else if index > !expecting_index
          then (
            Heap.add out_of_order_output output_and_index;
@@ -635,8 +639,8 @@ let map_reduce (type param a accum) ?how_to_spawn config input_reader ~m ~(param
     | (`Left | `Left_nothing_right) as dir' ->
       (match Map.closest_key (!acc_map : _ H.Map.t) `Less_than key with
        | Some (left_key, left_acc) when H.ubound left_key = H.lbound key ->
-         (* combine acc_{left_lbound, left_ubound} acc_{this_lbound, this_ubound}
-            -> acc_{left_lbound, this_ubound} *)
+         (* combine acc_[{left_lbound, left_ubound}] acc_[{this_lbound, this_ubound}] ->
+            acc_[{left_lbound, this_ubound}] *)
          (* We need to remove both nodes from the tree to indicate that we are working on
             combining them. *)
          acc_map

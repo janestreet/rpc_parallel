@@ -86,7 +86,7 @@ let command =
   Command.async
     ~summary:"Abort a direct pipe rpc"
     (let%map_open.Command n =
-       flag_optional_with_default_doc
+       flag_optional_with_default_doc_sexp
          "n"
          int
          [%sexp_of: int]

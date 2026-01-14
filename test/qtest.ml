@@ -138,11 +138,67 @@ let test_map_reduce () =
   Deferred.unit
 ;;
 
+let close_map_wait () = Clock_ns.after (Time_ns.Span.of_sec 0.1)
+
+let test_close_pipe_map_unordered () =
+  let n = 1000 in
+  let input = List.init n ~f:Fn.id in
+  let config =
+    Rpc_parallel.Map_reduce.Config.create
+      ~local:1
+      ~redirect_stderr:`Dev_null
+      ~redirect_stdout:`Dev_null
+      ()
+  in
+  let%bind output =
+    Rpc_parallel.Map_reduce.map_unordered
+      config
+      (Pipe.of_list input)
+      ~m:(module Add_map_function)
+      ~param:n
+  in
+  match%bind Pipe.read output with
+  | `Eof -> assert false
+  | `Ok _ ->
+    Pipe.close_read output;
+    (* Give some time for the worker to read one more value from the pipe and fail (if
+       there's a bug) *)
+    close_map_wait ()
+;;
+
+let test_close_pipe_map () =
+  let n = 1000 in
+  let input = List.init n ~f:Fn.id in
+  let config =
+    Rpc_parallel.Map_reduce.Config.create
+      ~local:1
+      ~redirect_stderr:`Dev_null
+      ~redirect_stdout:`Dev_null
+      ()
+  in
+  let%bind output =
+    Rpc_parallel.Map_reduce.map
+      config
+      (Pipe.of_list input)
+      ~m:(module Add_map_function)
+      ~param:n
+  in
+  match%bind Pipe.read output with
+  | `Eof -> assert false
+  | `Ok _ ->
+    Pipe.close_read output;
+    (* Give some time for the worker to read one more value from the pipe and fail (if
+       there's a bug) *)
+    close_map_wait ()
+;;
+
 let tests =
   [ "map_unordered", test_map_unordered
   ; "map", test_map
   ; "map_reduce_commutative", test_map_reduce_commutative
   ; "map_reduce", test_map_reduce
+  ; "close_pipe_map_unordered", test_close_pipe_map_unordered
+  ; "close_pipe_map", test_close_pipe_map
   ]
 ;;
 
