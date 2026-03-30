@@ -52,6 +52,9 @@ let main_command =
      fun () ->
        let open Deferred.Let_syntax in
        Rpc_parallel_unauthenticated.Expert.start_master_server_exn
+         ~local_or_remote:
+           Rpc_parallel_unauthenticated.Local_or_remote
+           .only_allow_local_workers_will_fail_to_connect_if_remote
          ~worker_command_args:[ "worker" ]
          ();
        let%map (_connection : Worker.Connection.t) =

@@ -82,7 +82,7 @@ module Async_log_rpc = struct
       ~name:"async_log_rpc"
       ~version:0
       ~bin_query:Unit.bin_t
-      ~bin_response:Log.Message.Stable.V2.bin_t
+      ~bin_response:Log.Message.Stable.V3.bin_t
       ~bin_error:Error.bin_t
       ()
   ;;
@@ -2364,7 +2364,7 @@ let worker_main backend_settings ~worker_env =
 module Expert = struct
   module Worker_env = Worker_env
 
-  let worker_init_before_async_exn () =
+  let worker_init_before_async_exn ?(here = Stdlib.Lexing.dummy_pos) () =
     match Utils.whoami () with
     | `Master ->
       failwith
@@ -2372,10 +2372,14 @@ module Expert = struct
          spawned."
     | `Worker ->
       if Scheduler.is_running ()
-      then
-        failwith
-          "[worker_init_before_async_exn] must be called before the async scheduler has \
-           been started.";
+      then (
+        let scheduler_start_info = Scheduler.start_debug_info () in
+        raise_s
+          [%message
+            "[worker_init_before_async_exn] must be called before the async scheduler \
+             has been started."
+              (scheduler_start_info : Sexp.t)
+              (here : Source_code_position.t)]);
       Utils.clear_env ();
       let config =
         try Sexp.input_sexp In_channel.stdin |> Worker_config.t_of_sexp with

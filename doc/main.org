@@ -33,8 +33,9 @@ When using Rpc_parallel, you will mostly use functions and modules from the
 rpc_parallel library. However, to initialize the library, you will need to
 either implement your own Backend module (not recommended unless you have
 special needs) or use the initialization functions in rpc_parallel_krb
-(recommended) or rpc_parallel_unauthenticated (unkerberized, "legacy") which
-handle producing a Backend module for you.
+(recommended) which handle producing a Backend module for you. It is [[./migrating-off-unauthenticated.md][not
+recommended]] to use the
+rpc_parallel_unauthenticated backend (unkerberized, "legacy").
 
 * Mental Model
 

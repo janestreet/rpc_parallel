@@ -2,6 +2,7 @@
 open Core
 
 open Async
+module Local_or_remote = Backend.Settings
 
 (** See lib/rpc_parallel/src/parallel_intf.ml for documentation. *)
 val start_app
@@ -14,6 +15,7 @@ val start_app
        (path:string list -> part:string -> string list list -> string list option)
   -> ?add_validate_parsing_flag:bool
   -> ?argv:string list
+  -> ?local_or_remote:Local_or_remote.t
   -> Command.t
   -> unit
 
@@ -30,6 +32,7 @@ module Expert : sig
     -> ?rpc_handshake_timeout:Time_float.Span.t
     -> ?rpc_heartbeat_config:Rpc.Connection.Heartbeat_config.t
     -> ?pass_name:bool (** default: true *)
+    -> ?local_or_remote:Local_or_remote.t
     -> worker_command_args:string list
     -> unit
     -> unit

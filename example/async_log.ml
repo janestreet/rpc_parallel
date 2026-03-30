@@ -40,7 +40,7 @@ let expect_log_entry readers =
   Deferred.List.iter ~how:`Sequential readers ~f:(fun reader ->
     match%map Pipe.read reader with
     | `Eof -> failwith "Unexpected EOF"
-    | `Ok entry -> printf !"%{sexp:Log.Message.Stable.V2.t}\n" entry)
+    | `Ok entry -> printf !"%{sexp:Log.Message.t}\n" entry)
 ;;
 
 let main () =
