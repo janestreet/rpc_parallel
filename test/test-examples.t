@@ -28,9 +28,29 @@
   WORKER: OCAMLRUNPARAM=foo=bar
   WORKER: OCAMLRUNPARAM=foo=user-supplied
 
+  $ $TESTDIR/ssh_test_server.sh with run test/ssh_worker_name_quoting.exe -host localhost
+  Spawning worker with name: "worker with spaces"
+  Worker with name "worker with spaces" responded: pong
+  Spawning worker with name: "worker (with parens)"
+  Worker with name "worker (with parens)" responded: pong
+  Spawning worker with name: "worker (with spaces and parens)"
+  Worker with name "worker (with spaces and parens)" responded: pong
+  Spawning worker with name: "worker with 'single quotes'"
+  Worker with name "worker with 'single quotes'" responded: pong
+
   $ $TESTDIR/ssh_test_server.sh with run test/env_test.exe special-var -host localhost
   WORKER: OCAMLRUNPARAM=foo=bar
   WORKER: OCAMLRUNPARAM=foo=user-supplied
+
+# Test that env values with shell metacharacters survive the SSH round-trip. Currently
+# env_for_ssh uses sexp quoting (double quotes) which doesn't prevent shell expansion,
+# so $WILL_EXPAND gets expanded (to empty) and command substitutions get evaluated.
+# When the CR-soon in remote_executable.ml is fixed (switching to Filename.quote), the
+# output should show the literal strings instead.
+  $ $TESTDIR/ssh_test_server.sh with run test/env_test.exe shell-metachar-test -host localhost
+  WORKER: TEST_DOLLAR=
+  WORKER: TEST_BACKTICK=injected
+  WORKER: TEST_DOLLAR_PAREN=injected
 
   $ run example/alternative_init.exe main
   Success.
@@ -40,6 +60,14 @@
 
   $ run_one_line test/run_exn.exe
   expected failure:*text of expected failure* (glob)
+
+# Worker exits non-zero before daemonization completes. The cram invocation
+# simulates a setup where the master is daemonized (2>/dev/null, logs go to file).
+  $ $rpc_parallel_base/test/exit_before_daemonize.exe -log-file worker.log 2>/dev/null
+  $ cat worker.log
+  * Error ("Rpc_parallel: worker stderr"(name *)(line RP_TEST_STDERR_LINE_1)) (glob)
+  * Error ("Rpc_parallel: worker stderr"(name *)(line RP_TEST_STDERR_LINE_2)) (glob)
+  * Info ("Worker.spawn returned error"(error(*("Worker process exited with error""exited with code 1"(name *))))) (glob)
 
   $ run example/number_stats.exe -nblocks 100
   Samples: * (glob)
@@ -99,6 +127,7 @@
   Ok.
 
   $ run test/fd.exe
+  *Info ("Rpc_parallel: initial client connection closed."* (glob)
   Ok
 
   $ run test/krb_expert.exe main

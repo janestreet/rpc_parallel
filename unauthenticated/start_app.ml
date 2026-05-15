@@ -17,9 +17,7 @@ let start_app
   ?complete_subcommands
   ?add_validate_parsing_flag
   ?argv
-  ?(local_or_remote =
-    (Local_or_remote.unsafe_allow_unauthenticated_remote_workers
-    [@alert "-rpc_parallel_unauth_remote"]))
+  ~local_or_remote
   command
   =
   Rpc_parallel.start_app
@@ -50,9 +48,7 @@ module Expert = struct
     ?rpc_handshake_timeout
     ?rpc_heartbeat_config
     ?pass_name
-    ?(local_or_remote =
-      (Local_or_remote.unsafe_allow_unauthenticated_remote_workers
-      [@alert "-rpc_parallel_unauth_remote"]))
+    ~local_or_remote
     =
     Rpc_parallel.Expert.start_master_server_exn
       ?rpc_max_message_size

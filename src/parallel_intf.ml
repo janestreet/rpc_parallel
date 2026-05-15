@@ -127,7 +127,12 @@ module type Worker = sig
 
     val close : t -> unit Deferred.t
     val close_finished : t -> unit Deferred.t
-    val close_reason : t -> on_close:[ `started | `finished ] -> Info.t Deferred.t
+
+    val close_reason
+      :  t
+      -> on_close:[ `started | `finished ]
+      -> Info.Portable.t Deferred.t
+
     val is_closed : t -> bool
 
     (** The underlying rpc connection. This should not be used to dispatch rpcs, but it's
@@ -607,7 +612,7 @@ module type Backend = sig
     -> ?buffer_age_limit:Writer.buffer_age_limit
     -> ?handshake_timeout:Time_float.Span.t
     -> ?heartbeat_config:Rpc.Connection.Heartbeat_config.t
-    -> ?description:Info.t
+    -> ?description:Info.Portable.t
     -> Settings.t
     -> Socket.Address.Inet.t Tcp.Where_to_connect.t
     -> Rpc.Connection.t Or_error.t Deferred.t

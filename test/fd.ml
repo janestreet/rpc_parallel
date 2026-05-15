@@ -159,7 +159,8 @@ let command =
       let%bind () = assert_fds [%here] ~listen:0 ~established:0 in
       let%bind () = test_serve () in
       let%bind () = test_unmanaged () in
-      let%map () = test_managed () in
+      let%bind () = test_managed () in
+      let%map () = Log.Global.flushed () in
       printf "Ok\n")
     ~behave_nicely_in_pipeline:false
 ;;

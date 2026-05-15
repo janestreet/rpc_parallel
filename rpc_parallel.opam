@@ -21,7 +21,7 @@ depends: [
   "sexplib"
   "dune"        {>= "3.17.0"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
 synopsis: "Type-safe parallel library built on top of Async_rpc"
 description: "
 Rpc_parallel offers an API to define various workers and protocols,
