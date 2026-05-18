@@ -67,49 +67,79 @@ let spawn ?env ~host () =
 ;;
 
 let print_worker_env conn ~key =
-  Worker.Connection.run conn ~f:Worker.functions.getenv ~arg:key
-  >>=? fun result ->
+  let%bind.Deferred.Or_error result =
+    Worker.Connection.run conn ~f:Worker.functions.getenv ~arg:key
+  in
   printf "WORKER: %s=%s\n" key (Option.value result ~default:"<none>");
   Deferred.Or_error.ok_unit
 ;;
 
 let basic_test =
-  Command.async_spec_or_error
+  Command.async_or_error
     ~summary:"Using environment variables for great good"
-    Command.Spec.(empty +> flag "host" (optional string) ~doc:"HOST run worker on HOST")
-    (fun host () ->
-      let key = "TEST_ENV_KEY" in
-      let data = "potentially \"problematic\" \\\"test\\\" string ()!" in
-      spawn ~env:[ key, data ] ~host ()
-      >>=? fun conn ->
-      print_worker_env conn ~key
-      >>=? fun () ->
-      print_worker_env conn ~key:"SHOULD_NOT_EXIST"
-      >>=? fun () -> Deferred.Or_error.ok_unit)
+    (let%map_open.Command host =
+       flag "host" (optional string) ~doc:"HOST run worker on HOST"
+     in
+     fun () ->
+       let open Deferred.Or_error.Let_syntax in
+       let key = "TEST_ENV_KEY" in
+       let data = "potentially \"problematic\" \\\"test\\\" string ()!" in
+       let%bind conn = spawn ~env:[ key, data ] ~host () in
+       let%bind () = print_worker_env conn ~key in
+       let%bind () = print_worker_env conn ~key:"SHOULD_NOT_EXIST" in
+       return ())
     ~behave_nicely_in_pipeline:false
 ;;
 
 let special_var =
-  Command.async_spec_or_error
+  Command.async_or_error
     ~summary:"Child inherits variables that influence process execution"
-    Command.Spec.(empty +> flag "host" (optional string) ~doc:"HOST run worker on HOST")
-    (fun host () ->
-      let envvar = "OCAMLRUNPARAM" in
-      let envval = "foo=bar" in
-      (Unix.putenv [@ocaml.alert "-unsafe_multidomain"]) ~key:envvar ~data:envval;
-      spawn ~host ()
-      >>=? fun conn ->
-      print_worker_env conn ~key:envvar
-      >>=? fun () ->
-      spawn ~host ~env:[ envvar, "foo=user-supplied" ] ()
-      >>=? fun conn ->
-      print_worker_env conn ~key:envvar >>=? fun () -> Deferred.Or_error.ok_unit)
+    (let%map_open.Command host =
+       flag "host" (optional string) ~doc:"HOST run worker on HOST"
+     in
+     fun () ->
+       let open Deferred.Or_error.Let_syntax in
+       let envvar = "OCAMLRUNPARAM" in
+       let envval = "foo=bar" in
+       (Unix.putenv [@ocaml.alert "-unsafe_multidomain"]) ~key:envvar ~data:envval;
+       let%bind conn = spawn ~host () in
+       let%bind () = print_worker_env conn ~key:envvar in
+       let%bind conn = spawn ~host ~env:[ envvar, "foo=user-supplied" ] () in
+       let%bind () = print_worker_env conn ~key:envvar in
+       return ())
+    ~behave_nicely_in_pipeline:false
+;;
+
+(* Test that env values containing shell metacharacters are passed through to the worker
+   literally. Currently [env_for_ssh] uses sexp quoting (double quotes), which does not
+   prevent shell expansion of $ and `. This test documents the current broken behavior; it
+   should be updated when the CR-soon in [remote_executable.ml] is addressed. *)
+let shell_metachar_test =
+  Command.async_or_error
+    ~summary:"Test env values with shell metacharacters over SSH"
+    (let%map_open.Command host =
+       flag "host" (optional string) ~doc:"HOST run worker on HOST"
+     in
+     fun () ->
+       let open Deferred.Or_error.Let_syntax in
+       let vars =
+         [ "TEST_DOLLAR", "$WILL_EXPAND"
+         ; "TEST_BACKTICK", "`echo injected`"
+         ; "TEST_DOLLAR_PAREN", "$(echo injected)"
+         ]
+       in
+       let%bind conn = spawn ~env:vars ~host () in
+       Deferred.Or_error.List.iter vars ~how:`Sequential ~f:(fun (key, _) ->
+         print_worker_env conn ~key))
     ~behave_nicely_in_pipeline:false
 ;;
 
 let () =
   Command.group
     ~summary:"Environment Variable Tests"
-    [ "basic-test", basic_test; "special-var", special_var ]
+    [ "basic-test", basic_test
+    ; "special-var", special_var
+    ; "shell-metachar-test", shell_metachar_test
+    ]
   |> Rpc_parallel_krb_public.start_app ~krb_mode:For_unit_test
 ;;

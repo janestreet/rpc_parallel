@@ -136,6 +136,12 @@ for arg in "\$@"; do
         skip_next=true
       fi
       ;;
+    \'*@*\')
+      hostname="\${arg#*@}"
+      hostname="\${hostname%\'}"
+      found_host=true
+      new_args+=("\$arg")
+      ;;
     *@*)
       hostname="\${arg#*@}"
       found_host=true

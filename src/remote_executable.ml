@@ -86,8 +86,15 @@ let run ?(assert_binary_hash = true) exec ~env ~args ~wrap =
          else Deferred.Or_error.ok_unit)
   in
   let { Prog_and_args.prog; args } = wrap { Prog_and_args.prog = exec.path; args } in
+  (* ssh doesn't escape its arguments before executing them in the remote shell, so we
+     must. *)
   Process.create
     ~prog:"ssh"
-    ~args:(exec.host_key_checking @ [ exec.host ] @ env_for_ssh env @ [ prog ] @ args)
+    ~args:
+      (exec.host_key_checking
+       @ [ exec.host ]
+       @ env_for_ssh env
+       @ [ Filename.quote prog ]
+       @ List.map args ~f:Filename.quote)
     ()
 ;;

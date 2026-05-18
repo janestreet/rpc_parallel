@@ -600,7 +600,7 @@ module Backend : sig
     -> ?buffer_age_limit:Writer.buffer_age_limit
     -> ?handshake_timeout:Time_float.Span.t
     -> ?heartbeat_config:Rpc.Connection.Heartbeat_config.t
-    -> ?description:Info.t
+    -> ?description:Info.Portable.t
     -> Settings.t
     -> Socket.Address.Inet.t Tcp.Where_to_connect.t
     -> Rpc.Connection.t Or_error.t Deferred.t
@@ -871,7 +871,7 @@ end = struct
      >>> fun (`Disconnected reason) ->
      [%log.error
        "Rpc_parallel: Heartbeater with master lost connection... Shutting down."
-         (reason : Info.t)];
+         (reason : Info.Portable.t)];
      Shutdown.shutdown 254);
     return `Connected
   ;;
@@ -880,7 +880,7 @@ end
 (* All global state that is needed for a process to act as a master *)
 type master_state =
   { (* The [Host_and_port.t] corresponding to one's own master Rpc server. *)
-    my_server : Host_and_port.t Deferred.t lazy_t
+    my_server : Host_and_port.t Lazy_deferred.t
       (* The rpc settings used universally for all rpc connections *)
   ; app_rpc_settings : Rpc_settings.t
   ; backend_settings : Backend.Settings.t
@@ -1002,18 +1002,18 @@ let init_master_state backend_and_settings ~rpc_settings ~worker_command_args =
     let my_worker_servers = Worker_id.Table.create ~size:1 () in
     (* Lazily start our master rpc server *)
     let my_server =
-      lazy
-        (let%map server =
-           start_server
-             backend_settings
-             ~rpc_settings
-             ~where_to_listen:Tcp.Where_to_listen.of_port_chosen_by_os
-             ~implementations:master_implementations
-             ~initial_connection_state:(fun _ _ -> ())
-         in
-         Host_and_port.create
-           ~host:(Unix.gethostname ())
-           ~port:(Tcp.Server.listening_on server.Server_with_rpc_settings.server))
+      Lazy_deferred.create (fun () ->
+        let%map server =
+          start_server
+            backend_settings
+            ~rpc_settings
+            ~where_to_listen:Tcp.Where_to_listen.of_port_chosen_by_os
+            ~implementations:master_implementations
+            ~initial_connection_state:(fun _ _ -> ())
+        in
+        Host_and_port.create
+          ~host:(Unix.gethostname ())
+          ~port:(Tcp.Server.listening_on server.Server_with_rpc_settings.server))
     in
     let as_master =
       { my_server
@@ -1537,7 +1537,7 @@ module Make (S : Worker_spec) = struct
     >>=? fun global_state ->
     (* generate a unique identifier for this worker *)
     let id = Worker_id.create () in
-    let%bind master_server = Lazy.force global_state.my_server in
+    let%bind master_server = Lazy_deferred.force_exn global_state.my_server in
     let input =
       { Worker_config.worker_type = worker_state.type_
       ; worker_id = id
@@ -1619,7 +1619,7 @@ module Make (S : Worker_spec) = struct
         ; name
         }
       in
-      let%bind master_server = Lazy.force global_state.my_server in
+      let%bind master_server = Lazy_deferred.force_exn global_state.my_server in
       Hashtbl.add_exn
         global_state.on_failures
         ~key:worker.id
@@ -1863,20 +1863,21 @@ module Make (S : Worker_spec) = struct
       (let%bind () = Writer.close (Process.stdin process) in
        let%bind () = Reader.close (Process.stdout process) in
        let worker_stderr = Reader.lines (Process.stderr process) in
-       Pipe.iter worker_stderr ~f:(fun line ->
-         let line' = sprintf "[WORKER %s STDERR]: %s\n" name line in
-         Writer.write (Lazy.force Writer.stderr) line' |> return));
+       Pipe.iter_without_pushback worker_stderr ~f:(fun line ->
+         [%log.error "Rpc_parallel: worker stderr" (name : string) (line : string)]));
     match%map Timeout.with_timeout timeout (Process.wait process) with
     | `Timeout ->
       don't_wait_for (kill_process process);
-      Or_error.error_string "Timed out waiting for worker to daemonize"
+      Or_error.error_s
+        [%message "Timed out waiting for worker to daemonize" (name : string)]
     | `Result (Ok ()) -> Ok ()
     | `Result (Error _ as exit_or_signal) ->
       let error =
         Error.create_s
           [%message
             "Worker process exited with error"
-              ~_:(Unix.Exit_or_signal.to_string_hum exit_or_signal)]
+              ~_:(Unix.Exit_or_signal.to_string_hum exit_or_signal)
+              (name : string)]
       in
       Error (decorate_error_if_running_test error)
   ;;
@@ -2177,14 +2178,18 @@ module Make (S : Worker_spec) = struct
         ->
          worker_state.client_has_connected <- true;
          let worker_state = Hashtbl.find_exn worker_state.states worker_id in
-         if worker_shutdown_on_disconnect
-         then (
-           Rpc.Connection.close_reason ~on_close:`finished connection
-           >>> fun reason ->
-           [%log.info
-             "Rpc_parallel: initial client connection closed... Shutting down."
-               (reason : Info.t)];
-           Shutdown.shutdown 0);
+         don't_wait_for
+           (let%map reason = Rpc.Connection.close_reason ~on_close:`finished connection in
+            if worker_shutdown_on_disconnect
+            then (
+              [%log.info
+                "Rpc_parallel: initial client connection closed... Shutting down."
+                  (reason : Info.Portable.t)];
+              Shutdown.shutdown 0)
+            else
+              [%log.info
+                "Rpc_parallel: initial client connection closed."
+                  (reason : Info.Portable.t)]);
          let%map conn_state =
            Utils.try_within_exn ~monitor (fun () ->
              User_functions.init_connection_state ~connection ~worker_state init_arg)

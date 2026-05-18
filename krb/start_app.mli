@@ -11,6 +11,7 @@ val start_app
   -> ?rpc_handshake_timeout:Time_float.Span.t
   -> ?rpc_heartbeat_config:Rpc.Connection.Heartbeat_config.t
   -> ?when_parsing_succeeds:(unit -> unit)
+  -> ?add_validate_parsing_flag:bool
   -> krb_mode:Mode.t
   -> Command.t
   -> unit

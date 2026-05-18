@@ -13,6 +13,7 @@ let start_app
   ?rpc_handshake_timeout
   ?rpc_heartbeat_config
   ?when_parsing_succeeds
+  ?add_validate_parsing_flag
   ~krb_mode
   command
   =
@@ -22,6 +23,7 @@ let start_app
     ?rpc_handshake_timeout
     ?rpc_heartbeat_config
     ?when_parsing_succeeds
+    ?add_validate_parsing_flag
     (backend_and_settings krb_mode)
     command
 ;;
