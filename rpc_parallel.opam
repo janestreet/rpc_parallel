@@ -18,7 +18,6 @@ depends: [
   "core_unix"
   "current_exe"
   "ppx_jane"
-  "sexplib"
   "dune"        {>= "3.17.0"}
 ]
 available: arch != "x86_32"
