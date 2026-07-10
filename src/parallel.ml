@@ -1860,11 +1860,16 @@ module Make (S : Worker_spec) = struct
 
   let wait_for_daemonization_and_collect_stderr name process ~timeout =
     don't_wait_for
-      (let%bind () = Writer.close (Process.stdin process) in
-       let%bind () = Reader.close (Process.stdout process) in
-       let worker_stderr = Reader.lines (Process.stderr process) in
-       Pipe.iter_without_pushback worker_stderr ~f:(fun line ->
-         [%log.error "Rpc_parallel: worker stderr" (name : string) (line : string)]));
+      (Monitor.try_with ~rest:`Log (fun () ->
+         let%bind () = Writer.close (Process.stdin process) in
+         let%bind () = Reader.close (Process.stdout process) in
+         let worker_stderr = Reader.lines (Process.stderr process) in
+         Pipe.iter_without_pushback worker_stderr ~f:(fun line ->
+           [%log.error "Rpc_parallel: worker stderr" (name : string) (line : string)]))
+       >>| function
+       | Ok () -> ()
+       | Error exn ->
+         [%log.error "error closing worker stdin/out or reading stderr" (exn : exn)]);
     match%map Timeout.with_timeout timeout (Process.wait process) with
     | `Timeout ->
       don't_wait_for (kill_process process);

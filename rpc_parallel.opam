@@ -18,10 +18,12 @@ depends: [
   "core_unix"
   "current_exe"
   "ppx_jane"
-  "sexplib"
   "dune"        {>= "3.17.0"}
 ]
 available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
 synopsis: "Type-safe parallel library built on top of Async_rpc"
 description: "
 Rpc_parallel offers an API to define various workers and protocols,
